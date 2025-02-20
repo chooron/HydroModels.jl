@@ -31,3 +31,6 @@ docs/.vscode
 
 log
 dev
+
+.windsurfrules
+CUDA.md
