@@ -28,9 +28,7 @@ makedocs(
     # 配置页面结构
     pages = [
         "Home" => "index.md",
-        "Run Models" => [
-            "Run ExpHydro Model" => "tutorials/run_exphydro_model.md",
-        ],
+        "Get Started with HydroModels.jl" => "get_start_en.md",
         "Basic Concepts" => "concepts_en.md",
         "Model Implementations" => [
             "construct the ExpHydro Model" => "implements/build_exphydro_model_en.md",

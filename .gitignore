@@ -30,3 +30,7 @@ docs/.vscode
 *.jl.mem
 
 log
+dev
+
+.windsurfrules
+CUDA.md

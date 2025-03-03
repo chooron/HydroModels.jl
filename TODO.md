@@ -8,7 +8,7 @@
 - [ ] Flux output need constraint
 - [ ] Add NoneMeanFlux
 - [ ] **GPU support (limited by scalar index)**
-    - [ ] DataInterpolations.jl is not support for now
+    - [X] DataInterpolations.jl is not support for now, supprot in v7.1.0
 - [ ] meta should store variables and parameters
 - [X] compact problem
 - [ ] ensemble model
@@ -18,5 +18,9 @@
     - [ ] @btime gradient计算: TotalModel (90s) 显著大于 常规计算 (23 s)
     - [ ] 原因:
     1. 多个bucket遍历插值
-- [ ] 针对multiple nodes模型参数的最佳设置方式,需要考虑计算效率, 考虑采用 ComponentVector(params=(p1=[2,3,4], p2=[3,3,4]))
+- [X] 针对multiple nodes模型参数的最佳设置方式, 需要考虑计算效率, 考虑采用 ComponentVector(params=(p1=[2,3,4], p2=[3,3,4]))
 - [ ] 添加gradient的test
+- [ ] 添加参数检查, 参数默认设置的功能
+- [ ] 添加说明文档
+- [ ] 如何适应多节点计算
+- [ ] 参考Lux.jl对于Dense的实现或能够替换函数的构建,这样或许能够使模型支持GPU的计算

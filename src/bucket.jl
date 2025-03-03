@@ -123,8 +123,7 @@ function (ele::HydroBucket{N, M, true})(
 	config::NamedTuple = NamedTuple(),
 	kwargs...,
 ) where {N, M, T}
-
-#* get kwargs
+	#* get kwargs
 	solver = get(config, :solver, ManualSolver{true}())
 	interp = get(config, :interp, DataInterpolations.LinearInterpolation)
 	timeidx = get(config, :timeidx, collect(1:size(input, 2)))
@@ -134,8 +133,7 @@ function (ele::HydroBucket{N, M, true})(
 	nn_params = isempty(get_nn_vars(ele)) ? Vector{eltype(pas)}[] : Vector(view(pas, :nns)) 
 
 	#* prepare input interpolation
-	itpfunc_list = map((var) -> interp(var, timeidx, extrapolate = true), eachrow(input))
-	ode_input_func(t) = map(itpfunc -> itpfunc(t), itpfunc_list)
+	itpfuncs = interp(input, timeidx)
 
 	#* prepare parameter and nn parameter
 	pas_vec = vcat(model_params, nn_params)
@@ -145,7 +143,7 @@ function (ele::HydroBucket{N, M, true})(
 	#* define the ODE function
 	function du_func(u, p, t)
 		@views ps, nn_ps = p[params_idx_bound], p[nn_idx_bounds]
-		ele.ode_func(ode_input_func(t), u, ps, nn_ps)
+		ele.ode_func(itpfuncs(t), u, ps, nn_ps)
 	end
 
 	#* solve the problem by call the solver
@@ -201,13 +199,12 @@ function (ele::HydroBucket{N, M, true})(
 
 	#* prepare input function
 	input_reshape = reshape(input, input_dims * num_nodes, time_len)
-	itpfunc_list = interp.(eachslice(input_reshape, dims = 1), Ref(timeidx), extrapolate = true)
-	ode_input_func(t) = map(itpfunc -> itpfunc(t), itpfunc_list)
+	itpfuncs  = interp(input_reshape, timeidx)
 
 	#* define the ODE function
 	function du_func(u, p, t)
 		@views ps, nn_ps = reshape(view(p, params_idx_bound), params_len, num_nodes), view(p, nn_idx_bounds)
-		tmp_input = reshape(ode_input_func(t), input_dims, num_nodes)
+		tmp_input = reshape(itpfuncs(t), input_dims, num_nodes)
 		ele.ode_func.(eachslice(tmp_input, dims = 2), eachslice(u, dims = 2), eachslice(ps, dims = 2), Ref(nn_ps))
 	end
 

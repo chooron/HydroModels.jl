@@ -239,7 +239,7 @@ function (route::HydroRoute{N, M})(
 
 	#* prepare input function
 	input_reshape = reshape(input, input_dims * num_nodes, time_len)
-	itpfunc_list = interp.(eachslice(input_reshape, dims = 1), Ref(timeidx), extrapolate = true)
+	itpfunc_list = interp.(eachslice(input_reshape, dims = 1), Ref(timeidx))
 	ode_input_func(t) = map(itpfunc -> itpfunc(t), itpfunc_list)
 
 	#* define the ODE function
@@ -338,7 +338,7 @@ function (route::RapidRoute)(
 	timeidx = get(config, :timeidx, collect(1:size(input, 3)))
 
 	#* var num * node num * ts len
-	itp_funcs = interp.(eachslice(input[1, :, :], dims = 1), Ref(timeidx), extrapolate = true)
+	itp_funcs = interp.(eachslice(input[1, :, :], dims = 1), Ref(timeidx))
 
 	#* prepare the parameters for the routing function
 	params = view(pas, :params)
