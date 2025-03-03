@@ -60,6 +60,8 @@ file_path = "data/exphydro/01013500.csv"
 data = CSV.File(file_path)
 df = DataFrame(data)
 ts = collect(1:10000)  # Time series length
+input_ntp = (lday=df[ts, "dayl(day)"], temp=df[ts, "tmean(C)"], prcp=df[ts, "prcp(mm/day)"])
+input = Matrix(reduce(hcat, collect(input_ntp[[:temp, :lday, :prcp]]))')
 ```
 
 Input variables include:
