@@ -42,6 +42,9 @@ using HydroModels
 @variables snowpack soilwater
 @parameters Tmin Tmax Df Smax Qmax f
 
+# define step function
+step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
+
 # define snowpack bucket
 fluxes_1 = [
     HydroFlux([temp, lday] => [pet], exprs=[29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)]),
