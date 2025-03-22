@@ -80,6 +80,8 @@ include("uh.jl")
 export UHFunction, UnitHydrograph
 include("model.jl")
 export HydroModel
+include("utils/macros.jl")
+export @hydroflux, @stateflux, @neuralflux, @hydrobucket
 
 # include model wrappers
 include("wappers/estimate_params.jl")

@@ -5,6 +5,7 @@ version = "0.1.5"
 
 [deps]
 Accessors = "7d9f7c33-5ae7-4f3b-8dc6-eff91059b697"
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
@@ -23,10 +24,12 @@ StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
 SymbolicUtils = "d1185830-fcd6-423d-90d6-eec64667417b"
 Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
 TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [compat]
 Accessors = "0.1"
 Aqua = "0.8"
+BenchmarkTools = "1.6.0"
 CSV = "0.10"
 ComponentArrays = "0.15"
 DataFrames = "1"
@@ -43,10 +46,12 @@ RuntimeGeneratedFunctions = "0.5"
 SparseArrays = "1"
 StableRNGs = "1"
 Statistics = "1"
+SymbolicIndexingInterface = "0.3.38"
 SymbolicUtils = "3"
 Symbolics = "6"
 TOML = "1"
 Test = "1"
+Zygote = "0.7.4"
 julia = "1"
 
 [extras]

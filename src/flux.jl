@@ -38,7 +38,7 @@ where the relationship between inputs and outputs can be expressed as simple mat
 """
 struct HydroFlux{N, M <: ComponentArray} <: AbstractHydroFlux
 	"Vector of expressions describing the formulas for output variables"
-	exprs::Vector{Num}
+	exprs::Vector
 	"Compiled function that calculates the flux"
 	func::Function
 	"Metadata about the flux, including input, output, and parameter names"
@@ -50,7 +50,7 @@ struct HydroFlux{N, M <: ComponentArray} <: AbstractHydroFlux
 		params::Vector{T};
 		exprs::Vector{T},
 		name::Union{Symbol, Nothing} = nothing,
-	) where {T <: Num}
+	) where {T}
 		#* construct meta
 		meta = ComponentVector(inputs = inputs, outputs = outputs, params = params)
 		@assert length(exprs) == length(outputs) "The number of expressions and outputs must match, but got expressions: $(length(exprs)) and outputs: $(length(outputs))"
@@ -67,13 +67,12 @@ struct HydroFlux{N, M <: ComponentArray} <: AbstractHydroFlux
 	function HydroFlux(
 		fluxes::Pair{Vector{Num}, Vector{Num}},
 		params::Vector{Num} = Num[];
-		exprs::Vector{Num},
+		exprs::Vector,
 		name::Union{Symbol, Nothing} = nothing,
 	)
 		return HydroFlux(fluxes[1], fluxes[2], params, exprs = exprs, name = name)
 	end
 end
-
 """
 	(flux::AbstractHydroFlux)(input::Union{Vector,Matrix,Array}, pas::ComponentVector; config::NamedTuple=NamedTuple(), kwargs...)
 
