@@ -106,7 +106,6 @@ function sort_components(components::AbstractVector{<:AbstractComponent})
     input_names, output_names, state_names = get_var_names(components)
     components_ntp = reduce(merge, map(components) do component
         tmp_input_names, tmp_output_names, tmp_state_names = get_var_names(component)
-        println((tmp_input_names, tmp_output_names, tmp_state_names))
         tmp_output_state_names = vcat(tmp_output_names, tmp_state_names)
         NamedTuple{Tuple(tmp_output_state_names)}(repeat([component], length(tmp_output_state_names)))
     end)
