@@ -2,7 +2,6 @@ module HydroModels
 
 ## External packages
 # common packages
-using Accessors
 using Reexport
 
 @reexport using ComponentArrays
@@ -20,9 +19,9 @@ RuntimeGeneratedFunctions.init(@__MODULE__)
 
 # Symbolic building
 using Symbolics
-using Symbolics: tosymbol
-using SymbolicUtils
+using Symbolics: tosymbol, unwrap
 using SymbolicUtils.Code
+import SymbolicUtils: BasicSymbolic, Sym, Term, iscall, operation, arguments, issym, symtype, sorted_arguments
 @reexport using ModelingToolkit: @variables, @parameters
 using ModelingToolkit: isparameter
 using ModelingToolkit: t_nounits as t
@@ -60,8 +59,9 @@ export AbstractFlux, AbstractHydroFlux, AbstractNeuralFlux, AbstractStateFlux
 export AbstractElement, AbstractBucket, AbstractHydrograph, AbstractRoute, AbstractHydroRoute, AbstractModel
 
 # utils
-include("utils/attr.jl")
-include("utils/show.jl")
+include("utils/expression.jl")
+include("utils/attribute.jl")
+include("utils/display.jl")
 include("utils/build.jl")
 include("utils/sort.jl")
 include("utils/check.jl")
@@ -82,16 +82,4 @@ include("model.jl")
 export HydroModel
 include("utils/macros.jl")
 export @hydroflux, @stateflux, @neuralflux, @hydrobucket
-
-# include model wrappers
-include("wappers/estimate_params.jl")
-export EstimateComponentParams
-include("wappers/record_states.jl")
-export RecordComponentState
-include("wappers/neural_wrapper.jl")
-export NeuralWrapper2, NeuralWrapper3
-include("wappers/io_adapter.jl")
-export NamedTupleIOAdapter
-include("wappers/stats_outlet.jl")
-export WeightSumComponentOutlet, ComputeComponentOutlet
 end # module HydroModels
