@@ -36,13 +36,15 @@ The number of expressions must match the number of output variables.
 This structure is particularly useful for representing straightforward hydrological processes
 where the relationship between inputs and outputs can be expressed as simple mathematical formulas.
 """
-struct HydroFlux{N, M <: ComponentArray} <: AbstractHydroFlux
+struct HydroFlux <: AbstractHydroFlux
+	"Name of the flux"
+	name::Symbol
 	"Vector of expressions describing the formulas for output variables"
 	exprs::Vector
 	"Compiled function that calculates the flux"
 	func::Function
 	"Metadata about the flux, including input, output, and parameter names"
-	meta::M
+	meta::ComponentVector
 
 	function HydroFlux(
 		inputs::Vector{T},
@@ -54,13 +56,11 @@ struct HydroFlux{N, M <: ComponentArray} <: AbstractHydroFlux
 		#* construct meta
 		meta = ComponentVector(inputs = inputs, outputs = outputs, params = params)
 		@assert length(exprs) == length(outputs) "The number of expressions and outputs must match, but got expressions: $(length(exprs)) and outputs: $(length(outputs))"
-
 		#* build flux function
 		flux_func = build_flux_func(inputs, outputs, params, exprs)
-
         #* use hash of exprs to name the flux
 		flux_name = isnothing(name) ? Symbol("##hydro_flux#", hash(meta)) : name
-		return new{flux_name, typeof(meta)}(exprs, flux_func, meta)
+		return new(flux_name, exprs, flux_func, meta)
 	end
 
 	#* construct hydro flux with input fluxes and output fluxes
@@ -93,40 +93,17 @@ Apply the simple flux model to input data of various dimensions.
 - For matrix input: A matrix where each column is the result of applying the flux function to the corresponding input column.
 - For 3D array input: A 3D array of flux outputs, with dimensions (output_var_names, node_names, ts_len).
 """
-function (flux::AbstractHydroFlux)(input::AbstractVector, pas::ComponentVector; kwargs...)
-	params_vec = Vector(view(pas, :params))
-	flux.func(input, params_vec)
+function (flux::HydroFlux)(input::AbstractArray{T, 2}, pas::ComponentVector; kwargs...) where {T}
+	reduce(hcat, flux.func(eachslice(input, dims=1), pas)) |> permutedims
 end
 
-function (flux::AbstractHydroFlux)(input::AbstractArray{T, 2}, pas::ComponentVector; kwargs...) where {T}
-	params_vec = Vector(view(pas, :params))
-	output_arr = reduce(hcat, flux.func.(eachslice(input, dims = 2), Ref(params_vec)))
-	output_arr
-end
-
-function (flux::AbstractHydroFlux)(input::AbstractArray{T, 3}, pas::ComponentVector; config::NamedTuple = NamedTuple(), kwargs...) where {T}
+function (flux::HydroFlux)(input::AbstractArray{T, 3}, pas::ComponentVector; config::NamedTuple = NamedTuple(), kwargs...) where {T}
+    params = view(pas, :params)
 	ptyidx = get(config, :ptyidx, 1:size(input, 2))
-	#* prepare parameter and nn parameter
-	params_len = length(get_param_names(flux))
-
-	#* convert to matrix (params_len, params_types)
-	params_mat = reshape(Vector(view(pas, :params)), :, params_len)'
-	extract_params_mat = view(params_mat, :, ptyidx)
-
-	#* array dims: (var_names * node_names * ts_len)
-	output_vec = map(1:size(input, 3)) do i
-		input_ = @view input[:, :, i]
-		reduce(hcat, flux.func.(eachslice(input_, dims = 2), eachslice(extract_params_mat, dims = 2)))
-	end
-	#* if there is only one time step, return the output as a matrix
-	if length(output_vec) == 1
-		tmp_output_arr = output_vec[1]
-		return reshape(tmp_output_arr, size(tmp_output_arr)..., 1)
-	else
-		return reduce((m1, m2) -> cat(m1, m2, dims = 3), output_vec)
-	end
+    expand_params = ComponentVector(NamedTuple{Tuple(get_param_names(flux))}([params[p][ptyidx] for p in get_param_names(flux)]))
+    output = flux.func(eachslice(input, dims=1), ComponentVector(params=expand_params))
+	length(output) == 1 ? reshape(output[1], 1, size(input, 2), size(input, 3)) : permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), output), (3, 1, 2))
 end
-
 
 """
 	NeuralFlux <: AbstractNeuralFlux
