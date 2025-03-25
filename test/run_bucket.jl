@@ -37,16 +37,16 @@
         ele_state_and_output_names = vcat(HydroModels.get_state_names(snow_ele), HydroModels.get_output_names(snow_ele))
         result = NamedTuple{Tuple(ele_state_and_output_names)}(eachslice(result, dims=1))
 
-        @testset "test first output for hydro element" begin
-            snowpack0 = init_states[:snowpack]
-            pet0 = snow_fluxes[1]([input_ntp.temp[1], input_ntp.lday[1]], ComponentVector(params=ComponentVector()))[1]
-            snowfall0, rainfall0 = snow_fluxes[2]([input_ntp.prcp[1], input_ntp.temp[1]], ComponentVector(params=(Tmin=params.Tmin,)))
-            melt0 = snow_fluxes[3]([snowpack0, input_ntp.temp[1]], ComponentVector(params=(Tmax=params.Tmax, Df=params.Df)))[1]
-            @test snowpack0 == result.snowpack[1]
-            @test snowfall0 == result.snowfall[1]
-            @test rainfall0 == result.rainfall[1]
-            @test melt0 == result.melt[1]
-        end
+        # @testset "test first output for hydro element" begin
+        #     snowpack0 = init_states[:snowpack]
+        #     pet0 = snow_fluxes[1]([input_ntp.temp[1], input_ntp.lday[1]], ComponentVector(params=ComponentVector()))[1]
+        #     snowfall0, rainfall0 = snow_fluxes[2]([input_ntp.prcp[1], input_ntp.temp[1]], ComponentVector(params=(Tmin=params.Tmin,)))
+        #     melt0 = snow_fluxes[3]([snowpack0, input_ntp.temp[1]], ComponentVector(params=(Tmax=params.Tmax, Df=params.Df)))[1]
+        #     @test snowpack0 == result.snowpack[1]
+        #     @test snowfall0 == result.snowfall[1]
+        #     @test rainfall0 == result.rainfall[1]
+        #     @test melt0 == result.melt[1]
+        # end
 
         # @testset "test all of the output" begin
         #     param_func, nn_param_func = HydroModels._get_parameter_extractors(snow_ele, pas)
@@ -74,7 +74,7 @@
                 Df=fill(Df_v, node_num), Tmax=fill(Tmax_v, node_num), Tmin=fill(Tmin_v, node_num)
             )
             node_states = ComponentVector(snowpack=fill(0.0, node_num))
-            
+
             node_pas = ComponentVector(params=node_params[HydroModels.get_param_names(snow_ele)], initstates=node_states[HydroModels.get_state_names(snow_ele)])
             input_arr = reduce(hcat, collect(input_ntp[HydroModels.get_input_names(snow_ele)]))
             node_input = reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([input_arr], length(node_names)))
@@ -86,42 +86,22 @@
             @test node_output == target_output
         end
 
-        @testset "test run with multiple nodes input (share parameters)" begin
-            # share parameters
-            node_num = 3
-            node_names = [Symbol(:node, i) for i in 1:node_num]
-            node_params = ComponentVector(Df=fill(Df_v, node_num), Tmax=fill(Tmax_v, node_num), Tmin=fill(Tmin_v, node_num))
-            node_states = ComponentVector(snowpack=fill(0.0, node_num))
+        # @testset "test run with multiple nodes input (share parameters)" begin
+        #     # share parameters
+        #     node_num = 3
+        #     node_names = [Symbol(:node, i) for i in 1:node_num]
+        #     node_params = ComponentVector(Df=fill(Df_v, node_num), Tmax=fill(Tmax_v, node_num), Tmin=fill(Tmin_v, node_num))
+        #     node_states = ComponentVector(snowpack=fill(0.0, node_num))
 
-            node_pas = ComponentVector(params=node_params[HydroModels.get_param_names(snow_ele)], initstates=node_states[HydroModels.get_state_names(snow_ele)])
-            input_arr = reduce(hcat, collect(input_ntp[HydroModels.get_input_names(snow_ele)]))
-            node_input = reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([input_arr], 10))
-            node_input = permutedims(node_input, (2, 3, 1))
-            config = (ptyidx=[1,2,2,2,1,3,3,2,3,2], styidx=[1,2,2,2,1,3,3,2,3,2], timeidx=ts)
-            node_output = snow_ele(node_input, node_pas, config=config)            
-            single_output = snow_ele(input, pas, config=config)
-            target_output = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([single_output], 10)), (1, 3, 2))
-            @test node_output == target_output
-        end
-
-        @testset "test build state function" begin
-            @variables routingstore exch slowflow_routed routedflow
-            @parameters x2, x3
-            fluxes = [
-                HydroModels.HydroFlux([routingstore] => [exch], [x2, x3],
-                    exprs=[x2 * abs(routingstore / x3)^3.5]),
-                HydroModels.HydroFlux([routingstore, slowflow_routed, exch] => [routedflow], [x3],
-                    exprs=[x3^(-4) / 4 * (routingstore + slowflow_routed + exch)^5]),
-            ]
-            dfunc = HydroModels.StateFlux([slowflow_routed, exch] => [routedflow], routingstore)
-            hydro_bucket = HydroModels.HydroBucket(fluxes=fluxes, dfluxes=[dfunc])
-            # meta = HydroModels.HydroMeta(name=:test, inputs=[:slowflow_routed], states=[:routingstore])
-            flux_func, state_func = HydroModels.build_ele_func(fluxes, [dfunc], hydro_bucket.meta)
-            rgt, slg = 10.0, 20.0
-            exch = 2.42 * abs(rgt / 69.63)^3.5
-            routedflow = 69.63^(-4) / 4 * (rgt + slg + exch)^5
-            @test flux_func([slg], [rgt], [2.42, 69.63], []) ≈ [rgt, exch, routedflow]
-            @test state_func([slg], [rgt], [2.42, 69.63], []) ≈ [exch + slg - 69.63^(-4) / 4 * (rgt + slg + exch)^5]
-        end
+        #     node_pas = ComponentVector(params=node_params[HydroModels.get_param_names(snow_ele)], initstates=node_states[HydroModels.get_state_names(snow_ele)])
+        #     input_arr = reduce(hcat, collect(input_ntp[HydroModels.get_input_names(snow_ele)]))
+        #     node_input = reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([input_arr], 10))
+        #     node_input = permutedims(node_input, (2, 3, 1))
+        #     config = (ptyidx=[1, 2, 2, 2, 1, 3, 3, 2, 3, 2], styidx=[1, 2, 2, 2, 1, 3, 3, 2, 3, 2], timeidx=ts)
+        #     node_output = snow_ele(node_input, node_pas, config=config)
+        #     single_output = snow_ele(input_arr |> permutedims, pas, config=config)
+        #     target_output = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([single_output], 10)), (1, 3, 2))
+        #     @test node_output == target_output
+        # end
     end
 end

@@ -178,9 +178,9 @@ end
 
     #! define the ET NN and Q NN
     et_nn = Lux.Chain(Lux.Dense(3 => 16, Lux.tanh), Lux.Dense(16 => 16, Lux.leakyrelu), Lux.Dense(16 => 1, Lux.leakyrelu), name=:etnn)
-    et_nn_p = Vector(ComponentVector(LuxCore.initialparameters(StableRNG(42), et_nn)))
+    et_nn_p = ComponentVector(LuxCore.initialparameters(StableRNG(42), et_nn))
     q_nn = Lux.Chain(Lux.Dense(2 => 16, Lux.tanh), Lux.Dense(16 => 16, Lux.leakyrelu), Lux.Dense(16 => 1, Lux.leakyrelu), name=:qnn)
-    q_nn_p = Vector(ComponentVector(LuxCore.initialparameters(StableRNG(42), q_nn)))
+    q_nn_p = ComponentVector(LuxCore.initialparameters(StableRNG(42), q_nn))
 
     #! get init parameters for each NN
     et_nn_flux = NeuralFlux([norm_snw, norm_slw, norm_temp] => [log_evap_div_lday], et_nn)

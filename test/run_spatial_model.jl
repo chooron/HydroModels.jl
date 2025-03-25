@@ -39,17 +39,17 @@ step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
     flwdir = [1 4 8; 1 4 4; 1 1 2]
     positions = [[1, 1], [1, 2], [1, 3], [2, 1], [2, 2], [2, 3], [3, 1], [3, 2], [3, 3]]
     node_names = [Symbol(:node_, i) for i in 1:9]
-    rflux = HydroModels.HydroFlux([q, s_river] => [q_gen, q_routed], [lag], exprs=[q, s_river / (1 + lag) + q])
-    route = HydroModels.GridRoute(rfunc=rflux, rstates=[s_river], flwdir=flwdir, positions=positions)
-    discharge_route = HydroModels.GridRoute(name=:exphydro_routed, rfunc=rflux, rstates=[s_river], flwdir=flwdir, positions=positions)
+    rflux = HydroModels.HydroFlux([q, s_river] => [q_routed], [lag], exprs=[s_river / (1 + lag) + q])
+    dflux = HydroModels.StateFlux([q] => [q_routed], s_river)
+    route = HydroModels.GridRoute(rfluxes=[rflux], dfluxes=[dflux], flwdir=flwdir, positions=positions)
     #! define the Exp-Hydro model
-    model = HydroModel(name=:exphydro, components=[snow_ele, soil_ele, convertflux, discharge_route])
+    model = HydroModel(name=:exphydro, components=[snow_ele, soil_ele, convertflux, route])
 
     @test Set(HydroModels.get_input_names(model)) == Set([:temp, :lday, :prcp])
     @test Set(HydroModels.get_param_names(model)) == Set([:Tmin, :Tmax, :Df, :Smax, :f, :Qmax, :lag, :area_coef])
     @test Set(HydroModels.get_state_names(model)) == Set([:snowpack, :soilwater, :s_river])
-    @test Set(HydroModels.get_output_names(model)) == Set([:pet, :snowfall, :rainfall, :melt, :evap, :baseflow, :surfaceflow, :flow, :q, :q_routed, :q_gen])
-    @test Set(reduce(union, HydroModels.get_var_names(model))) == Set([:temp, :lday, :prcp, :pet, :snowfall, :rainfall, :melt, :evap, :baseflow, :surfaceflow, :flow, :snowpack, :soilwater, :s_river, :q, :q_gen, :q_routed])
+    @test Set(HydroModels.get_output_names(model)) == Set([:pet, :snowfall, :rainfall, :melt, :evap, :baseflow, :surfaceflow, :flow, :q, :q_routed])
+    @test Set(reduce(union, HydroModels.get_var_names(model))) == Set([:temp, :lday, :prcp, :pet, :snowfall, :rainfall, :melt, :evap, :baseflow, :surfaceflow, :flow, :snowpack, :soilwater, :s_river, :q, :q_routed])
 
     input_arr = repeat(reshape(input_mat, size(input_mat)[1], 1, size(input_mat)[2]), 1, 9, 1)
     node_names = [Symbol(:node_, i) for i in 1:9]
@@ -116,8 +116,9 @@ end
 
     convertflux = HydroModels.HydroFlux([flow] => [q], [area_coef], exprs=[flow * area_coef])
     node_names = [Symbol(:node_, i) for i in 1:9]
-    rflux = HydroModels.HydroFlux([q, s_river] => [q_gen, q_routed], [lag], exprs=[q, s_river / (1 + lag) + q])
-    discharge_route = HydroModels.VectorRoute(name=:exphydro_routed, rfunc=rflux, rstates=[s_river], network=network)
+    rflux = HydroModels.HydroFlux([q, s_river] => [q_routed], [lag], exprs=[s_river / (1 + lag) + q])
+    dflux = HydroModels.StateFlux([q] => [q_routed], s_river)
+    discharge_route = HydroModels.VectorRoute(name=:exphydro_routed, rfluxes=[rflux], dfluxes=[dflux], network=network)
 
     #! define the Exp-Hydro model
     model = HydroModel(name=:exphydro, components=[snow_ele, soil_ele, convertflux, discharge_route])
@@ -125,9 +126,9 @@ end
     @test Set(HydroModels.get_input_names(model)) == Set([:temp, :lday, :prcp])
     @test Set(HydroModels.get_param_names(model)) == Set([:Tmin, :Tmax, :Df, :Smax, :f, :Qmax, :lag, :area_coef])
     @test Set(HydroModels.get_state_names(model)) == Set([:snowpack, :soilwater, :s_river])
-    @test Set(HydroModels.get_output_names(model)) == Set([:pet, :snowfall, :rainfall, :melt, :evap, :baseflow, :surfaceflow, :flow, :q, :q_routed, :q_gen])
+    @test Set(HydroModels.get_output_names(model)) == Set([:pet, :snowfall, :rainfall, :melt, :evap, :baseflow, :surfaceflow, :flow, :q, :q_routed])
     @test Set(reduce(union, HydroModels.get_var_names(model))) == Set(
-        [:temp, :lday, :prcp, :pet, :snowfall, :rainfall, :melt, :evap, :baseflow, :surfaceflow, :s_river, :flow, :snowpack, :soilwater, :q, :q_routed, :q_gen]
+        [:temp, :lday, :prcp, :pet, :snowfall, :rainfall, :melt, :evap, :baseflow, :surfaceflow, :s_river, :flow, :snowpack, :soilwater, :q, :q_routed]
     )
 
     input_arr = repeat(reshape(input_mat, size(input_mat)[1], 1, size(input_mat)[2]), 1, 9, 1)
