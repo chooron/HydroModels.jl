@@ -29,14 +29,12 @@ ep_nn = Lux.Chain(
     Lux.Dense(16 => 1, leakyrelu),
     name=:epnn
 )
-ep_nn_params = Vector(ComponentVector(first(Lux.setup(StableRNGs.LehmerRNG(1234), ep_nn))))
 q_nn = Lux.Chain(
     Lux.Dense(2 => 16, tanh),
     Lux.Dense(16 => 16, leakyrelu),
     Lux.Dense(16 => 1, leakyrelu),
     name=:qnn
 )
-q_nn_params = Vector(ComponentVector(first(Lux.setup(StableRNGs.LehmerRNG(1234), q_nn))))
 
 #! get init parameters for each NN
 ep_nn_flux = NeuralFlux([norm_snw, norm_slw, norm_temp] => [log_evap_div_lday], ep_nn)
@@ -60,5 +58,3 @@ soil_ele = HydroBucket(name=:m50_soil, fluxes=soil_fluxes, dfluxes=soil_dfluxes)
 convert_flux = HydroFlux([log_flow] => [flow], exprs=[exp(log_flow)])
 #! define the Exp-Hydro model
 m50_model = HydroModel(name=:m50, components=[snow_ele, soil_ele, convert_flux]);
-
-export m50_model, eq_nn_flux, q_nn_flux
