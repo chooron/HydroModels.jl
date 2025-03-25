@@ -36,7 +36,7 @@ This structure is particularly useful for building complex hydrological models b
 multiple HydroBucket instances to represent different components of a water system.
 
 """
-struct HydroBucket{S,M} <: AbstractBucket
+struct HydroBucket{S} <: AbstractBucket
     "Name of the bucket"
     name::Symbol
     "Vector of flux functions describing hydrological processes."
@@ -45,8 +45,12 @@ struct HydroBucket{S,M} <: AbstractBucket
     dfluxes::Vector{<:AbstractStateFlux}
     "Generated function for calculating all hydrological fluxes."
     flux_func::Function
+    "Generated function for calculating all hydrological fluxes."
+    multi_flux_func::Function
     "Generated function for ordinary differential equations (ODE) calculations, or nothing if no ODE calculations are needed."
     ode_func::Union{Nothing,Function}
+    "Generated function for ordinary differential equations (ODE) calculations, or nothing if no ODE calculations are needed."
+    multi_ode_func::Union{Nothing,Function}
     "Metadata about the bucket, including input, output, state, parameter, and neural network names."
     meta::ComponentVector
 
@@ -55,7 +59,6 @@ struct HydroBucket{S,M} <: AbstractBucket
         fluxes::Vector{<:AbstractHydroFlux},
         dfluxes::Vector{<:AbstractStateFlux}=StateFlux[],
         sort_fluxes::Bool=false,
-        multi_buckets::Bool=false,
     )
         #* sort the fluxes if needed
         fluxes = sort_fluxes ? sort_fluxes(fluxes) : fluxes
@@ -66,9 +69,9 @@ struct HydroBucket{S,M} <: AbstractBucket
         #* Setup the meta data of the bucket
         meta = ComponentVector(inputs=bucket_inputs, outputs=bucket_outputs, states=bucket_states, params=bucket_params, nns=bucket_nns_ntp)
         #* Construct a function for ordinary differential calculation based on dfunc and funcs
-        flux_func, ode_func = multi_buckets ? build_multi_ele_func(fluxes, dfluxes, meta) : build_single_ele_func(fluxes, dfluxes, meta)
+        flux_func, multi_flux_func, ode_func, multi_ode_func = build_ele_func(fluxes, dfluxes, meta)
         bucket_name = isnothing(name) ? Symbol("##bucket#", hash(meta)) : name
-        return new{!isempty(bucket_states),multi_buckets}(bucket_name, fluxes, dfluxes, flux_func, ode_func, meta)
+        return new{!isempty(bucket_states)}(bucket_name, fluxes, dfluxes, flux_func, multi_flux_func, ode_func, multi_ode_func, meta)
     end
 end
 
@@ -114,7 +117,7 @@ For multi-node runs:
 The input dimensions must match the number of input variables defined in the model.
 Required parameters and initial states must be present in the pas argument.
 """
-function (ele::HydroBucket{true,false})(
+function (ele::HydroBucket{true})(
     input::AbstractArray{T,2},
     pas::ComponentVector;
     config::NamedTuple=NamedTuple(),
@@ -124,25 +127,23 @@ function (ele::HydroBucket{true,false})(
     solver = get(config, :solver, ManualSolver{true}())
     interp = get(config, :interp, DataInterpolations.LinearInterpolation)
     timeidx = get(config, :timeidx, collect(1:size(input, 2)))
-
     #* solve ode functions
     itpfuncs = interp(input, timeidx)
     solved_states = solver(
         (u, p, t) -> ele.ode_func(itpfuncs(t), u, p),
         pas, Vector(view(pas, :initstates)), timeidx
     )
-
     #* concatenate states and fluxes 
-    flux_output = ele.flux_func(input, solved_states, pas)
+    flux_output = ele.flux_func(eachslice(input, dims=1), eachslice(solved_states, dims=1), pas)
     vcat(solved_states, permutedims(reduce(hcat, flux_output)))
 end
 
-(ele::HydroBucket{false,false})(input::AbstractArray{T,2}, pas::ComponentVector; kwargs...) where {T} = begin
+(ele::HydroBucket{false})(input::AbstractArray{T,2}, pas::ComponentVector; kwargs...) where {T} = begin
     flux_output = ele.flux_func(input, nothing, pas)
     permutedims(reduce(hcat, flux_output))
 end
 
-function (ele::HydroBucket{true,true})(
+function (ele::HydroBucket{true})(
     input::AbstractArray{T,3},
     pas::ComponentVector;
     config::NamedTuple=NamedTuple(),
@@ -161,22 +162,26 @@ function (ele::HydroBucket{true,true})(
     params = view(pas, :params)
     nn_params = isempty(get_nn_vars(ele)) ? ones(eltype(pas), num_nodes) : view(pas, :nns)
     expand_params = ComponentVector(NamedTuple{Tuple(get_param_names(ele))}([params[p][ptyidx] for p in get_param_names(ele)]))
+    new_pas = ComponentVector(params=expand_params, nns=nn_params)
     initstates_mat = view(reshape(Vector(view(pas, :initstates)), num_nodes, :)', :, styidx)
 
     #* prepare input function
     input_reshape = reshape(input, input_dims * num_nodes, time_len)
-    new_pas = ComponentVector(params=expand_params, nns=nn_params)
     itpfuncs = interp(input_reshape, timeidx)
     solved_states = solver(
-        (u, p, t) -> reduce(hcat, ele.ode_func(reshape(itpfuncs(t), input_dims, num_nodes), u, p)) |> permutedims,
+        (u, p, t) -> begin
+            tmp_input = reshape(itpfuncs(t), input_dims, num_nodes)
+            reduce(hcat, ele.multi_ode_func(eachslice(tmp_input, dims=1), eachslice(u, dims=1), p)) |> permutedims
+        end,
         new_pas, initstates_mat, timeidx
     )
     #* run other functions
-    output = ele.flux_func(input, solved_states, new_pas)
-    cat(solved_states, permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), output), (3, 1, 2)), dims=1)
+    output = ele.multi_flux_func(eachslice(input, dims=1), eachslice(solved_states, dims=1), new_pas)
+    output_arr = length(output) > 1 ? permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), output), (3, 1, 2)) : reshape(output[1], 1, num_nodes, time_len)
+    cat(solved_states, output_arr, dims=1)
 end
 
-function (ele::HydroBucket{false,false})(
+function (ele::HydroBucket{false})(
     input::AbstractArray{T,3},
     pas::ComponentVector;
     config::NamedTuple=NamedTuple(),
@@ -188,6 +193,6 @@ function (ele::HydroBucket{false,false})(
     expand_params = ComponentVector(NamedTuple{Tuple(get_param_names(ele))}([params[p][ptyidx] for p in get_param_names(ele)]))
     new_pas = ComponentVector(params=expand_params, nns=nn_params)
     #* run other functions
-    output = ele.flux_func(input, nothing, new_pas)
+    output = ele.flux_func(eachslice(input, dims=1), nothing, new_pas)
     permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), output), (3, 1, 2))
 end
