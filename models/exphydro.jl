@@ -7,11 +7,11 @@ step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
 
 # define model components
 fluxes_1 = [
-    HydroFlux([temp, lday] => [pet], exprs=[29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)]),
     HydroFlux([prcp, temp] => [snowfall, rainfall], [Tmin], exprs=[step_func(Tmin - temp) * prcp, step_func(temp - Tmin) * prcp]),
     HydroFlux([snowpack, temp] => [melt], [Tmax, Df], exprs=[step_func(temp - Tmax) * step_func(snowpack) * min(snowpack, Df * (temp - Tmax))]),
+    HydroFlux([temp, lday] => [pet], exprs=[29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)]),
 ]
-dfluxes_1 = [StateFlux([snowfall] => [melt], snowpack),]
+dfluxes_1 = [StateFlux([snowfall] => [melt], snowpack)]
 bucket_1 = HydroBucket(name=:surface, fluxes=fluxes_1, dfluxes=dfluxes_1)
 
 fluxes_2 = [
@@ -25,4 +25,4 @@ bucket_2 = HydroBucket(name=:soil, fluxes=fluxes_2, dfluxes=dfluxes_2)
 
 exphydro_model = HydroModel(name=:exphydro, components=[bucket_1, bucket_2]) 
 
-export bucket_1
+export bucket_1, fluxes_1, dfluxes_1
