@@ -1,9 +1,4 @@
-function build_flux_func(
-    inputs::Vector{Num},
-    outputs::Vector{Num},
-    params::Vector{Num},
-    exprs::Vector{Num},
-)
+function build_flux_func(inputs::Vector{Num}, outputs::Vector{Num}, params::Vector{Num}, exprs::Vector{Num})
     input_names, output_names = Symbolics.tosymbol.(inputs), Symbolics.tosymbol.(outputs)
     param_names = Symbolics.tosymbol.(params)
     flux_exprs = toexprv2.(unwrap.(exprs))
@@ -28,32 +23,30 @@ function build_ele_func(
 )
     input_names, output_names = tosymbol.(meta.inputs), tosymbol.(meta.outputs)
     state_names, param_names = tosymbol.(meta.states), tosymbol.(meta.params)
-    nfluxes = filter(f -> f isa AbstractNeuralFlux, fluxes)
 
     input_define_calls = [:($i = inputs[$idx]) for (idx, i) in enumerate(input_names)]
     state_define_calls = [:($s = states[$idx]) for (idx, s) in enumerate(state_names)]
     params_assign_calls = [:($p = pas.params.$p) for p in param_names]
-    nn_params_assign_calls = [:($nn = pas.nns.$nn) for nn in [nflux.nninfos[:nns] for nflux in nfluxes]]
+    nn_params_assign_calls = [:($nn = pas.nns.$nn) for nn in [nflux.nninfos[:nns] for nflux in filter(f -> f isa AbstractNeuralFlux, fluxes)]]
     define_calls = reduce(vcat, [input_define_calls, state_define_calls, params_assign_calls, nn_params_assign_calls])
 
     # varibles definitions expressions
     state_compute_calls, multi_state_compute_calls, flux_compute_calls, multi_flux_compute_calls = [], [], [], []
     for f in fluxes
         if f isa AbstractNeuralFlux
-            append!(state_compute_calls, [:($(f.nninfos[:inputs]) = [$(get_input_names(f)...)]) for f in nfluxes])
-            append!(multi_state_compute_calls, [:($(f.nninfos[:inputs]) = permutedims(reduce(hcat, [$(get_input_names(f)...)]))) for f in nfluxes])
-            append!(flux_compute_calls, [:($(f.nninfos[:inputs]) = permutedims(reduce(hcat, [$(get_input_names(f)...)]))) for f in nfluxes])
-            append!(multi_flux_compute_calls, [:($(f.nninfos[:inputs]) = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), [$(get_input_names(f)...)]), (3, 1, 2))) for f in nfluxes])
-
+            append!(state_compute_calls, [:($(f.nninfos[:inputs]) = [$(get_input_names(f)...)])])
             push!(state_compute_calls, :($(f.nninfos[:outputs]) = $(f.func)($(f.nninfos[:inputs]), $(f.nninfos[:nns]))))
             append!(state_compute_calls, [:($(nm) = $(f.nninfos[:outputs])[$i]) for (i, nm) in enumerate(get_output_names(f))])
 
+            append!(multi_state_compute_calls, [:($(f.nninfos[:inputs]) = permutedims(reduce(hcat, [$(get_input_names(f)...)])))])
             push!(multi_state_compute_calls, :($(f.nninfos[:outputs]) = $(f.func)($(f.nninfos[:inputs]), $(f.nninfos[:nns]))))
             append!(multi_state_compute_calls, [:($(nm) = $(f.nninfos[:outputs])[$i, :]) for (i, nm) in enumerate(get_output_names(f))])
 
+            append!(flux_compute_calls, [:($(f.nninfos[:inputs]) = permutedims(reduce(hcat, [$(get_input_names(f)...)])))])
             push!(flux_compute_calls, :($(f.nninfos[:outputs]) = $(f.func)($(f.nninfos[:inputs]), $(f.nninfos[:nns]))))
             append!(flux_compute_calls, [:($(nm) = $(f.nninfos[:outputs])[$i, :]) for (i, nm) in enumerate(get_output_names(f))])
 
+            append!(multi_flux_compute_calls, [:($(f.nninfos[:inputs]) = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), [$(get_input_names(f)...)]), (3, 1, 2)))])
             push!(multi_flux_compute_calls, :($(f.nninfos[:outputs]) = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), $(f.func).(eachslice($(f.nninfos[:inputs]), dims=2), Ref($(f.nninfos[:nns])))), (1, 3, 2))))
             append!(multi_flux_compute_calls, [:($(nm) = $(f.nninfos[:outputs])[$i, :, :]) for (i, nm) in enumerate(get_output_names(f))])
         else
@@ -110,26 +103,24 @@ end
 function build_route_func(
     fluxes::AbstractVector{<:AbstractFlux},
     dfluxes::AbstractVector{<:AbstractStateFlux},
-    rfunc::Function,
     meta::ComponentVector,
 )
     input_names, output_names = tosymbol.(meta.inputs), tosymbol.(meta.outputs)
     state_names, param_names = tosymbol.(meta.states), tosymbol.(meta.params)
-    nfluxes = filter(f -> f isa AbstractNeuralFlux, fluxes)
 
     input_define_calls = [:($i = inputs[$idx]) for (idx, i) in enumerate(input_names)]
     state_define_calls = [:($s = states[$idx]) for (idx, s) in enumerate(state_names)]
     params_assign_calls = [:($p = pas.params.$p) for p in param_names]
-    nn_params_assign_calls = [:($nn = pas.nns.$nn) for nn in [nflux.nninfos[:nns] for nflux in nfluxes]]
+    nn_params_assign_calls = [:($nn = pas.nns.$nn) for nn in [nflux.nninfos[:nns] for nflux in filter(f -> f isa AbstractNeuralFlux, fluxes)]]
     define_calls = reduce(vcat, [input_define_calls, state_define_calls, params_assign_calls, nn_params_assign_calls])
     state_compute_calls, flux_compute_calls, = [], []
     for f in fluxes
         if f isa AbstractNeuralFlux
-            append!(state_compute_calls, [:($(f.nninfos[:inputs]) = permutedims(reduce(hcat, [$(get_input_names(f)...)]))) for f in nfluxes])
+            append!(state_compute_calls, [:($(f.nninfos[:inputs]) = permutedims(reduce(hcat, [$(get_input_names(f)...)])))])
             push!(state_compute_calls, :($(f.nninfos[:outputs]) = $(f.func)($(f.nninfos[:inputs]), $(f.nninfos[:nns]))))
-            append!(state_compute_calls, [:($(nm) = $(f.nninfos[:outputs])[$i, :]) for nm in get_output_names(f)])
-            
-            append!(flux_compute_calls, [:($(f.nninfos[:inputs]) = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), [$(get_input_names(f)...)]), (3, 1, 2))) for f in nfluxes])
+            append!(state_compute_calls, [:($(nm) = $(f.nninfos[:outputs])[$i, :]) for (i, nm) in enumerate(get_output_names(f))])
+
+            append!(flux_compute_calls, [:($(f.nninfos[:inputs]) = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), [$(get_input_names(f)...)]), (3, 1, 2)))])
             push!(flux_compute_calls, :($(f.nninfos[:outputs]) = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), $(f.func).(eachslice($(f.nninfos[:inputs]), dims=2), Ref($(f.nninfos[:nns])))), (1, 3, 2))))
             append!(flux_compute_calls, [:($(nm) = $(f.nninfos[:outputs])[$i, :, :]) for (i, nm) in enumerate(get_output_names(f))])
         else
@@ -140,9 +131,6 @@ function build_route_func(
 
     dfluxes_outflows = reduce(vcat, [tosymbol.(dflux.meta.outflows) for dflux in dfluxes])
     return_state = :(return [$(map(expr -> :($(toexprv2(unwrap(expr)))), reduce(vcat, get_exprs.(dfluxes)))...)], [$(dfluxes_outflows...)])
-    # return_state = :(return [$(map((expr, out) -> :($(toexprv2(unwrap(expr))) .+ $(rfunc)($(out))), zip(dfluxes_exprs, dfluxes_outflows))...)])
-    # return_state = :(return [$(map((expr, out) -> :($(expr) .+ rfunc($(out))), zip(dfluxes_exprs, dfluxes_outflows))...)])
-    # return_state = :(return [$(map((expr, out) -> :($(expr) .+ rfunc($(out))), zip(dfluxes_exprs, dfluxes_outflows))...)])
     # Create function expression
     meta_exprs = [:(Base.@_inline_meta)]
 

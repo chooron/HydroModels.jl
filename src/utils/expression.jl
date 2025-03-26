@@ -1,4 +1,14 @@
 # git from https://github.com/JuliaSymbolics/SymbolicUtils.jl/blob/master/src/code.jl
+
+"""
+Convert a symbolic expression to an expression, special handling of broadcast.
+
+# Arguments
+- `x`: The symbolic expression to convert.
+
+# Returns
+- `Expr`: The converted expression.
+"""
 toexprv2(x) = toexprv2(x, SymbolicUtils.Code.LazyState())
 
 function function_to_exprv2(op, O, st)

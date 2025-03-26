@@ -133,3 +133,37 @@ function sort_components(components::AbstractVector{<:AbstractComponent})
     end
     sorted_components
 end
+
+"""
+Expand the parameters of a component vector based on the provided index.
+
+# Arguments
+- `pas::ComponentVector`: The component vector to be expanded.
+- `ptyidx::AbstractVector`: The index of the parameters to be expanded.
+
+# Returns
+- `new_pas::ComponentVector`: The expanded component vector.
+"""
+function expand_component_params(pas::ComponentVector, ptyidx::AbstractVector)
+    params = view(pas, :params)
+    expand_params = NamedTuple{Tuple(keys(params))}([params[p][ptyidx] for p in keys(params)])
+    nns = haskey(pas, :nns) ? view(pas, :nns) : ones(eltype(pas), 10)
+    new_pas = ComponentVector(params=expand_params, nns=nns)
+    return new_pas
+end
+
+"""
+Expand the initial states of a component vector based on the provided index.
+
+# Arguments
+- `pas::ComponentVector`: The component vector to be expanded.
+- `styidx::AbstractVector`: The index of the initial states to be expanded.
+- `num_nodes::Int`: The number of nodes.
+
+# Returns
+- `new_pas::ComponentVector`: The expanded component vector.
+"""
+function expand_component_initstates(pas::ComponentVector, styidx::AbstractVector)
+    num_states = length(keys(view(pas, :initstates)))
+    view(reshape(Vector(view(pas, :initstates)), :, num_states)', :, styidx)
+end

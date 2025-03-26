@@ -66,7 +66,7 @@ struct HydroRoute <: AbstractHydroRoute
         #* define the route name
         route_name = isnothing(name) ? Symbol("##route#", hash(meta)) : name
         #* build the route function
-        multi_flux_func, multi_ode_func = build_route_func(rfluxes, dfluxes, proj_func, meta)
+        multi_flux_func, multi_ode_func = build_route_func(rfluxes, dfluxes, meta)
         return new(route_name, rfluxes, multi_flux_func, multi_ode_func, proj_func, meta)
     end
 end
@@ -223,11 +223,8 @@ function (route::HydroRoute)(
     timeidx = get(config, :timeidx, collect(1:time_len))
 
     #* prepare states parameters and nns
-    params = view(pas, :params)
-    expand_params = ComponentVector(NamedTuple{Tuple(get_param_names(route))}([params[p][ptyidx] for p in get_param_names(route)]))
-    nn_params = isempty(get_nn_vars(route)) ? Vector{eltype(pas)}[] : view(pas, :nns)
-    new_pas = ComponentVector(params=expand_params) # , nns=nn_params
-    initstates_mat = view(reshape(Vector(view(pas, :initstates)), num_nodes, :)', :, styidx)
+    new_pas = expand_component_params(pas, ptyidx)
+    initstates_mat = expand_component_initstates(pas, styidx)
 
     #* prepare input function
     input_reshape = reshape(input, input_dims * num_nodes, time_len)

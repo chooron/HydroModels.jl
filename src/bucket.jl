@@ -1,40 +1,60 @@
 """
-	HydroBucket(; funcs::Vector{<:AbstractHydroFlux}, dfuncs::Vector{<:AbstractStateFlux}=StateFlux[], name::Union{Symbol,Nothing}=nothing, sort_funcs::Bool=false)
+    HydroBucket(; 
+        funcs::Vector{<:AbstractHydroFlux}, 
+        dfuncs::Vector{<:AbstractStateFlux}=StateFlux[], 
+        name::Union{Symbol,Nothing}=nothing, 
+        sort_funcs::Bool=false
+    )
 
-Represents a hydrological bucket model component.
+Represents a hydrological bucket model component that handles both single-node and multi-node computations.
 
 # Arguments
-- `funcs::Vector{<:AbstractHydroFlux}`: A vector of flux functions that describe the hydrological processes.
-- `dfuncs::Vector{<:AbstractStateFlux}`: A vector of state derivative functions (default is an empty vector of StateFlux).
-- `name::Union{Symbol,Nothing}`: Optional name for the bucket. If not provided, a name will be automatically generated from state variable names.
-- `sort_funcs::Bool`: Whether to sort the flux functions (default is false).
+- `funcs::Vector{<:AbstractHydroFlux}`: Vector of flux functions describing hydrological processes
+- `dfuncs::Vector{<:AbstractStateFlux}`: Vector of state derivative functions for ODE calculations (default: empty)
+- `name::Union{Symbol,Nothing}`: Optional bucket identifier. Defaults to auto-generated name from state variables
+- `sort_funcs::Bool}`: Whether to topologically sort flux functions based on dependencies (default: false)
 
 # Fields
-- `funcs::Vector{<:AbstractHydroFlux}`: Vector of flux functions describing hydrological processes.
-- `dfuncs::Vector{<:AbstractStateFlux}`: Vector of state derivative functions for ODE calculations.
-- `flux_func::Function`: Combined function for calculating all hydrological fluxes.
-- `ode_func::Union{Nothing,Function}`: Function for ordinary differential equations (ODE) calculations, or nothing if no ODE calculations are needed.
-- `meta::HydroMeta`: Contains metadata about the bucket, including input, output, state, parameter, and neural network names.
+- `fluxes::Vector{<:AbstractHydroFlux}`: Vector of flux functions describing hydrological processes
+- `dfluxes::Vector{<:AbstractStateFlux}`: Vector of state derivative functions for ODE calculations
+- `flux_func::Function`: Generated function for single-node flux calculations
+- `multi_flux_func::Function`: Generated function for multi-node parallel flux calculations
+- `ode_func::Union{Nothing,Function}`: Generated function for single-node ODE calculations
+- `multi_ode_func::Union{Nothing,Function}`: Generated function for multi-node parallel ODE calculations
+- `meta::ComponentVector`: Metadata containing model structure information
 
 # Description
-HydroBucket is a structure that encapsulates the behavior of a hydrological bucket model. 
-It combines multiple flux functions and state derivative functions to model water movement 
-and storage within a hydrological unit.
+HydroBucket is a type-stable implementation of a hydrological bucket model that supports both 
+single-node and distributed (multi-node) computations. It automatically generates optimized 
+functions for flux and ODE calculations based on the provided process functions.
 
-The structure automatically extracts relevant information from the provided functions to 
-populate the metadata, which includes names of:
-- Inputs: Variables that drive the model
-- Outputs: Variables produced by the model
-- States: Internal model states that evolve over time
-- Parameters: Model parameters that control behavior
-- Neural Networks: Any neural network components (if applicable)
+## Model Structure
+The bucket model consists of:
+- Process functions (`fluxes`): Define water movement between storages
+- State derivatives (`dfluxes`): Define rate of change for state variables
+- Generated functions: Optimized implementations for both single and multi-node calculations
 
-The `flux_func` and `ode_func` are constructed based on the provided `funcs` and `dfuncs`, 
-enabling efficient calculation of fluxes and state changes over time.
+## Metadata Components
+The `meta` field tracks:
+- `inputs`: External forcing variables (e.g., precipitation, temperature)
+- `outputs`: Model-generated variables (e.g., runoff, evaporation)
+- `states`: Internal storage variables (e.g., soil moisture, groundwater)
+- `params`: Model parameters controlling process behavior
+- `nn_vars`: Neural network components (if any) for hybrid modeling
 
-This structure is particularly useful for building complex hydrological models by combining 
-multiple HydroBucket instances to represent different components of a water system.
+## Performance Features
+- Type-stable computations for both single and multi-node cases
+- Efficient broadcasting operations for vectorized calculations
+- Automatic function generation with optimized broadcasting
+- Support for ComponentArray parameters for structured data handling
 
+## Usage Notes
+1. For single-node simulations: Use `flux_func` and `ode_func`
+2. For multi-node simulations: Use `multi_flux_func` and `multi_ode_func`
+3. Parameters should be provided as ComponentVector for type stability
+4. Broadcasting operations are automatically handled for multi-node cases
+
+See also: [`AbstractHydroFlux`](@ref), [`AbstractStateFlux`](@ref), [`ComponentVector`](@ref)
 """
 struct HydroBucket{S} <: AbstractBucket
     "Name of the bucket"
@@ -43,13 +63,13 @@ struct HydroBucket{S} <: AbstractBucket
     fluxes::Vector{<:AbstractHydroFlux}
     "Vector of state derivative functions for ODE calculations."
     dfluxes::Vector{<:AbstractStateFlux}
-    "Generated function for calculating all hydrological fluxes."
+    "Generated function for calculating all hydrological fluxes. (Supports single-node data)"
     flux_func::Function
-    "Generated function for calculating all hydrological fluxes."
+    "Generated function for calculating all hydrological fluxes. (Supports multi-nodes data)"
     multi_flux_func::Function
-    "Generated function for ordinary differential equations (ODE) calculations, or nothing if no ODE calculations are needed."
+    "Generated function for ordinary differential equations (ODE) calculations, or nothing if no ODE calculations are needed. (Supports single-node data)"
     ode_func::Union{Nothing,Function}
-    "Generated function for ordinary differential equations (ODE) calculations, or nothing if no ODE calculations are needed."
+    "Generated function for ordinary differential equations (ODE) calculations, or nothing if no ODE calculations are needed. (Supports multi-nodes data)"
     multi_ode_func::Union{Nothing,Function}
     "Metadata about the bucket, including input, output, state, parameter, and neural network names."
     meta::ComponentVector
@@ -118,10 +138,8 @@ The input dimensions must match the number of input variables defined in the mod
 Required parameters and initial states must be present in the pas argument.
 """
 function (ele::HydroBucket{true})(
-    input::AbstractArray{T,2},
-    pas::ComponentVector;
-    config::NamedTuple=NamedTuple(),
-    kwargs...,
+    input::AbstractArray{T,2}, pas::ComponentVector;
+    config::NamedTuple=NamedTuple(), kwargs...
 ) where {T}
     #* get kwargs
     solver = get(config, :solver, ManualSolver{true}())
@@ -139,15 +157,13 @@ function (ele::HydroBucket{true})(
 end
 
 (ele::HydroBucket{false})(input::AbstractArray{T,2}, pas::ComponentVector; kwargs...) where {T} = begin
-    flux_output = ele.flux_func(input, nothing, pas)
+    flux_output = ele.flux_func(eachslice(input, dims=1), nothing, pas)
     permutedims(reduce(hcat, flux_output))
 end
 
 function (ele::HydroBucket{true})(
-    input::AbstractArray{T,3},
-    pas::ComponentVector;
-    config::NamedTuple=NamedTuple(),
-    kwargs...,
+    input::AbstractArray{T,3}, pas::ComponentVector;
+    config::NamedTuple=NamedTuple(), kwargs...
 ) where {T}
     input_dims, num_nodes, time_len = size(input)
 
@@ -159,15 +175,11 @@ function (ele::HydroBucket{true})(
     timeidx = get(config, :timeidx, collect(1:size(input, 3)))
 
     #* prepare states parameters and nns
-    params = view(pas, :params)
-    nn_params = isempty(get_nn_vars(ele)) ? ones(eltype(pas), num_nodes) : view(pas, :nns)
-    expand_params = ComponentVector(NamedTuple{Tuple(get_param_names(ele))}([params[p][ptyidx] for p in get_param_names(ele)]))
-    new_pas = ComponentVector(params=expand_params, nns=nn_params)
-    initstates_mat = view(reshape(Vector(view(pas, :initstates)), num_nodes, :)', :, styidx)
+    new_pas = expand_component_params(pas, ptyidx)
+    initstates_mat = expand_component_initstates(pas, styidx)
 
     #* prepare input function
-    input_reshape = reshape(input, input_dims * num_nodes, time_len)
-    itpfuncs = interp(input_reshape, timeidx)
+    itpfuncs = interp(reshape(input, input_dims * num_nodes, time_len), timeidx)
     solved_states = solver(
         (u, p, t) -> begin
             tmp_input = reshape(itpfuncs(t), input_dims, num_nodes)
@@ -182,16 +194,11 @@ function (ele::HydroBucket{true})(
 end
 
 function (ele::HydroBucket{false})(
-    input::AbstractArray{T,3},
-    pas::ComponentVector;
-    config::NamedTuple=NamedTuple(),
-    kwargs...,
+    input::AbstractArray{T,3}, pas::ComponentVector;
+    config::NamedTuple=NamedTuple(), kwargs...,
 ) where {T}
     ptyidx = get(config, :ptyidx, 1:size(input, 2))
-    params = view(pas, :params)
-    nn_params = isempty(get_nn_vars(ele)) ? ones(eltype(pas), size(input, 2)) : view(pas, :nns)
-    expand_params = ComponentVector(NamedTuple{Tuple(get_param_names(ele))}([params[p][ptyidx] for p in get_param_names(ele)]))
-    new_pas = ComponentVector(params=expand_params, nns=nn_params)
+    new_pas = expand_component_params(pas, ptyidx)
     #* run other functions
     output = ele.flux_func(eachslice(input, dims=1), nothing, new_pas)
     permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), output), (3, 1, 2))

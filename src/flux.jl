@@ -139,6 +139,8 @@ where traditional equations may be insufficient or unknown.
 struct NeuralFlux <: AbstractNeuralFlux
     "Name of the flux"
     name::Symbol
+    "chain of the neural network"
+    chain::LuxCore.AbstractLuxLayer
     "Compiled function that calculates the flux using the neural network"
     func::Function
     "Metadata about the flux, including input, output, and neural network parameter names"
@@ -154,7 +156,6 @@ struct NeuralFlux <: AbstractNeuralFlux
         chain_name::Union{Symbol,Nothing}=nothing,
     ) where {T<:Num}
         #* Check chain name
-        @assert chain.name isa Symbol "Neural network chain should have a name with Symbol type"
         chain_name = chain_name === nothing ? chain.name : chain_name
 
         ps, st = Lux.setup(StableRNG(42), chain)
@@ -165,8 +166,8 @@ struct NeuralFlux <: AbstractNeuralFlux
 
         meta = ComponentVector(inputs=inputs, outputs=outputs, nns=NamedTuple{Tuple([chain_name])}([chain_params]))
         nninfos = (inputs=nn_input_name, outputs=nn_output_name, nns=chain_name)
-        flux_name = isnothing(name) ? Symbol("##neural_flux#", meta) : name
-        new(flux_name, nn_func, meta, nninfos)
+        flux_name = isnothing(name) ? Symbol("##neural_flux#", hash(meta)) : name
+        new(flux_name, chain, nn_func, meta, nninfos)
     end
 
     #* construct neural flux with input fluxes and output fluxes

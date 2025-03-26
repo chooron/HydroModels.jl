@@ -86,22 +86,22 @@
             @test node_output == target_output
         end
 
-        # @testset "test run with multiple nodes input (share parameters)" begin
-        #     # share parameters
-        #     node_num = 3
-        #     node_names = [Symbol(:node, i) for i in 1:node_num]
-        #     node_params = ComponentVector(Df=fill(Df_v, node_num), Tmax=fill(Tmax_v, node_num), Tmin=fill(Tmin_v, node_num))
-        #     node_states = ComponentVector(snowpack=fill(0.0, node_num))
+        @testset "test run with multiple nodes input (share parameters)" begin
+            # share parameters
+            node_num = 3
+            node_names = [Symbol(:node, i) for i in 1:node_num]
+            node_params = ComponentVector(Df=fill(Df_v, node_num), Tmax=fill(Tmax_v, node_num), Tmin=fill(Tmin_v, node_num))
+            node_states = ComponentVector(snowpack=fill(0.0, node_num))
 
-        #     node_pas = ComponentVector(params=node_params[HydroModels.get_param_names(snow_ele)], initstates=node_states[HydroModels.get_state_names(snow_ele)])
-        #     input_arr = reduce(hcat, collect(input_ntp[HydroModels.get_input_names(snow_ele)]))
-        #     node_input = reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([input_arr], 10))
-        #     node_input = permutedims(node_input, (2, 3, 1))
-        #     config = (ptyidx=[1, 2, 2, 2, 1, 3, 3, 2, 3, 2], styidx=[1, 2, 2, 2, 1, 3, 3, 2, 3, 2], timeidx=ts)
-        #     node_output = snow_ele(node_input, node_pas, config=config)
-        #     single_output = snow_ele(input_arr |> permutedims, pas, config=config)
-        #     target_output = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([single_output], 10)), (1, 3, 2))
-        #     @test node_output == target_output
-        # end
+            node_pas = ComponentVector(params=node_params[HydroModels.get_param_names(snow_ele)], initstates=node_states[HydroModels.get_state_names(snow_ele)])
+            input_arr = reduce(hcat, collect(input_ntp[HydroModels.get_input_names(snow_ele)]))
+            node_input = reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([input_arr], 10))
+            node_input = permutedims(node_input, (2, 3, 1))
+            config = (ptyidx=[1, 2, 2, 2, 1, 3, 3, 2, 3, 2], styidx=[1, 2, 2, 2, 1, 3, 3, 2, 3, 2], timeidx=ts)
+            node_output = snow_ele(node_input, node_pas, config=config)
+            single_output = snow_ele(input_arr |> permutedims, pas, config=config)
+            target_output = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([single_output], 10)), (1, 3, 2))
+            @test node_output == target_output
+        end
     end
 end

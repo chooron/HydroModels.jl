@@ -29,6 +29,7 @@
     - 使用@generated的函数时,只能获取到类型,具体的实例属性是获取不到的
 - [ ] AbstractBucket分成HydroBucket和MultiBucket
 - [ ] 参数名称与输出输入名称不能冲突
+- [ ] Meta这个存储的内容得更改了
 
 
 julia语言中,我想使用@generated生成struct函数,但是这个生成函数需要的参数需要struct的属性值,这个属性值是术语Num,因此无法作为struct的类型参数,请问应该如何解决这个问题呢
