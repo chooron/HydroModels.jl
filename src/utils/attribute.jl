@@ -12,8 +12,7 @@ get_name(cpt::AbstractComponent)::Symbol = cpt.name
 Get the input variables or their names from a component's metadata.
 Returns empty vector if no inputs are defined.
 """
-get_input_vars(cpt::AbstractComponent)::AbstractVector{Num} = haskey(cpt.meta, :inputs) ? cpt.meta.inputs : Num[]
-get_input_names(cpt::AbstractComponent)::AbstractVector{Symbol} = Symbolics.tosymbol.(get_input_vars(cpt))
+get_input_names(cpt::AbstractComponent)::AbstractVector{Symbol} = haskey(cpt.infos, :inputs) ? cpt.infos.inputs : Symbol[]
 
 """
     get_output_vars(cpt::AbstractComponent)::AbstractVector{Num}
@@ -22,8 +21,7 @@ get_input_names(cpt::AbstractComponent)::AbstractVector{Symbol} = Symbolics.tosy
 Get the output variables or their names from a component's metadata.
 Returns empty vector if no outputs are defined.
 """
-get_output_vars(cpt::AbstractComponent)::AbstractVector{Num} = haskey(cpt.meta, :outputs) ? cpt.meta.outputs : Num[]
-get_output_names(cpt::AbstractComponent)::AbstractVector{Symbol} = Symbolics.tosymbol.(get_output_vars(cpt))
+get_output_names(cpt::AbstractComponent)::AbstractVector{Symbol} = haskey(cpt.infos, :outputs) ? cpt.infos.outputs : Symbol[]
 
 """
     get_state_vars(cpt::AbstractComponent)::AbstractVector{Num}
@@ -32,8 +30,7 @@ get_output_names(cpt::AbstractComponent)::AbstractVector{Symbol} = Symbolics.tos
 Get the state variables or their names from a component's metadata.
 Returns empty vector if no states are defined.
 """
-get_state_vars(cpt::AbstractComponent)::AbstractVector{Num} = haskey(cpt.meta, :states) ? cpt.meta.states : Num[]
-get_state_names(cpt::AbstractComponent)::AbstractVector{Symbol} = Symbolics.tosymbol.(get_state_vars(cpt))
+get_state_names(cpt::AbstractComponent)::AbstractVector{Symbol} = haskey(cpt.infos, :states) ? cpt.infos.states : Symbol[]
 
 """
     get_param_vars(cpt::AbstractComponent)::AbstractVector{Num}
@@ -42,8 +39,8 @@ get_state_names(cpt::AbstractComponent)::AbstractVector{Symbol} = Symbolics.tosy
 Get the parameter variables or their names from a component's metadata.
 Returns empty vector if no parameters are defined.
 """
-get_param_vars(cpt::AbstractComponent)::AbstractVector{Num} = haskey(cpt.meta, :params) ? cpt.meta.params : Num[]
-get_param_names(cpt::AbstractComponent)::AbstractVector{Symbol} = Symbolics.tosymbol.(get_param_vars(cpt))
+get_param_vars(cpt::AbstractComponent)::AbstractVector{Num} = haskey(cpt.infos, :params) ? cpt.infos.params : Num[]
+get_param_names(cpt::AbstractComponent)::AbstractVector{Symbol} = haskey(cpt.infos, :params) ? cpt.infos.params : Symbol[]
 
 """
     get_nn_vars(cpt::AbstractComponent)::AbstractVector
@@ -52,16 +49,8 @@ get_param_names(cpt::AbstractComponent)::AbstractVector{Symbol} = Symbolics.tosy
 Get the neural network variables or their names from a component's metadata.
 Returns empty vector/ComponentVector if no neural networks are defined.
 """
-get_nn_vars(cpt::AbstractComponent)::AbstractVector = haskey(cpt.meta, :nns) ? cpt.meta.nns : ComponentVector()
-get_nn_names(cpt::AbstractComponent)::AbstractVector{Symbol} = haskey(cpt.meta, :nns) ? collect(keys(cpt.meta.nns)) : Symbol[]
+get_nn_names(cpt::AbstractComponent)::AbstractVector{Symbol} = haskey(cpt.infos, :nns) ? cpt.infos.nns : Symbol[]
 
-"""
-    get_all_vars(cpt::AbstractComponent)::AbstractVector{Num}
-
-Get all variables (inputs, outputs, states, and neural networks) from a component.
-Returns the union of all variable types.
-"""
-get_all_vars(cpt::AbstractComponent)::AbstractVector{Num} = reduce(union, [get_input_vars(cpt), get_output_vars(cpt), get_state_vars(cpt), get_nn_vars(cpt)])
 
 """
     get_exprs(cpt::AbstractComponent)
@@ -69,18 +58,6 @@ get_all_vars(cpt::AbstractComponent)::AbstractVector{Num} = reduce(union, [get_i
 Get the expressions defined in a component.
 """
 get_exprs(cpt::AbstractComponent) = cpt.exprs
-
-function get_all_vars(cpts::Vector{<:AbstractComponent})
-    inputs, outputs, states = Vector{Num}(), Vector{Num}(), Vector{Num}()
-    for cpt in cpts
-        tmp_inputs, tmp_outputs, tmp_states = get_input_vars(cpt), get_output_vars(cpt), get_state_vars(cpt)
-        union!(inputs, tmp_inputs)
-        union!(outputs, tmp_outputs)
-        union!(states, tmp_states)
-    end
-    new_inputs = setdiff(inputs, vcat(outputs, states))
-    return new_inputs, outputs, states
-end
 
 """
     get_var_names(comps::AbstractComponent)
