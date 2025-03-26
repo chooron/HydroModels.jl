@@ -1,8 +1,0 @@
-## Breaking changes
-
-- Refactored the generation method of the RuntimeGenerate function:
-    - Added support for ComponentArray type as parameter input, eliminating the need to convert it to Vector type.
-    - Enabled broadcasting calculations between vectors and scalars in the RuntimeGenerate function, improving computational efficiency and gradient computation efficiency.
-- Modified the construction method of Route, now using rfluxes, dfluxes, and proj_func to build the Route type.
-- Revised the computational logic of Route, Bucket, and Flux, providing corresponding functions for both three-dimensional and two-dimensional data inputs, avoiding some complex internal data integration operations.
-- Added a macro construction method (under test).
