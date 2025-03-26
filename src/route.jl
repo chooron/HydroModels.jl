@@ -49,7 +49,7 @@ struct HydroRoute <: AbstractHydroRoute
     "Outflow projection function"
     proj_func::Function
     "Metadata: contains keys for input, output, param, state, and nn"
-    meta::ComponentVector
+    infos::NamedTuple
 
     function HydroRoute(;
         rfluxes::Vector{<:AbstractFlux},
@@ -58,16 +58,16 @@ struct HydroRoute <: AbstractHydroRoute
         name::Union{Symbol,Nothing}=nothing,
     )
         #* Extract all variable names of funcs and dfuncs
-        inputs, outputs, states = get_all_vars(vcat(rfluxes, dfluxes))
-        params = reduce(union, get_param_vars.(rfluxes))
-        nns = reduce(union, get_nn_vars.(rfluxes))
+        input_names, output_names, state_names = get_var_names(rfluxes, dfluxes)
+        param_names = reduce(union, get_param_names.(rfluxes))
+        nn_names = reduce(union, get_nn_names.(rfluxes))
         #* Setup the name information of the hydrobucket
-        meta = ComponentVector(inputs=inputs, outputs=outputs, states=states, params=params, nns=nns)
+        infos = (;inputs=input_names, outputs=output_names, states=state_names, params=param_names, nns=nn_names)
         #* define the route name
-        route_name = isnothing(name) ? Symbol("##route#", hash(meta)) : name
+        route_name = isnothing(name) ? Symbol("##route#", hash(infos)) : name
         #* build the route function
-        multi_flux_func, multi_ode_func = build_route_func(rfluxes, dfluxes, meta)
-        return new(route_name, rfluxes, multi_flux_func, multi_ode_func, proj_func, meta)
+        multi_flux_func, multi_ode_func = build_route_func(rfluxes, dfluxes, infos)
+        return new(route_name, rfluxes, multi_flux_func, multi_ode_func, proj_func, infos)
     end
 end
 
@@ -171,9 +171,7 @@ function VectorRoute(;
     network::DiGraph,
     name::Union{Symbol,Nothing}=nothing,
 )
-    #* generate adjacency matrix from network
     adjacency = adjacency_matrix(network)'
-    #* build the outflow projection function
     proj_func = (outflow) -> adjacency * outflow
     return HydroRoute(; rfluxes, dfluxes, proj_func, name)
 end
@@ -208,12 +206,7 @@ This function executes the routing model by:
 The routing can use either neural network based routing functions (AbstractNeuralFlux) or
 regular routing functions, with parameters extracted accordingly.
 """
-function (route::HydroRoute)(
-    input::AbstractArray{T,3},
-    pas::ComponentVector;
-    config::NamedTuple=NamedTuple(),
-    kwargs...,
-) where {T}
+function (route::HydroRoute)(input::AbstractArray{T,3}, pas::PasDataType; config::NamedTuple=NamedTuple(), kwargs...,) where {T}
     input_dims, num_nodes, time_len = size(input)
     #* get kwargs
     ptyidx = get(config, :ptyidx, 1:num_nodes)
@@ -281,33 +274,28 @@ struct RapidRoute <: AbstractRoute
     "Routing adjacency matrix"
     adjacency::AbstractMatrix
     "Metadata: contains keys for input, output, param, state, and nn"
-    meta::ComponentVector
+    infos::NamedTuple
 
     function RapidRoute(
         fluxes::Pair{Vector{Num},Vector{Num}};
         network::DiGraph,
         name::Union{Symbol,Nothing}=nothing,
     )
+        @parameters rapid_k rapid_x
         #* Extract all variable names of funcs and dfuncs
         inputs, outputs = fluxes[1], fluxes[2]
+        input_names, output_names = tosymbol.(inputs), tosymbol.(outputs)
         @assert length(inputs) == length(outputs) == 1 "The length of inputs and outputs must be the 1, but got inputs: $(length(inputs)) and outputs: $(length(outputs))"
-        #* Extract all parameters names of funcs and dfuncs
-        @parameters rapid_k rapid_x
         #* Setup the name information of the hydrobucket
-        meta = ComponentVector(inputs=inputs, outputs=outputs, states=Num[], params=[rapid_k, rapid_x])
-        route_name = isnothing(name) ? Symbol("##route#", hash(meta)) : name
+        infos = (;inputs=input_names, outputs=output_names, states=Symbol[], params=[:rapid_k, :rapid_x])
+        route_name = isnothing(name) ? Symbol("##route#", hash(infos)) : name
         #* generate adjacency matrix from network
         adjacency = adjacency_matrix(network)'
-        return new(route_name, adjacency, meta)
+        return new(route_name, adjacency, infos)
     end
 end
 
-function (route::RapidRoute)(
-    input::Array,
-    pas::ComponentVector;
-    config::NamedTuple=NamedTuple(),
-    kwargs...,
-)
+function (route::RapidRoute)(input::Array, pas::PasDataType; config::NamedTuple=NamedTuple(), kwargs...)
     #* get the parameter types and state types
     ptyidx = get(config, :ptyidx, 1:size(input, 2))
     delta_t = get(config, :delta_t, 1.0)

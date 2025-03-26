@@ -35,6 +35,9 @@ using DataInterpolations: AbstractInterpolation
 using Lux
 using NNlib
 
+# parameter input types
+const PasDataType = Union{NamedTuple, ComponentVector}
+
 ## Abstract Component Types
 abstract type AbstractComponent end
 

@@ -35,7 +35,7 @@ struct HydroModel <: AbstractModel
     "output variables index for sort output variables"
     outputindices::AbstractVector{<:Integer}
     "meta data of hydrological model"
-    meta::ComponentVector
+    infos::NamedTuple
 
     function HydroModel(;
         components::Vector{C},
@@ -43,27 +43,25 @@ struct HydroModel <: AbstractModel
         sort_components::Bool=false,
     ) where {C<:AbstractComponent}
         components = sort_components ? sort_components(components) : components
-        model_inputs, model_outputs, model_states = get_all_vars(components)
-        model_params = reduce(union, get_param_vars.(components))
-        model_nns_ntp = reduce(merge, map(flux -> NamedTuple(get_nn_vars(flux)), components))
-        input_idx, output_idx = _prepare_indices(components, model_inputs, vcat(model_inputs, model_states, model_outputs))
-        model_meta = ComponentVector(inputs=model_inputs, outputs=model_outputs, states=model_states, params=model_params, nns=model_nns_ntp)
-        model_name = isnothing(name) ? Symbol("##model#", hash(model_meta)) : name
-        new(model_name, components, input_idx, output_idx, model_meta)
+        input_names, output_names, state_names = get_var_names(components)
+        param_names = reduce(union, get_param_names.(components))
+        nn_names = reduce(union, get_nn_names.(components))
+        input_idx, output_idx = _prepare_indices(components, input_names, vcat(input_names, state_names, output_names))
+        infos = (;inputs=input_names, outputs=output_names, states=state_names, params=param_names, nns=nn_names)
+        model_name = isnothing(name) ? Symbol("##model#", hash(infos)) : name
+        new(model_name, components, input_idx, output_idx, infos)
     end
 end
 
-function _prepare_indices(components::Vector{<:AbstractComponent}, inputs::Vector{<:Num}, outputs::Vector{<:Num})
+function _prepare_indices(components::Vector{<:AbstractComponent}, input_names::Vector{Symbol}, vcat_names::Vector{Symbol})
     input_idx, output_idx = Vector{Integer}[], Vector{Integer}()
-    var_names = Symbolics.tosymbol.(inputs)
-    vcat_names = Symbolics.tosymbol.(outputs)
     for component in components
         #* extract input index
-        tmp_input_idx = map((nm) -> findfirst(varnm -> varnm == nm, var_names), get_input_names(component))
+        tmp_input_idx = map((nm) -> findfirst(varnm -> varnm == nm, input_names), get_input_names(component))
         push!(input_idx, tmp_input_idx)
         #* extract output index
         tmp_cpt_vcat_names = vcat(get_state_names(component), get_output_names(component))
-        var_names = vcat(var_names, tmp_cpt_vcat_names)
+        input_names = vcat(input_names, tmp_cpt_vcat_names)
         tmp_output_idx = map((nm) -> findfirst(varnm -> varnm == nm, vcat_names), tmp_cpt_vcat_names)
         output_idx = vcat(output_idx, tmp_output_idx)
     end
@@ -72,7 +70,7 @@ end
 
 function (model::HydroModel)(
     input::AbstractArray{T,2},
-    pas::ComponentVector;
+    pas::PasDataType;
     config::Union{NamedTuple,Vector{<:NamedTuple}}=NamedTuple(),
     kwargs...,
 ) where {T<:Number}
@@ -95,7 +93,7 @@ end
 
 function (model::HydroModel)(
     input::AbstractArray{T,3},
-    pas::ComponentVector;
+    pas::PasDataType;
     config::Union{<:NamedTuple,Vector{<:NamedTuple}}=NamedTuple(),
     kwargs...,
 ) where {T<:Number}

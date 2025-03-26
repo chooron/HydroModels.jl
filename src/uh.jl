@@ -85,11 +85,13 @@ This structure is designed to be flexible and can be integrated into larger hydr
 to represent various routing processes in different parts of a water system.
 
 """
-struct UnitHydrograph{N,M<:ComponentVector,ST} <: AbstractHydrograph
+struct UnitHydrograph{ST} <: AbstractHydrograph
+    "Name of the hydrograph"
+    name::Symbol
     "The unit hydrograph function"
     uhfunc::UHFunction
     "A named tuple containing information about inputs, outputs, parameters, and states"
-    meta::M
+    infos::NamedTuple
 
     function UnitHydrograph(
         input::T,
@@ -101,9 +103,9 @@ struct UnitHydrograph{N,M<:ComponentVector,ST} <: AbstractHydrograph
     ) where {T<:Num,UF<:UHFunction}
         @assert solvetype in [:DISCRETE, :SPARSE, :INTEGRAL] "solvetype must be one of [:DISCRETE, :SPARSE, :INTEGRAL]"
         #* Setup the name information of the hydroroutement
-        meta = ComponentVector(inputs = [input], outputs = [output], params = params)
-        uh_name = isnothing(name) ? Symbol("##uh#", hash(meta)) : name
-        return new{uh_name,typeof(meta),solvetype}(uhfunc, meta)
+        infos = (;inputs = [tosymbol(input)], outputs = [tosymbol(output)], params = tosymbol.(params))
+        uh_name = isnothing(name) ? Symbol("##uh#", hash(infos)) : name
+        return new{solvetype}(uh_name, uhfunc, infos)
     end
 
     function UnitHydrograph(
@@ -145,7 +147,7 @@ Apply the unit hydrograph flux model to input data of various dimensions.
 
 (::UnitHydrograph)(::AbstractVector, ::ComponentVector; kwargs...) = @error "UnitHydrograph is not support for single timepoint"
 
-function (flux::UnitHydrograph{N,M,:DISCRETE})(input::AbstractArray{T,2}, pas::Union{ComponentVector, AbstractVector}; config::NamedTuple=NamedTuple(), kwargs...) where {N,M,T}
+function (flux::UnitHydrograph{:DISCRETE})(input::AbstractArray{T,2}, pas::Union{PasDataType, AbstractVector}; config::NamedTuple=NamedTuple(), kwargs...) where {T}
     solver = get(config, :solver, ManualSolver{true}())
     timeidx = get(config, :timeidx, collect(1:size(input, 2)))
     input_vec = input[1, :]
@@ -164,7 +166,7 @@ function (flux::UnitHydrograph{N,M,:DISCRETE})(input::AbstractArray{T,2}, pas::U
     end
 end
 
-function (flux::UnitHydrograph{N,M,:SPARSE})(input::AbstractArray{T,2}, pas::Union{ComponentVector, AbstractVector}; kwargs...) where {N,M,T}
+function (flux::UnitHydrograph{:SPARSE})(input::AbstractArray{T,2}, pas::Union{PasDataType, AbstractVector}; kwargs...) where {T}
     input_vec = input[1, :]
     lag = Vector(pas)[1]
     uh_weight = map(t -> flux.uhfunc(t, lag), 1:get_uh_tmax(flux.uhfunc, lag))[1:end-1]
@@ -203,7 +205,7 @@ end
 #     reshape(routed_result, 1, length(input_vec))
 # end
 
-function (uh::UnitHydrograph)(input::AbstractArray{T,3}, pas::ComponentVector; config::NamedTuple=NamedTuple(), kwargs...) where {T}
+function (uh::UnitHydrograph)(input::AbstractArray{T,3}, pas::PasDataType; config::NamedTuple=NamedTuple(), kwargs...) where {T}
     #* array dims: (variable dim, num of node, sequence length)
     #* Extract the initial state of the parameters and routement in the pas variable
     ptyidx = get(config, :ptyidx, 1:size(input, 2))

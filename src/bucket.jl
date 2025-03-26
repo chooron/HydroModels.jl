@@ -63,16 +63,12 @@ struct HydroBucket{S} <: AbstractBucket
     fluxes::Vector{<:AbstractHydroFlux}
     "Vector of state derivative functions for ODE calculations."
     dfluxes::Vector{<:AbstractStateFlux}
-    "Generated function for calculating all hydrological fluxes. (Supports single-node data)"
-    flux_func::Function
-    "Generated function for calculating all hydrological fluxes. (Supports multi-nodes data)"
-    multi_flux_func::Function
+    "Generated function for calculating all hydrological fluxes. (Supports single-node data, multi-nodes data)"
+    flux_funcs::Vector{<:Function}
     "Generated function for ordinary differential equations (ODE) calculations, or nothing if no ODE calculations are needed. (Supports single-node data)"
-    ode_func::Union{Nothing,Function}
-    "Generated function for ordinary differential equations (ODE) calculations, or nothing if no ODE calculations are needed. (Supports multi-nodes data)"
-    multi_ode_func::Union{Nothing,Function}
+    ode_funcs::Union{Nothing,Vector}
     "Metadata about the bucket, including input, output, state, parameter, and neural network names."
-    meta::ComponentVector
+    infos::NamedTuple
 
     function HydroBucket(;
         name::Union{Symbol,Nothing}=nothing,
@@ -83,15 +79,14 @@ struct HydroBucket{S} <: AbstractBucket
         #* sort the fluxes if needed
         fluxes = sort_fluxes ? sort_fluxes(fluxes) : fluxes
         #* Extract all variable names of fluxes and dfluxes
-        bucket_inputs, bucket_outputs, bucket_states = get_all_vars(vcat(fluxes, dfluxes))
-        bucket_params = reduce(union, get_param_vars.(vcat(fluxes, dfluxes)))
-        bucket_nns_ntp = reduce(merge, map(flux -> NamedTuple(get_nn_vars(flux)), fluxes))
-        #* Setup the meta data of the bucket
-        meta = ComponentVector(inputs=bucket_inputs, outputs=bucket_outputs, states=bucket_states, params=bucket_params, nns=bucket_nns_ntp)
+        input_names, output_names, state_names = get_var_names(fluxes, dfluxes)
+        param_names = reduce(union, get_param_names.(vcat(fluxes, dfluxes)))
+        nn_names = reduce(union, get_nn_names.(fluxes))
+        infos = (;inputs=input_names, outputs=output_names, states=state_names, params=param_names, nns=nn_names)
         #* Construct a function for ordinary differential calculation based on dfunc and funcs
-        flux_func, multi_flux_func, ode_func, multi_ode_func = build_ele_func(fluxes, dfluxes, meta)
-        bucket_name = isnothing(name) ? Symbol("##bucket#", hash(meta)) : name
-        return new{!isempty(bucket_states)}(bucket_name, fluxes, dfluxes, flux_func, multi_flux_func, ode_func, multi_ode_func, meta)
+        flux_funcs, ode_funcs = build_ele_func(fluxes, dfluxes, infos)
+        bucket_name = isnothing(name) ? Symbol("##bucket#", hash(infos)) : name
+        return new{!isempty(state_names)}(bucket_name, fluxes, dfluxes, flux_funcs, ode_funcs, infos)
     end
 end
 
@@ -148,16 +143,16 @@ function (ele::HydroBucket{true})(
     #* solve ode functions
     itpfuncs = interp(input, timeidx)
     solved_states = solver(
-        (u, p, t) -> ele.ode_func(itpfuncs(t), u, p),
+        (u, p, t) -> ele.ode_funcs[1](itpfuncs(t), u, p),
         pas, Vector(view(pas, :initstates)), timeidx
     )
     #* concatenate states and fluxes 
-    flux_output = ele.flux_func(eachslice(input, dims=1), eachslice(solved_states, dims=1), pas)
+    flux_output = ele.flux_funcs[1](eachslice(input, dims=1), eachslice(solved_states, dims=1), pas)
     vcat(solved_states, permutedims(reduce(hcat, flux_output)))
 end
 
 (ele::HydroBucket{false})(input::AbstractArray{T,2}, pas::ComponentVector; kwargs...) where {T} = begin
-    flux_output = ele.flux_func(eachslice(input, dims=1), nothing, pas)
+    flux_output = ele.flux_funcs[1](eachslice(input, dims=1), nothing, pas)
     permutedims(reduce(hcat, flux_output))
 end
 
@@ -183,12 +178,12 @@ function (ele::HydroBucket{true})(
     solved_states = solver(
         (u, p, t) -> begin
             tmp_input = reshape(itpfuncs(t), input_dims, num_nodes)
-            reduce(hcat, ele.multi_ode_func(eachslice(tmp_input, dims=1), eachslice(u, dims=1), p)) |> permutedims
+            reduce(hcat, ele.ode_funcs[2](eachslice(tmp_input, dims=1), eachslice(u, dims=1), p)) |> permutedims
         end,
         new_pas, initstates_mat, timeidx
     )
     #* run other functions
-    output = ele.multi_flux_func(eachslice(input, dims=1), eachslice(solved_states, dims=1), new_pas)
+    output = ele.flux_funcs[2](eachslice(input, dims=1), eachslice(solved_states, dims=1), new_pas)
     output_arr = length(output) > 1 ? permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), output), (3, 1, 2)) : reshape(output[1], 1, num_nodes, time_len)
     cat(solved_states, output_arr, dims=1)
 end
@@ -200,6 +195,6 @@ function (ele::HydroBucket{false})(
     ptyidx = get(config, :ptyidx, 1:size(input, 2))
     new_pas = expand_component_params(pas, ptyidx)
     #* run other functions
-    output = ele.flux_func(eachslice(input, dims=1), nothing, new_pas)
+    output = ele.flux_funcs[2](eachslice(input, dims=1), nothing, new_pas)
     permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), output), (3, 1, 2))
 end
