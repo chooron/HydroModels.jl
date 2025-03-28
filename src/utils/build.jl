@@ -88,7 +88,7 @@ function build_ele_func(
     input_define_calls = [:($i = inputs[$idx]) for (idx, i) in enumerate(input_names)]
     state_define_calls = [:($s = states[$idx]) for (idx, s) in enumerate(state_names)]
     params_assign_calls = [:($p = pas.params.$p) for p in param_names]
-    nn_params_assign_calls = [:($nn = pas.nns.$nn) for nn in [nflux.infos[:nns][1] for nflux in filter(f -> f isa AbstractNeuralFlux, fluxes)]]
+    nn_params_assign_calls = [:($(nflux.infos[:nns][1]) = pas.nns.$(nflux.infos[:nns][1])) for nflux in filter(f -> f isa AbstractNeuralFlux, fluxes)]
     define_calls = reduce(vcat, [input_define_calls, state_define_calls, params_assign_calls, nn_params_assign_calls])
 
     # varibles definitions expressions

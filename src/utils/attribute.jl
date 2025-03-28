@@ -30,26 +30,24 @@ get_output_names(cpt::AbstractComponent)::AbstractVector{Symbol} = haskey(cpt.in
 Get the state variables or their names from a component's metadata.
 Returns empty vector if no states are defined.
 """
-get_state_names(cpt::AbstractComponent)::AbstractVector{Symbol} = haskey(cpt.infos, :states) ? cpt.infos.states : Symbol[]
+get_state_names(cpt::AbstractComponent)::AbstractVector{Symbol} = get(cpt.infos, :states, Symbol[])
 
 """
-    get_param_vars(cpt::AbstractComponent)::AbstractVector{Num}
     get_param_names(cpt::AbstractComponent)::AbstractVector{Symbol}
 
 Get the parameter variables or their names from a component's metadata.
-Returns empty vector if no parameters are defined.
+Returns empty tuple if no parameters are defined.
 """
-get_param_vars(cpt::AbstractComponent)::AbstractVector{Num} = haskey(cpt.infos, :params) ? cpt.infos.params : Num[]
-get_param_names(cpt::AbstractComponent)::AbstractVector{Symbol} = haskey(cpt.infos, :params) ? cpt.infos.params : Symbol[]
+get_param_names(cpt::AbstractComponent) = get(cpt.infos, :params, Symbol[])
 
 """
     get_nn_vars(cpt::AbstractComponent)::AbstractVector
     get_nn_names(cpt::AbstractComponent)::AbstractVector{Symbol}
 
 Get the neural network variables or their names from a component's metadata.
-Returns empty vector/ComponentVector if no neural networks are defined.
+Returns empty tuple/ComponentVector if no neural networks are defined.
 """
-get_nn_names(cpt::AbstractComponent)::AbstractVector{Symbol} = haskey(cpt.infos, :nns) ? cpt.infos.nns : Symbol[]
+get_nn_names(cpt::AbstractComponent)::AbstractVector{Symbol} = get(cpt.infos, :nns, Symbol[])
 
 
 """

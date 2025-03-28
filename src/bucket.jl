@@ -144,7 +144,7 @@ function (ele::HydroBucket{true})(
     itpfuncs = interp(input, timeidx)
     solved_states = solver(
         (u, p, t) -> ele.ode_funcs[1](itpfuncs(t), u, p),
-        pas, Vector(view(pas, :initstates)), timeidx
+        pas, Vector(pas[:initstates][get_state_names(ele)]), timeidx
     )
     #* concatenate states and fluxes 
     flux_output = ele.flux_funcs[1](eachslice(input, dims=1), eachslice(solved_states, dims=1), pas)

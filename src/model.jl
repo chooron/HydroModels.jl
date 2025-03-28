@@ -31,7 +31,7 @@ struct HydroModel <: AbstractModel
     "hydrological computation elements"
     components::Vector{<:AbstractComponent}
     "input variables index for each components"
-    varindices::AbstractVector{<:AbstractVector{<:Integer}}
+    varindices
     "output variables index for sort output variables"
     outputindices::AbstractVector{<:Integer}
     "meta data of hydrological model"
@@ -77,15 +77,15 @@ function (model::HydroModel)(
     comp_configs = config isa NamedTuple ? fill(config, length(model.components)) : config
     @assert length(comp_configs) == length(model.components) "component configs length must be equal to components length"
     outputs = input
-    params = haskey(pas, :params) ? view(pas, :params) : ComponentVector()
-    initstates = haskey(pas, :initstates) ? view(pas, :initstates) : ComponentVector()
-    nns = haskey(pas, :nns) ? view(pas, :nns) : ComponentVector()
-    for (idx_, (comp_, config_)) in enumerate(zip(model.components, comp_configs))
-        extract_params = view(params, get_param_names(comp_))
-        extract_initstates = view(initstates, get_state_names(comp_))
-        extract_nns = view(nns, get_nn_names(comp_))
-        tmp_pas = ComponentVector(params=extract_params, initstates=extract_initstates, nns=extract_nns)
-        tmp_outputs = comp_(view(outputs, model.varindices[idx_], :), tmp_pas; config=config_)
+    # params = haskey(pas, :params) ? view(pas, :params) : ComponentVector()
+    # initstates = haskey(pas, :initstates) ? view(pas, :initstates) : ComponentVector()
+    # nns = haskey(pas, :nns) ? view(pas, :nns) : ComponentVector()
+    for (idx_, comp_, config_) in zip(model.varindices, model.components, comp_configs)
+        # # extract_params = view(params, get_param_names(comp_))
+        # extract_initstates = view(initstates, get_state_names(comp_))
+        # # extract_nns = view(nns, get_nn_names(comp_))
+        # tmp_pas = ComponentVector(params=params, initstates=extract_initstates, nns=nns)
+        tmp_outputs = comp_(outputs[idx_, :], pas; config=config_)
         outputs = cat(outputs, tmp_outputs, dims=1)
     end
     return view(outputs, model.outputindices, :)
@@ -100,15 +100,8 @@ function (model::HydroModel)(
     comp_configs = config isa NamedTuple ? fill(config, length(model.components)) : config
     @assert length(comp_configs) == length(model.components) "component configs length must be equal to components length"
     outputs = input
-    params = haskey(pas, :params) ? view(pas, :params) : ComponentVector()
-    initstates = haskey(pas, :initstates) ? view(pas, :initstates) : ComponentVector()
-    nns = haskey(pas, :nns) ? view(pas, :nns) : ComponentVector()
-    for (idx_, (comp_, config_)) in enumerate(zip(model.components, comp_configs))
-        extract_params = view(params, get_param_names(comp_))
-        extract_initstates = view(initstates, get_state_names(comp_))
-        extract_nns = view(nns, get_nn_names(comp_))
-        tmp_pas = ComponentVector(params=extract_params, initstates=extract_initstates, nns=extract_nns)
-        tmp_outputs = comp_(view(outputs, model.varindices[idx_], :, :), tmp_pas; config=config_)
+    for (idx_, comp_, config_) in zip(model.varindices, model.components, comp_configs)
+        tmp_outputs = comp_(view(outputs, idx_, :, :), pas; config=config_)
         outputs = cat(outputs, tmp_outputs, dims=1)
     end
     return view(outputs, model.outputindices, :, :)

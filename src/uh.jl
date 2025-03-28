@@ -101,7 +101,7 @@ struct UnitHydrograph{ST} <: AbstractHydrograph
         name::Union{Symbol,Nothing}=nothing,
         solvetype::Symbol=:SPARSE,
     ) where {T<:Num,UF<:UHFunction}
-        @assert solvetype in [:DISCRETE, :SPARSE, :INTEGRAL] "solvetype must be one of [:DISCRETE, :SPARSE, :INTEGRAL]"
+        @assert solvetype in [:DISCRETE, :SPARSE] "solvetype must be one of [:DISCRETE, :SPARSE]"
         #* Setup the name information of the hydroroutement
         infos = (;inputs = [tosymbol(input)], outputs = [tosymbol(output)], params = tosymbol.(params))
         uh_name = isnothing(name) ? Symbol("##uh#", hash(infos)) : name
@@ -184,26 +184,6 @@ function (flux::UnitHydrograph{:SPARSE})(input::AbstractArray{T,2}, pas::Union{P
         reshape(sum_route, 1, length(input_vec))
     end
 end
-
-# # todo: 卷积计算的结果与前两个计算结果不太一致
-# function (flux::UnitHydrograph{<:Any,<:Any,<:Any,:INTEGRAL})(input::AbstractArray{T,2}, pas::ComponentVector; config::NamedTuple=NamedTuple(), kwargs...) where {T}
-#     input_vec = input[1, :]
-#     itp_method = get(config, :interp, LinearInterpolation)
-#     itp = itp_method(input_vec, collect(1:length(input_vec)), extrapolate=true)
-#     #* construct the unit hydrograph function based on the interpolation method and parameter
-#     lag = pas[:params][get_param_names(flux)[1]]
-#     tmax = get_uh_tmax(flux.uhfunc, lag)
-#     uh_sum = solve(IntegralProblem(flux.uhfunc, (0, tmax), lag), QuadGKJL()).u
-#     uh_itg_func = (x, p) -> flux.uhfunc(x, lag) * itp(p - x) / uh_sum
-#     #* solve the integral problem
-#     prob = IntegralProblem(uh_itg_func, (0, tmax), 1.0)
-#     routed_result = map(1:length(input_vec)) do t
-#         prob = remake(prob, p=t)
-#         sol = solve(prob, QuadGKJL())
-#         sol.u
-#     end
-#     reshape(routed_result, 1, length(input_vec))
-# end
 
 function (uh::UnitHydrograph)(input::AbstractArray{T,3}, pas::PasDataType; config::NamedTuple=NamedTuple(), kwargs...) where {T}
     #* array dims: (variable dim, num of node, sequence length)
