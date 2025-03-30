@@ -95,15 +95,19 @@ Apply the simple flux model to input data of various dimensions.
 - For matrix input: A matrix where each column is the result of applying the flux function to the corresponding input column.
 - For 3D array input: A 3D array of flux outputs, with dimensions (output_var_names, node_names, ts_len).
 """
-function (flux::HydroFlux)(input::AbstractArray{T,2}, pas::PasDataType; kwargs...) where {T}
-    reduce(hcat, flux.func(eachslice(input, dims=1), pas)) |> permutedims
+function (flux::HydroFlux)(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T}
+    reduce(hcat, flux.func(eachslice(input, dims=1), params)) |> permutedims
 end
 
-function (flux::HydroFlux)(input::AbstractArray{T,3}, pas::PasDataType; config::NamedTuple=NamedTuple(), kwargs...) where {T}
-    ptyidx = get(config, :ptyidx, 1:size(input, 2))
-    expand_params = ComponentVector(NamedTuple{Tuple(get_param_names(flux))}([pas[:params][p][ptyidx] for p in get_param_names(flux)]))
-    output = flux.func(eachslice(input, dims=1), ComponentVector(params=expand_params))
-    length(output) == 1 ? reshape(output[1], 1, size(input, 2), size(input, 3)) : permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), output), (3, 1, 2))
+function (flux::HydroFlux)(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T}
+    ptyidx = get(kwargs, :ptyidx, 1:size(input, 2))
+    expand_params = expand_component_params(params, ptyidx)
+    output = flux.func(eachslice(input, dims=1), expand_params)
+    return if length(output) == 1
+        reshape(output[1], 1, size(input, 2), size(input, 3))
+    else
+        permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), output), (3, 1, 2))
+    end
 end
 
 """
@@ -197,14 +201,14 @@ Apply the flux model (simple or neural) to input data of various dimensions.
 # Note
 For neural flux models, the parameters are accessed from `pas[:nn]` instead of `pas[:params]`.
 """
-function (flux::AbstractNeuralFlux)(input::AbstractArray{T,2}, pas::PasDataType; kwargs...) where {T}
-    nn_params = pas[:nns][get_nn_names(flux)[1]]
+function (flux::AbstractNeuralFlux)(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T}
+    nn_params = params[:nns][get_nn_names(flux)[1]]
     output_arr = flux.func(input, nn_params)
-    output_arr
+    return output_arr
 end
 
-function (flux::AbstractNeuralFlux)(input::AbstractArray{T,3}, pas::PasDataType; kwargs...) where {T}
-    nn_params = pas[:nns][get_nn_names(flux)[1]]
+function (flux::AbstractNeuralFlux)(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T}
+    nn_params = params[:nns][get_nn_names(flux)[1]]
     #* array dims: (ts_len * node_names * var_names)
     flux_output_vec = [flux.func(input[:, i, :], nn_params) for i in 1:size(input)[2]]
     flux_output_arr = reduce((m1, m2) -> cat(m1, m2, dims=3), flux_output_vec)

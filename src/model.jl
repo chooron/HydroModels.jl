@@ -70,22 +70,16 @@ end
 
 function (model::HydroModel)(
     input::AbstractArray{T,2},
-    pas::PasDataType;
+    params::ComponentVector;
+    initstates::ComponentVector=ComponentVector(),
     config::Union{NamedTuple,Vector{<:NamedTuple}}=NamedTuple(),
-    kwargs...,
 ) where {T<:Number}
+    initstates = length(initstates) == 0 ? ComponentVector(NamedTuple{Tuple(get_state_names(model))}(zeroes(T, length(get_state_names(model))))) : initstates
     comp_configs = config isa NamedTuple ? fill(config, length(model.components)) : config
     @assert length(comp_configs) == length(model.components) "component configs length must be equal to components length"
     outputs = input
-    # params = haskey(pas, :params) ? view(pas, :params) : ComponentVector()
-    # initstates = haskey(pas, :initstates) ? view(pas, :initstates) : ComponentVector()
-    # nns = haskey(pas, :nns) ? view(pas, :nns) : ComponentVector()
     for (idx_, comp_, config_) in zip(model.varindices, model.components, comp_configs)
-        # # extract_params = view(params, get_param_names(comp_))
-        # extract_initstates = view(initstates, get_state_names(comp_))
-        # # extract_nns = view(nns, get_nn_names(comp_))
-        # tmp_pas = ComponentVector(params=params, initstates=extract_initstates, nns=nns)
-        tmp_outputs = comp_(outputs[idx_, :], pas; config=config_)
+        tmp_outputs = comp_(outputs[idx_, :], params; initstates=initstates[get_state_names(comp_)], config=config_)
         outputs = cat(outputs, tmp_outputs, dims=1)
     end
     return view(outputs, model.outputindices, :)
@@ -93,15 +87,17 @@ end
 
 function (model::HydroModel)(
     input::AbstractArray{T,3},
-    pas::PasDataType;
+    params::PasDataType;
+    initstates::ComponentVector=ComponentVector(), 
     config::Union{<:NamedTuple,Vector{<:NamedTuple}}=NamedTuple(),
     kwargs...,
 ) where {T<:Number}
+    initstates = length(initstates) == 0 ? ComponentVector(NamedTuple{Tuple(get_state_names(model))}(fill(zeroes(T, size(input, 2)), length(get_state_names(model))))) : initstates
     comp_configs = config isa NamedTuple ? fill(config, length(model.components)) : config
     @assert length(comp_configs) == length(model.components) "component configs length must be equal to components length"
     outputs = input
     for (idx_, comp_, config_) in zip(model.varindices, model.components, comp_configs)
-        tmp_outputs = comp_(view(outputs, idx_, :, :), pas; config=config_)
+        tmp_outputs = comp_(view(outputs, idx_, :, :), params; initstates=initstates[get_state_names(comp_)], config=config_)
         outputs = cat(outputs, tmp_outputs, dims=1)
     end
     return view(outputs, model.outputindices, :, :)

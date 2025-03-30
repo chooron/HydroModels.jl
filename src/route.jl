@@ -206,18 +206,20 @@ This function executes the routing model by:
 The routing can use either neural network based routing functions (AbstractNeuralFlux) or
 regular routing functions, with parameters extracted accordingly.
 """
-function (route::HydroRoute)(input::AbstractArray{T,3}, pas::PasDataType; config::NamedTuple=NamedTuple(), kwargs...,) where {T}
+function (route::HydroRoute)(input::AbstractArray{T,3}, params::ComponentVector; kwargs...,) where {T}
     input_dims, num_nodes, time_len = size(input)
+
     #* get kwargs
-    ptyidx = get(config, :ptyidx, 1:num_nodes)
-    styidx = get(config, :styidx, 1:num_nodes)
-    interp = get(config, :interp, LinearInterpolation)
-    solver = get(config, :solver, ManualSolver{true}())
-    timeidx = get(config, :timeidx, collect(1:time_len))
+    ptyidx = get(kwargs, :ptyidx, 1:num_nodes)
+    styidx = get(kwargs, :styidx, 1:num_nodes)
+    interp = get(kwargs, :interp, LinearInterpolation)
+    solver = get(kwargs, :solver, ManualSolver{true}())
+    timeidx = get(kwargs, :timeidx, collect(1:time_len))
+    initstates = get(kwargs, :initstates, zeros(eltype(params), length(get_state_names(route)), num_nodes))
 
     #* prepare states parameters and nns
-    new_pas = expand_component_params(pas, ptyidx)
-    initstates_mat = expand_component_initstates(pas, styidx)
+    new_pas = expand_component_params(params, ptyidx)
+    initstates_mat = expand_component_initstates(initstates, styidx)
 
     #* prepare input function
     input_reshape = reshape(input, input_dims * num_nodes, time_len)
@@ -235,7 +237,11 @@ function (route::HydroRoute)(input::AbstractArray{T,3}, pas::PasDataType; config
     )
     #* run other functions
     output = route.multi_flux_func(eachslice(input, dims=1), eachslice(solved_states, dims=1), new_pas)
-    output_arr = length(output) > 1 ? permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), output), (3, 1, 2)) : reshape(output[1], 1, num_nodes, time_len)
+    output_arr = if length(output) > 1
+        permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), output), (3, 1, 2))
+    else
+        reshape(output[1], 1, num_nodes, time_len)
+    end
     cat(solved_states, output_arr, dims=1)
 end
 
@@ -295,38 +301,43 @@ struct RapidRoute <: AbstractRoute
     end
 end
 
-function (route::RapidRoute)(input::Array, pas::PasDataType; config::NamedTuple=NamedTuple(), kwargs...)
+function (route::RapidRoute)(input::Array, params::ComponentVector; kwargs...)
     #* get the parameter types and state types
-    ptyidx = get(config, :ptyidx, 1:size(input, 2))
-    delta_t = get(config, :delta_t, 1.0)
+    ptyidx = get(kwargs, :ptyidx, 1:size(input, 2))
+    delta_t = get(kwargs, :delta_t, 1.0)
     #* get the interpolation type and solver type
-    interp = get(config, :interp, LinearInterpolation)
-    solver = get(config, :solver, ManualSolver{true}())
+    interp = get(kwargs, :interp, LinearInterpolation)
+    solver = get(kwargs, :solver, ManualSolver{true}())
     #* get the time index
-    timeidx = get(config, :timeidx, collect(1:size(input, 3)))
+    timeidx = get(kwargs, :timeidx, collect(1:size(input, 3)))
+    #* get the initial states
+    initstates = get(kwargs, :initstates, zeros(eltype(params), size(input, 2)))
 
     #* var num * node num * ts len
     itpfuncs = interp(input[1, :, :], timeidx)
 
     #* prepare the parameters for the routing function
-    params = view(pas, :params)
-    k_ps = view(view(params, :rapid_k), ptyidx)
-    x_ps = view(view(params, :rapid_x), ptyidx)
+    expand_params = expand_component_params(params, ptyidx)
+    k_ps = view(expand_params, :rapid_k)
+    x_ps = view(expand_params, :rapid_x)
     c0 = @. ((delta_t / k_ps) - (2 * x_ps)) / ((2 * (1 - x_ps)) + (delta_t / k_ps))
     c1 = @. ((delta_t / k_ps) + (2 * x_ps)) / ((2 * (1 - x_ps)) + (delta_t / k_ps))
     c2 = @. ((2 * (1 - x_ps)) - (delta_t / k_ps)) / ((2 * (1 - x_ps)) + (delta_t / k_ps))
+    new_params = ComponentVector(c0=c0, c1=c1, c2=c2)
+    new_params_vec, new_params_axes = Vector(new_params), getaxes(new_params)
     A = (p) -> Matrix(I, size(route.adjacency)...) .- diagm(p.c0) * route.adjacency
 
     function du_func(u, p, t)
         q_out_t1 = u
         q_gen = itpfuncs(t)
+        ps = ComponentVector(p, new_params_axes)
         #* Ax = b, x is the q_out(t+1)
-        rflux_b = p.c0 .* q_gen .+ p.c1 .* (route.adjacency * q_out_t1 .+ q_gen) .+ p.c2 .* q_out_t1
+        rflux_b = ps.c0 .* q_gen .+ ps.c1 .* (route.adjacency * q_out_t1 .+ q_gen) .+ ps.c2 .* q_out_t1
         #* solve the linear equation (simple solve by matrix inversion)
-        A(p) \ (rflux_b .- A(p) * u)
+        A(ps) \ (rflux_b .- A(ps) * u)
     end
 
     #* solve the ode
-    sol_arr = solver(du_func, ComponentVector(c0=c0, c1=c1, c2=c2), zeros(size(input)[2]), timeidx, convert_to_array=true)
+    sol_arr = solver(du_func, new_params_vec, initstates, timeidx, convert_to_array=true)
     return reshape(sol_arr, 1, size(sol_arr)...)
 end

@@ -147,14 +147,14 @@ Apply the unit hydrograph flux model to input data of various dimensions.
 
 (::UnitHydrograph)(::AbstractVector, ::ComponentVector; kwargs...) = @error "UnitHydrograph is not support for single timepoint"
 
-function (flux::UnitHydrograph{:DISCRETE})(input::AbstractArray{T,2}, pas::Union{PasDataType, AbstractVector}; config::NamedTuple=NamedTuple(), kwargs...) where {T}
-    solver = get(config, :solver, ManualSolver{true}())
-    timeidx = get(config, :timeidx, collect(1:size(input, 2)))
+function (flux::UnitHydrograph{:DISCRETE})(input::AbstractArray{T,2}, params::AbstractVector; kwargs...) where {T}
+    solver = get(kwargs, :solver, ManualSolver{true}())
+    timeidx = get(kwargs, :timeidx, collect(1:size(input, 2)))
     input_vec = input[1, :]
     #* convert the lagflux to a discrete problem
     lag_du_func(u, p, t) = input_vec[Int(t)] .* p[:weight] .+ [diff(u); -u[end]]
     #* prepare the initial states
-    lag = Vector(pas)[1]
+    lag = Vector(params)[1]
     uh_weight = map(t -> flux.uhfunc(t, lag), 1:get_uh_tmax(flux.uhfunc, lag))[1:end-1]
     if length(uh_weight) == 0
         @warn "The unit hydrograph weight is empty, please check the unit hydrograph function"
@@ -166,9 +166,9 @@ function (flux::UnitHydrograph{:DISCRETE})(input::AbstractArray{T,2}, pas::Union
     end
 end
 
-function (flux::UnitHydrograph{:SPARSE})(input::AbstractArray{T,2}, pas::Union{PasDataType, AbstractVector}; kwargs...) where {T}
+function (flux::UnitHydrograph{:SPARSE})(input::AbstractArray{T,2}, params::AbstractVector; kwargs...) where {T}
     input_vec = input[1, :]
-    lag = Vector(pas)[1]
+    lag = Vector(params)[1]
     uh_weight = map(t -> flux.uhfunc(t, lag), 1:get_uh_tmax(flux.uhfunc, lag))[1:end-1]
 
     if length(uh_weight) == 0
@@ -185,11 +185,10 @@ function (flux::UnitHydrograph{:SPARSE})(input::AbstractArray{T,2}, pas::Union{P
     end
 end
 
-function (uh::UnitHydrograph)(input::AbstractArray{T,3}, pas::PasDataType; config::NamedTuple=NamedTuple(), kwargs...) where {T}
-    #* array dims: (variable dim, num of node, sequence length)
+function (uh::UnitHydrograph)(input::AbstractArray{T,3}, params::AbstractVector; kwargs...) where {T}
     #* Extract the initial state of the parameters and routement in the pas variable
-    ptyidx = get(config, :ptyidx, 1:size(input, 2))
-    params = Vector(view(pas, :params))
+    ptyidx = get(kwargs, :ptyidx, 1:size(input, 2))
+    params = Vector(params)
     extract_params = reshape(view(params, ptyidx), 1, :)
     node_sols = uh.(Matrix.(eachslice(input, dims=2)), Vector.(eachslice(extract_params, dims=2)))
     sol_mat = reduce((m1, m2) -> cat(m1, m2, dims=1), node_sols)
