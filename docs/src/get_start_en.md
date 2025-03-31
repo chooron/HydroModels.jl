@@ -282,18 +282,12 @@ For initial state preparation, `HydroModels.jl` similarly accepts initial states
 init_states = ComponentVector(snowpack=0.0, soilwater=1303.004248)
 ```
 
-Then store the parameters and initial states in a single `ComponentVector` (sometimes initial states are also treated as parameters to be optimized, so they need to be stored together with parameters for unified management):
-
-```julia
-pas = ComponentVector(params=params, initstates=init_states)
-```
-
 ### Run the ExpHydro Model
 
 Finally, we can input the data and parameters into the model to obtain the output results:
 
 ```julia
-result = exphydro_model(input_arr, pas)
+result = exphydro_model(input_arr, ComponentVector(params=params), initstates=init_states)
 ```
 
 The model output is also of type `AbstractMatrix`, with dimensions being the number of output variables (including state variables) multiplied by the number of time steps. For example, if there are 8 output variables and 1000 time steps, the output dimensions would be (8, 1000). If you want to export the results as a `DataFrame` type, you can use `HydroModels.get_output_names(model)` to get the names of the output variables, then combine them with a `Dict` or `NamedTuple` to construct a `DataFrame`:
@@ -332,7 +326,7 @@ The model results are compared with the actual values ​​and plotted into a l
 
 ### Running with Config
 
-The model computation is not limited to these basic features. To support necessary settings during the computation process, `HydroModel` can accept a `config` parameter.
+The model computation is not limited to these basic features. To support necessary settings during the computation process, `HydroModel` can accept a `config` parameter (Dict).
 
 For example, by default, the model uses only the Euler method to solve ordinary differential equations. However, sometimes a more accurate solving method is needed, which can be set using the `config` parameter.
 
@@ -343,8 +337,8 @@ using OrdinaryDiffEq
 using HydroModelTools
 using DataInterpolations
 
-config = (solver=ODESolver(alg=Tsit5(), abstol=1e-3, reltol=1e-3), interp=LinearInterpolation)
-output = exphydro_model(input_arr, pas, config=config)
+config = Dict(:solver=>ODESolver(alg=Tsit5(), abstol=1e-3, reltol=1e-3), :interp=>LinearInterpolation)
+output = exphydro_model(input_arr, ComponentVector(params=params), initstates=init_states, config=config)
 ```
 
 The `config` parameter is set as a `NamedTuple` type, where the `solver` parameter is used to set the solving method, and the `interp` parameter is used to set the interpolation method. `ODESolver` is a solver wrapper class provided by `HydroModelTools.jl` that performs some data conversion on the solution results. It accepts solving methods from `OrdinaryDiffEq.jl` as parameters and sets the solving method parameters.
@@ -368,7 +362,6 @@ Models based on `Lux.jl` can decouple parameters from model structure, which is 
 
 ```julia
 nn_pas = ComponentVector(epnn=ep_nn_params, qnn=q_nn_params)
-pas = ComponentVector(params=params, initstates=init_states, nns=nn_pas)
 ```
 
 It's important to note that we need to use the key name `nns` to store the neural network parameters, keeping them independent from model parameters and initial states. Additionally, the neural network parameters `nn_pas` need to use model names and parameters as key-value pairs.
@@ -376,7 +369,7 @@ It's important to note that we need to use the key name `nns` to store the neura
 Finally, we can input the model parameters into the model to obtain the output results:
 
 ```julia
-output = m50_model(input_arr, pas)
+output = m50_model(input_arr, ComponentVector(params=params, nns=nn_pas), initstates=init_states)
 ```
 
 ## Conclusion
