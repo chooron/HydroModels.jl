@@ -10,7 +10,7 @@ function Base.show(io::IO, flux::AbstractHydroFlux)
     else
         printstyled(io, "┌ ", color=:light_blue, bold=true)
         printstyled(io, "HydroFlux", color=:light_blue, bold=true)
-        printstyled(io, "{$(flux.name)}", color=:light_black)
+        printstyled(io, "{$(get_name(flux))}", color=:light_black)
         println(io)
         
         # Print inputs with a different color
@@ -55,7 +55,7 @@ function Base.show(io::IO, flux::AbstractStateFlux)
     else
         printstyled(io, "┌ ", color=:light_blue, bold=true)
         printstyled(io, "StateFlux", color=:light_blue, bold=true)
-        printstyled(io, "{$(flux.name)}", color=:light_black)
+        printstyled(io, "{$(get_name(flux))}", color=:light_black)
         println(io)
         
         # Print inputs with a different color
@@ -100,7 +100,7 @@ function Base.show(io::IO, flux::AbstractNeuralFlux)
     else
         printstyled(io, "┌ ", color=:light_blue, bold=true)
         printstyled(io, "NeuralFlux", color=:light_blue, bold=true)
-        printstyled(io, "{$(flux.name)}", color=:light_black)
+        printstyled(io, "{$(get_name(flux))}", color=:light_black)
         println(io)
         
         # Print inputs with a different color
@@ -186,7 +186,7 @@ function Base.show(io::IO, ele::AbstractBucket)
     else
         printstyled(io, "┌ ", color=:light_blue, bold=true)
         printstyled(io, "HydroBucket", color=:light_blue, bold=true)
-        printstyled(io, "{$(ele.name)}", color=:light_black)
+        printstyled(io, "{$(get_name(ele))}", color=:light_black)
         println(io)
         
         # Print inputs with a different color
@@ -226,7 +226,7 @@ function Base.show(io::IO, route::AbstractHydroRoute)
     else
         printstyled(io, "┌ ", color=:light_blue, bold=true)
         printstyled(io, "HydroRoute", color=:light_blue, bold=true)
-        printstyled(io, "{$(route.name)}", color=:light_black)
+        printstyled(io, "{$(get_name(route))}", color=:light_black)
         println(io)
         
         # Print inputs with a different color
