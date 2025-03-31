@@ -56,6 +56,7 @@ export AbstractElement, AbstractBucket, AbstractHydrograph, AbstractRoute, Abstr
 # utils
 include("utils/expression.jl")
 include("utils/attribute.jl")
+export get_var_names, get_state_names, get_output_names, get_input_names, get_param_names, get_nn_names, get_name
 include("utils/tools.jl")
 include("utils/display.jl")
 include("utils/build.jl")
