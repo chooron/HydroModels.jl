@@ -33,7 +33,7 @@ struct HydroModel <: AbstractModel
     "input variables index for each components"
     varindices
     "output variables index for sort output variables"
-    outputindices::AbstractVector{<:Integer}
+    outputindices::AbstractVector{Int}
     "meta data of hydrological model"
     infos::NamedTuple
 
@@ -54,7 +54,7 @@ struct HydroModel <: AbstractModel
 end
 
 function _prepare_indices(components::Vector{<:AbstractComponent}, input_names::Vector{Symbol}, vcat_names::Vector{Symbol})
-    input_idx, output_idx = Vector{Integer}[], Vector{Integer}()
+    input_idx, output_idx = Vector{Int}[], Vector{Int}()
     for component in components
         #* extract input index
         tmp_input_idx = map((nm) -> findfirst(varnm -> varnm == nm, input_names), get_input_names(component))
