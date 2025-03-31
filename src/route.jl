@@ -317,7 +317,7 @@ function (route::RapidRoute)(input::Array, params::ComponentVector; kwargs...)
     itpfuncs = interp(input[1, :, :], timeidx)
 
     #* prepare the parameters for the routing function
-    expand_params = expand_component_params(params, ptyidx)
+    expand_params = expand_component_params(params, ptyidx)[:params]
     k_ps = view(expand_params, :rapid_k)
     x_ps = view(expand_params, :rapid_x)
     c0 = @. ((delta_t / k_ps) - (2 * x_ps)) / ((2 * (1 - x_ps)) + (delta_t / k_ps))

@@ -137,14 +137,16 @@ function (ele::HydroBucket{true})(input::AbstractArray{T,2}, params::ComponentVe
     solver = get(kwargs, :solver, ManualSolver{true}())
     interp = get(kwargs, :interp, LinearInterpolation)
     timeidx = get(kwargs, :timeidx, collect(1:size(input, 2)))
+    #* prepare initstates
     initstates = get(kwargs, :initstates, zeros(eltype(params), length(get_state_names(ele))))
+    initstates_ = initstates isa ComponentVector ? Vector(initstates[get_state_names(ele)]) : initstates
     #* get params axes
     param_vec, params_axes = Vector(params), getaxes(params)
     #* solve ode functions
     itpfuncs = interp(input, timeidx)
     solved_states = solver(
         (u, p, t) -> ele.ode_funcs[1](itpfuncs(t), u, ComponentVector(p, params_axes)),
-        param_vec, initstates, timeidx
+        param_vec, initstates_, timeidx
     )
     #* concatenate states and fluxes 
     flux_output = ele.flux_funcs[1](eachslice(input, dims=1), eachslice(solved_states, dims=1), params)
@@ -165,12 +167,15 @@ function (ele::HydroBucket{true})(input::AbstractArray{T,3}, params::ComponentVe
     solver = get(kwargs, :solver, ManualSolver{true}())
     interp = get(kwargs, :interp, LinearInterpolation)
     timeidx = get(kwargs, :timeidx, collect(1:size(input, 3)))
+
+    #* prepare initstates
     initstates = get(kwargs, :initstates, zeros(eltype(params), length(get_state_names(ele)), num_nodes))
+    initstates_ = initstates isa ComponentVector ? initstates[get_state_names(ele)] : initstates
+    initstates_mat = expand_component_initstates(initstates_, styidx)
 
     #* prepare states parameters and nns
     new_params = expand_component_params(params, ptyidx)
     params_vec, params_axes = Vector(new_params), getaxes(new_params)
-    initstates_mat = expand_component_initstates(initstates, styidx)
 
     #* prepare input function
     itpfuncs = interp(reshape(input, input_dims * num_nodes, time_len), timeidx)

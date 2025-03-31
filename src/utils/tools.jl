@@ -163,7 +163,22 @@ Expand the initial states of a component vector based on the provided index.
 # Returns
 - `new_pas::ComponentVector`: The expanded component vector.
 """
-function expand_component_initstates(pas::ComponentVector, styidx::AbstractVector)
-    num_states = length(keys(view(pas, :initstates)))
-    view(reshape(Vector(view(pas, :initstates)), :, num_states)', :, styidx)
+function expand_component_initstates(initstates::ComponentVector, styidx::AbstractVector)
+    num_states = length(keys(initstates))
+    initstates_arr = reshape(Vector(initstates), :, num_states)'
+    expand_component_initstates(initstates_arr, styidx)
+end
+
+function expand_component_initstates(initstates::AbstractMatrix, styidx::AbstractVector)
+    view(initstates, :, styidx)
+end
+
+function get_default_states(component::AbstractComponent, dtype::Type)
+    state_names = get_state_names(component)
+    return ComponentVector(NamedTuple{Tuple(state_names)}(fill(zero(dtype), length(state_names))))
+end
+
+function get_default_states(component::AbstractComponent, node_num::Int, dtype::Type)
+    state_names = get_state_names(component)
+    return ComponentVector(NamedTuple{Tuple(state_names)}(fill(zeros(dtype, node_num), length(state_names))))
 end

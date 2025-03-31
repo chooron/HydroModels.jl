@@ -60,10 +60,10 @@ step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
     node_initstates = ComponentVector(
         snowpack=fill(0.0, 9), soilwater=fill(0.0, 9), s_river=fill(0.0, 9)
     )
-    node_pas = ComponentVector(params=node_params, initstates=node_initstates)
+    node_pas = ComponentVector(params=node_params)
 
     config = (timeidx=ts, ptyidx=1:9, styidx=1:9)
-    result_mat_vec = model(input_arr, node_pas, config=config)
+    result_mat_vec = model(input_arr, node_pas; initstates=node_initstates, config...)
     @test size(result_mat_vec) == (length(HydroModels.get_state_names(model))+length(HydroModels.get_output_names(model)), 9, length(ts))
 end
 
@@ -139,9 +139,9 @@ end
     node_initstates = ComponentVector(
         snowpack=fill(0.0, 9), soilwater=fill(0.0, 9), s_river=fill(0.0, 9)
     )
-    node_pas = ComponentVector(params=node_params, initstates=node_initstates)
+    node_pas = ComponentVector(params=node_params)
 
-    config = (timeidx=ts, ptypes=node_names)
-    result_mat_vec = model(input_arr, node_pas, config=config)
+    config = Dict(:timeidx=>ts, :ptypes=>node_names)
+    result_mat_vec = model(input_arr, node_pas; initstates=node_initstates, config...)
     @test size(result_mat_vec) == (length(HydroModels.get_state_names(model))+length(HydroModels.get_output_names(model)), 9, length(ts))
 end

@@ -185,12 +185,12 @@ function (flux::UnitHydrograph{:SPARSE})(input::AbstractArray{T,2}, params::Abst
     end
 end
 
-function (uh::UnitHydrograph)(input::AbstractArray{T,3}, params::AbstractVector; kwargs...) where {T}
+function (uh::UnitHydrograph)(input::AbstractArray{T,3}, params::AbstractArray; kwargs...) where {T}
     #* Extract the initial state of the parameters and routement in the pas variable
     ptyidx = get(kwargs, :ptyidx, 1:size(input, 2))
     params = Vector(params)
     extract_params = reshape(view(params, ptyidx), 1, :)
-    node_sols = uh.(Matrix.(eachslice(input, dims=2)), Vector.(eachslice(extract_params, dims=2)))
+    node_sols = uh.(eachslice(input, dims=2), eachslice(extract_params, dims=2))
     sol_mat = reduce((m1, m2) -> cat(m1, m2, dims=1), node_sols)
     return reshape(sol_mat, 1, size(input)[2], size(input)[3])
 end

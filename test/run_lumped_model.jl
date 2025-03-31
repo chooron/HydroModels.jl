@@ -15,7 +15,7 @@ step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
 
     initstates = ComponentVector(snowpack=snowpack_value, soilwater=soilwater_value)
     params = ComponentVector(f=f_value, Smax=Smax_value, Qmax=Qmax_value, Df=Df_value, Tmax=Tmax_value, Tmin=Tmin_value)
-    pas = ComponentVector(initstates=initstates, params=params)
+    pas = ComponentVector(params=params)
 
     #! define the snow pack reservoir
     snow_fluxes = [
@@ -45,16 +45,17 @@ step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
     @test Set(HydroModels.get_output_names(model)) == Set([:pet, :snowfall, :rainfall, :melt, :evap, :baseflow, :surfaceflow, :flow])
     @test Set(reduce(union, HydroModels.get_var_names(model))) == Set([:temp, :lday, :prcp, :pet, :snowfall, :rainfall, :melt, :evap, :baseflow, :surfaceflow, :flow, :snowpack, :soilwater])
 
-    result_mat = model(input_mat, pas)
-    @test size(result_mat) == (length(HydroModels.get_state_names(model))+length(HydroModels.get_output_names(model)), length(ts))
+    result_mat = model(input_mat, pas, initstates=initstates)
+    @test size(result_mat) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), length(ts))
 
     input_arr = repeat(reshape(input_mat, size(input_mat)[1], 1, size(input_mat)[2]), 1, 10, 1)
     node_names = [Symbol(:node_, i) for i in 1:10]
     node_params = ComponentVector(f=fill(f_value, 10), Smax=fill(Smax_value, 10), Qmax=fill(Qmax_value, 10), Df=fill(Df_value, 10), Tmax=fill(Tmax_value, 10), Tmin=fill(Tmin_value, 10))
     node_initstates = ComponentVector(snowpack=fill(snowpack_value, 10), soilwater=fill(soilwater_value, 10))
-    node_pas = ComponentVector(params=node_params, initstates=node_initstates)
-    result_arr = model(input_arr, node_pas, config=(timeidx=ts, ptyidx=1:10, styidx=1:10))
-    @test size(result_arr) == (length(HydroModels.get_state_names(model))+length(HydroModels.get_output_names(model)), 10, length(ts))
+    node_pas = ComponentVector(params=node_params)
+    config = Dict(:timeidx => ts, :ptyidx => 1:10, :styidx => 1:10)
+    result_arr = model(input_arr, node_pas; initstates=node_initstates, config=config)
+    @test size(result_arr) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), 10, length(ts))
 end
 
 @testset "test lumped hydro model (gr4j with unit hydrograph)" begin
@@ -80,7 +81,7 @@ end
 
     params = ComponentVector(x1=x1_value, x2=x2_value, x3=x3_value, x4=x4_value)
     initstates = ComponentVector(soilwater=soilwater_value, routingstore=routingstore_value)
-    pas = ComponentVector(initstates=initstates, params=params)
+    pas = ComponentVector(params=params)
 
     #* define the production store
     prod_fluxes = [
@@ -93,7 +94,6 @@ end
         HydroFlux([ps, es, perc, soilwater] => [new_soilwater], exprs=[soilwater + ps - es - perc])
     ]
     prod_dfluxes = [StateFlux(soilwater => new_soilwater)]
-
 
     uh_1 = HydroModels.UnitHydrograph([slowflow] => [slowflow_routed], [x4], uhfunc=HydroModels.UHFunction(:UH_1_HALF), solvetype=:SPARSE)
     uh_2 = HydroModels.UnitHydrograph([fastflow] => [fastflow_routed], [x4], uhfunc=HydroModels.UHFunction(:UH_2_FULL), solvetype=:SPARSE)
@@ -120,19 +120,19 @@ end
         :fastflow, :slowflow_routed, :fastflow_routed, :exch, :routedflow, :flow, :new_routingstore, :routingstore])
 
     # Test single-node model run
-    result_mat = model(input_mat, pas, config=(timeidx=ts,))
-    @test size(result_mat) == (length(HydroModels.get_state_names(model))+length(HydroModels.get_output_names(model)), length(ts))
+    result_mat = model(input_mat, pas, initstates=initstates, config=Dict(:timeidx => ts))
+    @test size(result_mat) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), length(ts))
 
     # Test multi-node model run
     input_arr = repeat(reshape(input_mat, size(input_mat)[1], 1, size(input_mat)[2]), 1, 10, 1)
     node_names = [Symbol(:node_, i) for i in 1:10]
     node_params = ComponentVector(x1=fill(x1_value, 10), x2=fill(x2_value, 10), x3=fill(x3_value, 10), x4=fill(x4_value, 10))
     node_initstates = ComponentVector(soilwater=fill(soilwater_value, 10), routingstore=fill(routingstore_value, 10))
-    node_pas = ComponentVector(params=node_params, initstates=node_initstates)
+    node_pas = ComponentVector(params=node_params)
 
     # Test output as 3D array
-    result_mat_vec = model(input_arr, node_pas, config=(timeidx=ts, ptyidx=1:10, styidx=1:10))
-    @test size(result_mat_vec) == (length(HydroModels.get_state_names(model))+length(HydroModels.get_output_names(model)), 10, length(ts))
+    result_mat_vec = model(input_arr, node_pas, initstates=node_initstates, config=Dict(:timeidx => ts, :ptyidx => 1:10, :styidx => 1:10))
+    @test size(result_mat_vec) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), 10, length(ts))
 end
 
 
@@ -163,9 +163,7 @@ end
 
     inputs = [prcp_vec, temp_vec, snowpack_vec, soilwater_vec]
     means, stds = mean.(inputs), std.(inputs)
-    (prcp_norm_vec, temp_norm_vec, snowpack_norm_vec, soilwater_norm_vec) = [
-        @.((tmp_vec - mean) / std) for (tmp_vec, mean, std) in zip(inputs, means, stds)
-    ]
+    (prcp_norm_vec, temp_norm_vec, snowpack_norm_vec, soilwater_norm_vec) = [@.((vec - mean) / std) for (vec, mean, std) in zip(inputs, means, stds)]
 
     #! define the snow pack reservoir
     snow_fluxes = [
@@ -219,14 +217,14 @@ end
     var_means = NamedTuple{Tuple([Symbol(nm, :_mean) for nm in [:prcp, :temp, :snowpack, :soilwater]])}(means)
     nn_params = (etnn=et_nn_p, qnn=q_nn_p)
     params = reduce(merge, [base_params, var_means, var_stds])
-    initstates = (snowpack=0.0, soilwater=1303.00)
-    pas = ComponentVector(initstates=initstates, params=params, nns=nn_params)
+    initstates = ComponentVector(snowpack=0.0, soilwater=1303.00)
+    pas = ComponentVector(params=params, nns=nn_params)
     input_ntp = (prcp=prcp_vec, lday=dayl_vec, temp=temp_vec)
     input_mat = Matrix(reduce(hcat, collect(input_ntp[[:prcp, :temp, :lday]]))')
 
     # Run the model and get results as a matrix
-    result_mat = model(input_mat, pas, config=(timeidx=ts,))
-    @test size(result_mat) == (length(HydroModels.get_state_names(model))+length(HydroModels.get_output_names(model)), length(ts))
+    result_mat = model(input_mat, pas, initstates=initstates, config=Dict(:timeidx=>ts))
+    @test size(result_mat) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), length(ts))
 
     # Prepare inputs and parameters for multiple nodes
     input_arr = repeat(reshape(input_mat, size(input_mat)[1], 1, size(input_mat)[2]), 1, 10, 1)
@@ -240,6 +238,6 @@ end
     node_pas = ComponentVector(params=node_params, initstates=node_initstates, nns=nn_params)
 
     # Run the model for multiple nodes and get results as a 3D array
-    result_mat_vec = model(input_arr, node_pas, config=(timeidx=ts,))
-    @test size(result_mat_vec) == (length(HydroModels.get_state_names(model))+length(HydroModels.get_output_names(model)), 10, length(ts))
+    result_mat_vec = model(input_arr, node_pas, initstates=node_initstates, config=Dict(:timeidx=>ts))
+    @test size(result_mat_vec) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), 10, length(ts))
 end

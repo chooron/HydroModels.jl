@@ -28,8 +28,8 @@
     input_arr = repeat(reshape(input_flow, 1, 1, length(input_flow)), 1, 10, 1)
     ndtypes = [Symbol("node_$i") for i in 1:10]
     input_pas = ComponentVector(params=(x1=fill(3.5, 10),),)
-    config = (ptypes=ndtypes, solver=ManualSolver{true}())
+    config = Dict(:ptypes=>ndtypes, :solver=>ManualSolver{true}())
     expected_output_arr = repeat(reshape(expected_output, 1, 1, length(expected_output)), 1, 10, 1)
-    @test uh1(input_arr, input_pas, config=config) ≈ expected_output_arr atol = 1e-3
-    @test uh2(input_arr, input_pas, config=config) ≈ expected_output_arr atol = 1e-3
+    @test uh1(input_arr, input_pas; config...) ≈ expected_output_arr atol = 1e-3
+    @test uh2(input_arr, input_pas; config...) ≈ expected_output_arr atol = 1e-3
 end

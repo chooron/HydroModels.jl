@@ -19,7 +19,7 @@ end
         HydroFlux([snowpack, temp] => [melt], [Tmax, Df], exprs=[step_func(temp - Tmax) * step_func(snowpack) * min(snowpack, Df * (temp - Tmax))]),
     ]
     snow_dfluxes = [StateFlux([snowfall] => [melt], snowpack),]
-    snow_bucket = HydroBucket(Symbol(name, :_surface), funcs=snow_fluxes, dfuncs=snow_dfluxes)
+    snow_bucket = HydroBucket(Symbol(name, :_surface), fluxes=snow_fluxes, dfluxes=snow_dfluxes)
 
     @variables soilwater pet evap baseflow surfaceflow flow rainfall melt
     @parameters Smax Qmax f
@@ -29,7 +29,7 @@ end
         HydroFlux([soilwater] => [surfaceflow], [Smax], exprs=[max(0.0, soilwater - Smax)]),
     ]
     soil_dfluxes = [StateFlux([rainfall, melt] => [evap, baseflow, surfaceflow], soilwater)]
-    soil_bucket = HydroBucket(Symbol(name, :_soil), funcs=soil_fluxes, dfuncs=soil_dfluxes)
+    soil_bucket = HydroBucket(Symbol(name, :_soil), fluxes=soil_fluxes, dfluxes=soil_dfluxes)
     flow_flux = HydroFlux([baseflow, surfaceflow] => [flow], exprs=[baseflow + surfaceflow])
     sorted_fluxes = HydroModels.sort_components([flow_flux, soil_bucket, snow_bucket])
 end
