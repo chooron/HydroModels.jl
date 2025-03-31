@@ -74,12 +74,12 @@ Components are automatically connected based on their input/output interfaces:
 struct HydroModel{N} <: AbstractModel
     "hydrological computation elements"
     components::Vector{<:AbstractComponent}
-    "input variables index for each components"
-    varindices
-    "output variables index for sort output variables"
-    outputindices::AbstractVector{Int}
     "meta data of hydrological model"
     infos::NamedTuple
+    "input variables index for each components"
+    _varindices::AbstractVector{AbstractVector{Int}}
+    "output variables index for sort output variables"
+    _outputindices::AbstractVector{Int}
 
     function HydroModel(;
         components::Vector{C},
@@ -90,10 +90,10 @@ struct HydroModel{N} <: AbstractModel
         input_names, output_names, state_names = get_var_names(components)
         param_names = reduce(union, get_param_names.(components))
         nn_names = reduce(union, get_nn_names.(components))
-        input_idx, output_idx = _prepare_indices(components, input_names, vcat(input_names, state_names, output_names))
+        input_idx, output_idx = _prepare_indices(components, input_names, vcat(state_names, output_names))
         infos = (; inputs=input_names, outputs=output_names, states=state_names, params=param_names, nns=nn_names)
         model_name = isnothing(name) ? Symbol("##model#", hash(infos)) : name
-        new{model_name}(components, input_idx, output_idx, infos)
+        new{model_name}(components, infos, input_idx, output_idx)
     end
 end
 
@@ -147,8 +147,9 @@ function _prepare_indices(components::Vector{<:AbstractComponent}, input_names::
         #* extract output index
         tmp_cpt_vcat_names = vcat(get_state_names(component), get_output_names(component))
         input_names = vcat(input_names, tmp_cpt_vcat_names)
-        tmp_output_idx = map((nm) -> findfirst(varnm -> varnm == nm, vcat_names), tmp_cpt_vcat_names)
-        output_idx = vcat(output_idx, tmp_output_idx)
+    end
+    for name in vcat_names
+        push!(output_idx, findfirst(varnm -> varnm == name, input_names))
     end
     return input_idx, output_idx
 end
@@ -246,13 +247,14 @@ function (model::HydroModel{N})(
 ) where {N,T<:Number}
     comp_configs = config isa Dict ? fill(config, length(model.components)) : config
     @assert length(comp_configs) == length(model.components) "component configs length must be equal to components length"
+    @assert size(input, 1) == length(get_input_names(model)) "input variables length must be equal to input variables length"
     initstates_ = length(initstates) == 0 ? get_default_states(model, eltype(input)) : initstates
     outputs = input
-    for (idx_, comp_, config_) in zip(model.varindices, model.components, comp_configs)
+    for (idx_, comp_, config_) in zip(model._varindices, model.components, comp_configs)
         tmp_outputs = comp_(outputs[idx_, :], params; initstates=initstates_[get_state_names(comp_)], config_...)
         outputs = cat(outputs, tmp_outputs, dims=1)
     end
-    return outputs[model.outputindices, :]
+    return outputs[model._outputindices, :]
 end
 
 function (model::HydroModel{N})(
@@ -263,11 +265,12 @@ function (model::HydroModel{N})(
 ) where {N,T<:Number}
     comp_configs = config isa Dict ? fill(config, length(model.components)) : config
     @assert length(comp_configs) == length(model.components) "component configs length must be equal to components length"
-    outputs = input
+    @assert size(input, 1) == length(get_input_names(model)) "input variables length must be equal to input variables length"
     initstates_ = length(initstates) == 0 ? get_default_states(model, size(input, 2), eltype(input)) : initstates
-    for (idx_, comp_, config_) in zip(model.varindices, model.components, comp_configs)
+    outputs = input
+    for (idx_, comp_, config_) in zip(model._varindices, model.components, comp_configs)
         tmp_outputs = comp_(outputs[idx_, :, :], params; initstates=initstates_[get_state_names(comp_)], config_...)
         outputs = cat(outputs, tmp_outputs, dims=1)
     end
-    return outputs[model.outputindices, :, :]
+    return outputs[model._outputindices, :, :]
 end
