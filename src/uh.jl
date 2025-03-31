@@ -85,9 +85,7 @@ This structure is designed to be flexible and can be integrated into larger hydr
 to represent various routing processes in different parts of a water system.
 
 """
-struct UnitHydrograph{ST} <: AbstractHydrograph
-    "Name of the hydrograph"
-    name::Symbol
+struct UnitHydrograph{N,ST} <: AbstractHydrograph
     "The unit hydrograph function"
     uhfunc::UHFunction
     "A named tuple containing information about inputs, outputs, parameters, and states"
@@ -105,7 +103,7 @@ struct UnitHydrograph{ST} <: AbstractHydrograph
         #* Setup the name information of the hydroroutement
         infos = (;inputs = [tosymbol(input)], outputs = [tosymbol(output)], params = tosymbol.(params))
         uh_name = isnothing(name) ? Symbol("##uh#", hash(infos)) : name
-        return new{solvetype}(uh_name, uhfunc, infos)
+        return new{uh_name, solvetype}(uhfunc, infos)
     end
 
     function UnitHydrograph(
@@ -147,7 +145,7 @@ Apply the unit hydrograph flux model to input data of various dimensions.
 
 (::UnitHydrograph)(::AbstractVector, ::ComponentVector; kwargs...) = @error "UnitHydrograph is not support for single timepoint"
 
-function (flux::UnitHydrograph{:DISCRETE})(input::AbstractArray{T,2}, params::AbstractVector; kwargs...) where {T}
+function (flux::UnitHydrograph{N,:DISCRETE})(input::AbstractArray{T,2}, params::AbstractVector; kwargs...) where {T,N}
     solver = get(kwargs, :solver, ManualSolver{true}())
     timeidx = get(kwargs, :timeidx, collect(1:size(input, 2)))
     input_vec = input[1, :]
@@ -166,7 +164,7 @@ function (flux::UnitHydrograph{:DISCRETE})(input::AbstractArray{T,2}, params::Ab
     end
 end
 
-function (flux::UnitHydrograph{:SPARSE})(input::AbstractArray{T,2}, params::AbstractVector; kwargs...) where {T}
+function (flux::UnitHydrograph{N,:SPARSE})(input::AbstractArray{T,2}, params::AbstractVector; kwargs...) where {T,N}
     input_vec = input[1, :]
     lag = Vector(params)[1]
     uh_weight = map(t -> flux.uhfunc(t, lag), 1:get_uh_tmax(flux.uhfunc, lag))[1:end-1]

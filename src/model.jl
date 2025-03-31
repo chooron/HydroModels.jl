@@ -1,33 +1,77 @@
 """
-	HydroModel <: AbstractModel
+    HydroModel{N} <: AbstractModel
 
-Represents a hydrological model composed of multiple components.
+Represents a complete hydrological model that integrates multiple components for simulating 
+water processes. The type parameter `N` encodes the model name at type level for better 
+type stability.
+
+# Arguments
+- `name::Symbol`: Model identifier
+- `components::Vector{<:AbstractComponent}`: Vector of model components
+- `solver::Union{Nothing,ODESolver}=nothing`: Optional ODE solver for state equations
+- `interp::Union{Nothing,Function}=nothing`: Optional interpolation method for inputs
 
 # Fields
-- `infos::NamedTuple`: Contains metadata about the model, including name, input variables, all variables, output variables, state variables, and neural network variables.
-- `components::Vector{<:AbstractComponent}`: A vector of hydrological computation elements (components) that make up the model.
-- `varindices::Vector`: A vector of indices for each component's input, used to map overall model inputs to component-specific inputs.
-
-# Constructor
-	HydroModel(name; components::Vector{<:AbstractComponent})
-
-Constructs a HydroModel with the given name and components.
+- `components::Vector{<:AbstractComponent}`: Hydrological computation elements
+- `varindices::Vector{Vector{Int}}`: Input variable indices for each component
+- `infos::NamedTuple`: Model metadata including:
+  - `name`: Model identifier
+  - `inputs`: External input variables
+  - `outputs`: Model output variables
+  - `states`: State variables
+  - `allvars`: All model variables
+  - `nns`: Neural network components
 
 # Description
-HydroModel is a structure that encapsulates a complete hydrological model. It manages multiple hydrological components, 
-handles the flow of data between these components, and provides methods for running simulations.
+HydroModel provides a framework for building and running hydrological simulations by 
+connecting multiple components in a type-stable and efficient manner.
 
-The model automatically determines the connections between components based on their input and output variables. 
-It also keeps track of all variables in the system, including inputs, outputs, states, and any neural network parameters.
+## Model Structure
+The model consists of:
+- Components: Individual process modules (e.g., buckets, fluxes, routing)
+- Connections: Automatic variable mapping between components
+- States: Time-evolving system variables
+- Parameters: Model coefficients and settings
 
-When called as a function, the HydroModel applies its components in sequence, passing the outputs of earlier components 
-as inputs to later ones, effectively simulating the hydrological system over time.
+## Component Integration
+Components are automatically connected based on their input/output interfaces:
+1. Variable matching between components
+2. Execution order determination
+3. Data flow management
+4. State variable handling
 
-Each component's kwargs may be different, include solver, interp
+## Usage Notes
+1. Model Construction:
+   ```julia
+   model = HydroModel(:lumped_model,
+       components=[
+           HydroBucket(:bucket1, fluxes=[rainfall_flux, evap_flux]),
+           UnitHydrograph(:routing1, response=[0.3, 0.5, 0.2])
+       ]
+   )
+   ```
+
+2. Model Simulation:
+   ```julia
+   # Single-node run
+   output = model(input, params)  # input: (variables, timesteps)
+
+   # Multi-node run
+   output = model(input, params)  # input: (variables, nodes, timesteps)
+   ```
+
+3. Configuration Options:
+   - `solver`: ODE solver for state equations (e.g., Tsit5())
+   - `interp`: Input interpolation method
+   - Component-specific options via kwargs
+
+# Notes
+- Components are executed in sequence based on dependencies
+- State variables are integrated automatically when using an ODE solver
+- Input interpolation is applied when timesteps don't align
+- Type stability is maintained throughout the computation
 """
-struct HydroModel <: AbstractModel
-    "name of hydrological model"
-    name::Symbol
+struct HydroModel{N} <: AbstractModel
     "hydrological computation elements"
     components::Vector{<:AbstractComponent}
     "input variables index for each components"
@@ -49,10 +93,51 @@ struct HydroModel <: AbstractModel
         input_idx, output_idx = _prepare_indices(components, input_names, vcat(input_names, state_names, output_names))
         infos = (; inputs=input_names, outputs=output_names, states=state_names, params=param_names, nns=nn_names)
         model_name = isnothing(name) ? Symbol("##model#", hash(infos)) : name
-        new(model_name, components, input_idx, output_idx, infos)
+        new{model_name}(components, input_idx, output_idx, infos)
     end
 end
 
+
+"""
+    _prepare_indices(components::Vector{<:AbstractComponent}, 
+                    input_names::Vector{Symbol}, 
+                    vcat_names::Vector{Symbol}) -> Tuple{Vector{Vector{Int}}, Vector{Int}}
+
+Prepare input and output variable indices for connecting components in a hydrological model.
+
+# Arguments
+- `components::Vector{<:AbstractComponent}`: Vector of model components to process
+- `input_names::Vector{Symbol}`: Initial list of input variable names
+- `vcat_names::Vector{Symbol}`: Concatenated list of all variable names (inputs, states, outputs)
+
+# Returns
+- `Tuple{Vector{Vector{Int}}, Vector{Int}}`: A tuple containing:
+  - First element: Vector of input indices for each component
+  - Second element: Vector of output indices for all components
+
+# Description
+This internal function manages the variable connections between components by:
+1. Mapping each component's input variables to global input indices
+2. Tracking state and output variables as they become available
+3. Building the complete variable dependency chain
+
+## Process Flow
+1. For each component:
+   - Map its input variables to current input name indices
+   - Add its state and output variables to available inputs
+   - Map its outputs to the complete variable list
+
+## Implementation Details
+- Uses `findfirst` for efficient index mapping
+- Maintains order of variable declarations
+- Handles both direct and derived variables
+- Ensures proper variable propagation
+
+# Notes
+- This is an internal function used by HydroModel constructor
+- Variable names must be unique across all components
+- The order of components affects the variable propagation chain
+"""
 function _prepare_indices(components::Vector{<:AbstractComponent}, input_names::Vector{Symbol}, vcat_names::Vector{Symbol})
     input_idx, output_idx = Vector{Int}[], Vector{Int}()
     for component in components
@@ -68,13 +153,97 @@ function _prepare_indices(components::Vector{<:AbstractComponent}, input_names::
     return input_idx, output_idx
 end
 
-function (model::HydroModel)(
+"""
+    (model::HydroModel)(input::AbstractArray, params::ComponentVector; kwargs...)
+
+Run a hydrological model simulation with the given input data and parameters.
+
+# Arguments
+- `input::AbstractArray`: Input data with dimensions:
+  - `Matrix`: Shape (variables, timesteps) for single-node simulation
+  - `Array{3}`: Shape (variables, nodes, timesteps) for distributed simulation
+- `params::ComponentVector`: Model parameters for all components
+- `initstates::ComponentVector=ComponentVector()`: Initial states for components
+- `config::Union{Dict,Vector{<:Dict}}=Dict()`: Configuration for components
+- `kwargs...`: Additional keyword arguments passed to components
+
+# Returns
+- `Matrix`: For 2D input, returns matrix of shape (output_variables, timesteps)
+- `Array{3}`: For 3D input, returns array of shape (output_variables, nodes, timesteps)
+
+# Description
+This function runs the hydrological model simulation by:
+1. Processing input data through each component sequentially
+2. Managing state variables and their evolution
+3. Collecting and organizing output variables
+4. Handling both single-node and distributed simulations
+
+## Simulation Process
+1. Initialize:
+   - Set up component configurations
+   - Prepare initial states (default or user-provided)
+   - Organize input data structure
+
+2. Component Execution:
+   - Pass relevant inputs to each component
+   - Update states based on component calculations
+   - Collect outputs and prepare for next component
+
+3. Output Processing:
+   - Gather all component outputs
+   - Extract requested output variables
+   - Maintain proper dimensionality
+
+## Configuration Options
+- Component-specific settings via `config` dict
+- Initial state values via `initstates`
+- Solver settings for ODE components
+- Interpolation methods for input data
+
+# Example
+```julia
+# Single-node simulation
+model = HydroModel(:lumped_model, components=[bucket, routing])
+output = model(
+    input,                     # shape: (variables, timesteps)
+    params,                    # component parameters
+    initstates=init_states,    # initial conditions
+    config=Dict(              # component settings
+        :solver => ManualSolver{true}(),
+        :interp => LinearInterpolation
+    )
+)
+
+# Distributed simulation
+output = model(
+    input,                     # shape: (variables, nodes, timesteps)
+    params,                    # parameters per node
+    config=[                   # settings per component
+        Dict(                 
+            :solver => ManualSolver{true}(),
+            :interp => LinearInterpolation
+        ),
+        Dict(                  
+            :solver => ManualSolver{true}(),
+            :interp => LinearInterpolation
+        ),
+        ... # number is consistent with components
+    ]
+)
+```
+
+# Notes
+- Input variables must match component requirements
+- Parameters must be properly structured in ComponentVector
+- State initialization is automatic if not provided
+- Configuration can be shared or component-specific
+"""
+function (model::HydroModel{N})(
     input::AbstractArray{T,2},
     params::ComponentVector;
     initstates::ComponentVector=ComponentVector(),
     config::Union{Dict,Vector{<:Dict}}=Dict(),
-    kwargs...,
-) where {T<:Number}
+) where {N,T<:Number}
     comp_configs = config isa Dict ? fill(config, length(model.components)) : config
     @assert length(comp_configs) == length(model.components) "component configs length must be equal to components length"
     initstates_ = length(initstates) == 0 ? get_default_states(model, eltype(input)) : initstates
@@ -86,13 +255,12 @@ function (model::HydroModel)(
     return outputs[model.outputindices, :]
 end
 
-function (model::HydroModel)(
+function (model::HydroModel{N})(
     input::AbstractArray{T,3},
     params::ComponentVector;
     initstates::ComponentVector=ComponentVector(),
     config::Union{Dict,Vector{<:Dict}}=Dict(),
-    kwargs...,
-) where {T<:Number}
+) where {N,T<:Number}
     comp_configs = config isa Dict ? fill(config, length(model.components)) : config
     @assert length(comp_configs) == length(model.components) "component configs length must be equal to components length"
     outputs = input

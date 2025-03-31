@@ -1,27 +1,23 @@
 """
-    HydroBucket(; 
-        funcs::Vector{<:AbstractHydroFlux}, 
-        dfuncs::Vector{<:AbstractStateFlux}=StateFlux[], 
-        name::Union{Symbol,Nothing}=nothing, 
-        sort_funcs::Bool=false
-    )
+    HydroBucket{N,S} <: AbstractBucket
 
-Represents a hydrological bucket model component that handles both single-node and multi-node computations.
+Represents a hydrological bucket model component that handles both single-node and multi-node 
+computations. The type parameters are:
+- `N`: Component name (encoded at type level for better type stability)
+- `S`: Boolean indicating if the bucket has state variables
 
 # Arguments
-- `funcs::Vector{<:AbstractHydroFlux}`: Vector of flux functions describing hydrological processes
-- `dfuncs::Vector{<:AbstractStateFlux}`: Vector of state derivative functions for ODE calculations (default: empty)
-- `name::Union{Symbol,Nothing}`: Optional bucket identifier. Defaults to auto-generated name from state variables
-- `sort_funcs::Bool}`: Whether to topologically sort flux functions based on dependencies (default: false)
+- `fluxes::Vector{<:AbstractHydroFlux}`: Vector of flux functions
+- `dfluxes::Vector{<:AbstractStateFlux}=StateFlux[]`: Vector of state derivative functions
+- `name::Union{Symbol,Nothing}=nothing`: Optional bucket identifier
+- `sort_fluxes::Bool=false`: Whether to sort fluxes by dependencies
 
 # Fields
-- `fluxes::Vector{<:AbstractHydroFlux}`: Vector of flux functions describing hydrological processes
-- `dfluxes::Vector{<:AbstractStateFlux}`: Vector of state derivative functions for ODE calculations
-- `flux_func::Function`: Generated function for single-node flux calculations
-- `multi_flux_func::Function`: Generated function for multi-node parallel flux calculations
-- `ode_func::Union{Nothing,Function}`: Generated function for single-node ODE calculations
-- `multi_ode_func::Union{Nothing,Function}`: Generated function for multi-node parallel ODE calculations
-- `meta::ComponentVector`: Metadata containing model structure information
+- `fluxes::Vector{<:AbstractHydroFlux}`: Vector of flux functions
+- `dfluxes::Vector{<:AbstractStateFlux}`: Vector of state derivative functions
+- `flux_funcs::Vector{<:Function}`: Generated functions for flux calculations
+- `ode_funcs::Union{Nothing,Vector}`: Generated functions for ODE calculations
+- `infos::NamedTuple`: Component metadata
 
 # Description
 HydroBucket is a type-stable implementation of a hydrological bucket model that supports both 
@@ -32,33 +28,23 @@ functions for flux and ODE calculations based on the provided process functions.
 The bucket model consists of:
 - Process functions (`fluxes`): Define water movement between storages
 - State derivatives (`dfluxes`): Define rate of change for state variables
-- Generated functions: Optimized implementations for both single and multi-node calculations
+- Generated functions: Optimized implementations for calculations
 
 ## Metadata Components
-The `meta` field tracks:
-- `inputs`: External forcing variables (e.g., precipitation, temperature)
-- `outputs`: Model-generated variables (e.g., runoff, evaporation)
-- `states`: Internal storage variables (e.g., soil moisture, groundwater)
-- `params`: Model parameters controlling process behavior
-- `nn_vars`: Neural network components (if any) for hybrid modeling
-
-## Performance Features
-- Type-stable computations for both single and multi-node cases
-- Efficient broadcasting operations for vectorized calculations
-- Automatic function generation with optimized broadcasting
-- Support for ComponentArray parameters for structured data handling
+The `infos` field tracks:
+- `inputs`: External forcing variables (e.g., precipitation)
+- `outputs`: Model-generated variables (e.g., runoff)
+- `states`: Internal storage variables (e.g., soil moisture)
+- `params`: Model parameters
+- `nns`: Neural network components (if any)
 
 ## Usage Notes
-1. For single-node simulations: Use `flux_func` and `ode_func`
-2. For multi-node simulations: Use `multi_flux_func` and `multi_ode_func`
+1. For single-node simulations: Use `flux_funcs[1]` and `ode_funcs[1]`
+2. For multi-node simulations: Use `flux_funcs[2]` and `ode_funcs[2]`
 3. Parameters should be provided as ComponentVector for type stability
 4. Broadcasting operations are automatically handled for multi-node cases
-
-See also: [`AbstractHydroFlux`](@ref), [`AbstractStateFlux`](@ref), [`ComponentVector`](@ref)
 """
-struct HydroBucket{S} <: AbstractBucket
-    "Name of the bucket"
-    name::Symbol
+struct HydroBucket{N,S} <: AbstractBucket
     "Vector of flux functions describing hydrological processes."
     fluxes::Vector{<:AbstractHydroFlux}
     "Vector of state derivative functions for ODE calculations."
@@ -86,53 +72,58 @@ struct HydroBucket{S} <: AbstractBucket
         #* Construct a function for ordinary differential calculation based on dfunc and funcs
         flux_funcs, ode_funcs = build_ele_func(fluxes, dfluxes, infos)
         bucket_name = isnothing(name) ? Symbol("##bucket#", hash(infos)) : name
-        return new{!isempty(state_names)}(bucket_name, fluxes, dfluxes, flux_funcs, ode_funcs, infos)
+        return new{bucket_name, !isempty(state_names)}(fluxes, dfluxes, flux_funcs, ode_funcs, infos)
     end
 end
 
 """
-	(ele::HydroBucket)(input::Matrix, pas::ComponentVector; config::NamedTuple=NamedTuple(), kwargs...)
-	(ele::HydroBucket)(input::Array, pas::ComponentVector; config::NamedTuple=NamedTuple(), kwargs...)
+    (bucket::HydroBucket{N,S})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...)
+    (bucket::HydroBucket{N,S})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...)
 
 Run the HydroBucket model for given input and parameters.
 
 # Arguments
-- `input`: Input data in one of these formats:
-  - Matrix: dimensions are variables × time
-  - Array: dimensions are variables × nodes × time 
-- `pas`: ComponentVector containing model parameters and initial states
-- `config`: Optional configuration with these fields:
-  - `solver`: Solver to use for ODEs (default: ManualSolver{true}())
+- `input`: Input data array with dimensions:
+  - For 2D input: variables × time (single node)
+  - For 3D input: variables × nodes × time (multi-node)
+- `params`: ComponentVector containing model parameters and initial states
+- `kwargs`: Optional keyword arguments:
+  - `solver`: ODE solver to use (default: ManualSolver{true}())
   - `interp`: Interpolation method (default: LinearInterpolation)
   - `timeidx`: Time indices (default: 1:size(input, last_dim))
-  - `ptyidx`: Parameter type indices for multi-node runs
-  - `styidx`: State type indices for multi-node runs
+  - `ptyidx`: Parameter indices for multi-node runs
+  - `styidx`: State indices for multi-node runs
+  - `initstates`: Initial states for ODE solving
 
 # Returns
-Matrix or Array containing model outputs:
-- For single node input: Matrix of size (states+outputs) × time
-- For multi-node input: Array of size (states+outputs) × nodes × time
+Array containing model outputs:
+- For 2D input: Array of size (states+outputs) × time
+- For 3D input: Array of size (states+outputs) × nodes × time
 
-# Details
-The function handles both single node and multi-node model runs:
+# Description
+This function executes the bucket model by:
+1. Setting up interpolation for input time series
+2. Preparing parameters and initial states
+3. Solving ODEs if the model has state variables (S=true)
+4. Computing fluxes using the model's flux functions
+5. Combining states and fluxes into the output array
 
-For single node runs:
-- Takes input time series for one location
+## Single Node Operation (2D input)
+- Processes one location's time series
 - Uses provided parameters and initial states
-- Solves ODEs if model has state variables
-- Calculates fluxes using model's flux function
+- Solves ODEs if model has states
 - Returns combined states and fluxes
 
-For multi-node runs:
+## Multi-Node Operation (3D input)
 - Processes multiple locations simultaneously
-- Can use shared or independent parameters
-- Handles state propagation for each node
+- Supports both shared and distributed parameters
+- Handles state evolution for each node
 - Returns results for all nodes
 
-The input dimensions must match the number of input variables defined in the model.
-Required parameters and initial states must be present in the pas argument.
+Note: Input dimensions must match the number of input variables defined in the model's
+metadata. All required parameters and initial states must be present in the params argument.
 """
-function (ele::HydroBucket{true})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T}
+function (ele::HydroBucket{N,true})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T,N}
     #* get kwargs
     solver = get(kwargs, :solver, ManualSolver{true}())
     interp = get(kwargs, :interp, LinearInterpolation)
@@ -153,12 +144,12 @@ function (ele::HydroBucket{true})(input::AbstractArray{T,2}, params::ComponentVe
     vcat(solved_states, permutedims(reduce(hcat, flux_output)))
 end
 
-(ele::HydroBucket{false})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T} = begin
+(ele::HydroBucket{N,false})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T,N} = begin
     flux_output = ele.flux_funcs[1](eachslice(input, dims=1), nothing, params)
     permutedims(reduce(hcat, flux_output))
 end
 
-function (ele::HydroBucket{true})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T}
+function (ele::HydroBucket{N,true})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T,N}
     input_dims, num_nodes, time_len = size(input)
 
     #* get kwargs
@@ -197,7 +188,7 @@ function (ele::HydroBucket{true})(input::AbstractArray{T,3}, params::ComponentVe
     cat(solved_states, output_arr, dims=1)
 end
 
-function (ele::HydroBucket{false})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T}
+function (ele::HydroBucket{N,false})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T,N}
     ptyidx = get(kwargs, :ptyidx, 1:size(input, 2))
     new_params = expand_component_params(params, ptyidx)
     #* run other functions
