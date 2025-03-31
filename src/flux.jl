@@ -164,8 +164,9 @@ struct NeuralFlux <: AbstractNeuralFlux
         input_names = length(inputs) == 0 ? Symbol[] : tosymbol.(inputs)
         output_names = length(outputs) == 0 ? Symbol[] : tosymbol.(outputs)
 
-        st = LuxCore.initialstates(StableRNG(42), chain)
-        nn_func = (x, p) -> LuxCore.apply(chain, x, p, st)[1]
+        ps, st = Lux.setup(StableRNG(42), chain)
+        ps_axes = getaxes(ComponentVector(ps))
+        nn_func = (x, p) -> LuxCore.apply(chain, x, ComponentVector(p, ps_axes), st)[1]
 
         nn_input_name, nn_output_name = Symbol(chain_name, :_input), Symbol(chain_name, :_output)
         infos = (; inputs=input_names, outputs=output_names, nns=[chain_name], nn_inputs=nn_input_name, nn_outputs=nn_output_name)
