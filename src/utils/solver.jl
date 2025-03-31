@@ -45,7 +45,7 @@ function (solver::ManualSolver{true})(
     kwargs...
 )
     T1 = promote_type(eltype(pas), eltype(initstates))
-    states_results = zeros(eltype(initstates), length(initstates), length(timeidx))
+    states_results = zeros(T1, length(initstates), length(timeidx))
     tmp_initstates = copy(initstates)
     for (i, t) in enumerate(timeidx)
         tmp_du = du_func(tmp_initstates, pas, t)
@@ -63,7 +63,7 @@ function (solver::ManualSolver{true})(
     kwargs...
 )
     T1 = promote_type(eltype(pas), eltype(initstates))
-    states_results = zeros(eltype(initstates), size(initstates)..., length(timeidx)) |> solver.dev
+    states_results = zeros(T1, size(initstates)..., length(timeidx)) |> solver.dev
     tmp_initstates = copy(initstates)
     for (i, t) in enumerate(timeidx)
         tmp_du = du_func(tmp_initstates, pas, t)
