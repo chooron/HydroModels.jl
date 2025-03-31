@@ -98,7 +98,7 @@ function (model::HydroModel)(
     outputs = input
     initstates_ = length(initstates) == 0 ? get_default_states(model, size(input, 2), eltype(input)) : initstates
     for (idx_, comp_, config_) in zip(model.varindices, model.components, comp_configs)
-        tmp_outputs = comp_(view(outputs, idx_, :, :), params; initstates=initstates_[get_state_names(comp_)], config_...)
+        tmp_outputs = comp_(outputs[idx_, :, :], params; initstates=initstates_[get_state_names(comp_)], config_...)
         outputs = cat(outputs, tmp_outputs, dims=1)
     end
     return outputs[model.outputindices, :, :]

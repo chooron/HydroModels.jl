@@ -147,9 +147,11 @@ Expand the parameters of a component vector based on the provided index.
 function expand_component_params(pas::ComponentVector, ptyidx::AbstractVector)
     params = view(pas, :params)
     expand_params = NamedTuple{Tuple(keys(params))}([params[p][ptyidx] for p in keys(params)])
-    nns = haskey(pas, :nns) ? view(pas, :nns) : ones(eltype(pas), 10)
-    new_pas = ComponentVector(params=expand_params, nns=nns)
-    return new_pas
+    return if haskey(pas, :nns)
+        ComponentVector(params=expand_params, nns=pas[:nns])
+    else
+        ComponentVector(params=expand_params)
+    end
 end
 
 """

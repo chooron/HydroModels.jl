@@ -164,18 +164,19 @@ function (ele::HydroBucket{true})(input::AbstractArray{T,3}, params::ComponentVe
     #* get kwargs
     ptyidx = get(kwargs, :ptyidx, 1:size(input, 2))
     styidx = get(kwargs, :styidx, 1:size(input, 2))
+    device = get(kwargs, :device, identity)
     solver = get(kwargs, :solver, ManualSolver{true}())
     interp = get(kwargs, :interp, LinearInterpolation)
     timeidx = get(kwargs, :timeidx, collect(1:size(input, 3)))
 
     #* prepare initstates
-    initstates = get(kwargs, :initstates, zeros(eltype(params), length(get_state_names(ele)), num_nodes))
+    initstates = get(kwargs, :initstates, zeros(eltype(params), length(get_state_names(ele)), num_nodes)) |> device
     initstates_ = initstates isa ComponentVector ? initstates[get_state_names(ele)] : initstates
-    initstates_mat = expand_component_initstates(initstates_, styidx)
+    initstates_mat = expand_component_initstates(initstates_, styidx) |> device
 
     #* prepare states parameters and nns
-    new_params = expand_component_params(params, ptyidx)
-    params_vec, params_axes = Vector(new_params), getaxes(new_params)
+    new_params = expand_component_params(params, ptyidx) |> device
+    params_vec, params_axes = Vector(new_params) |> device, getaxes(new_params)
 
     #* prepare input function
     itpfuncs = interp(reshape(input, input_dims * num_nodes, time_len), timeidx)

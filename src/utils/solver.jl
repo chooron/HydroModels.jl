@@ -33,12 +33,14 @@ where stability and computational efficiency are prioritized over high-order acc
 
 See also: [`AbstractHydroSolver`](@ref), [`solve`](@ref)
 """
-struct ManualSolver{mutable} end
+@kwdef struct ManualSolver{mutable}
+    dev = identity
+end
 
 function (solver::ManualSolver{true})(
     du_func::Function,
     pas::AbstractVector,
-    initstates::AbstractArray{<:Number, 1},
+    initstates::AbstractArray{<:Number,1},
     timeidx::AbstractVector;
     kwargs...
 )
@@ -56,12 +58,12 @@ end
 function (solver::ManualSolver{true})(
     du_func::Function,
     pas::AbstractVector,
-    initstates::AbstractArray{<:Number, 2},
+    initstates::AbstractArray{<:Number,2},
     timeidx::AbstractVector;
     kwargs...
 )
     T1 = promote_type(eltype(pas), eltype(initstates))
-    states_results = zeros(eltype(initstates), size(initstates)..., length(timeidx))
+    states_results = zeros(eltype(initstates), size(initstates)..., length(timeidx)) |> solver.dev
     tmp_initstates = copy(initstates)
     for (i, t) in enumerate(timeidx)
         tmp_du = du_func(tmp_initstates, pas, t)
@@ -75,7 +77,7 @@ end
 function (solver::ManualSolver{false})(
     du_func::Function,
     pas::AbstractVector,
-    initstates::AbstractArray{<:Number, 1},
+    initstates::AbstractArray{<:Number,1},
     timeidx::AbstractVector;
     kwargs...
 )
@@ -86,13 +88,13 @@ function (solver::ManualSolver{false})(
         tmp_initstates = tmp_initstates .+ tmp_du
         states_results = vcat(states_results, [tmp_initstates])
     end
-    reduce((m1, m2) -> cat(m1, m2, dims=length(size(initstates))+1), states_results)
+    reduce((m1, m2) -> cat(m1, m2, dims=length(size(initstates)) + 1), states_results)
 end
 
 function (solver::ManualSolver{false})(
     du_func::Function,
     pas::AbstractVector,
-    initstates::AbstractArray{<:Number, 2},
+    initstates::AbstractArray{<:Number,2},
     timeidx::AbstractVector;
     kwargs...
 )
@@ -103,6 +105,6 @@ function (solver::ManualSolver{false})(
         tmp_initstates = tmp_initstates .+ tmp_du
         states_results = vcat(states_results, [tmp_initstates])
     end
-    output = reduce((m1, m2) -> cat(m1, m2, dims=length(size(initstates))+1), states_results)
+    output = reduce((m1, m2) -> cat(m1, m2, dims=length(size(initstates)) + 1), states_results) |> solver.dev
     output
 end
