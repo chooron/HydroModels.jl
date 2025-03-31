@@ -31,7 +31,7 @@ get_state_names(cpt::AbstractComponent)::AbstractVector{Symbol} = get(cpt.infos,
 
 Get parameter names from component metadata.
 """
-get_param_names(cpt::AbstractComponent) = get(cpt.infos, :params, Symbol[])
+get_param_names(cpt::AbstractComponent)::AbstractVector{Symbol} = get(cpt.infos, :params, Symbol[])
 
 """
     get_nn_names(cpt::AbstractComponent)::AbstractVector{Symbol}
