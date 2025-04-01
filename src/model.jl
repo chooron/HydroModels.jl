@@ -242,16 +242,16 @@ output = model(
 function (model::HydroModel{N})(
     input::AbstractArray{T,2},
     params::ComponentVector;
-    initstates::ComponentVector=ComponentVector(),
-    config::Union{Dict,Vector{<:Dict}}=Dict(),
+    kwargs...,
 ) where {N,T<:Number}
-    comp_configs = config isa Dict ? fill(config, length(model.components)) : config
+    initstates = get(kwargs, :initstates, get_default_states(model, eltype(input)))
+    config = get(kwargs, :config, NamedTuple())
+    comp_configs = config isa NamedTuple ? fill(config, length(model.components)) : config
     @assert length(comp_configs) == length(model.components) "component configs length must be equal to components length"
     @assert size(input, 1) == length(get_input_names(model)) "input variables length must be equal to input variables length"
-    initstates_ = length(initstates) == 0 ? get_default_states(model, eltype(input)) : initstates
     outputs = input
     for (idx_, comp_, config_) in zip(model._varindices, model.components, comp_configs)
-        tmp_outputs = comp_(outputs[idx_, :], params; initstates=initstates_[get_state_names(comp_)], config_...)
+        tmp_outputs = comp_(outputs[idx_, :], params; initstates=initstates[get_state_names(comp_)], config_...)
         outputs = cat(outputs, tmp_outputs, dims=1)
     end
     return outputs[model._outputindices, :]
@@ -260,16 +260,16 @@ end
 function (model::HydroModel{N})(
     input::AbstractArray{T,3},
     params::ComponentVector;
-    initstates::ComponentVector=ComponentVector(),
-    config::Union{Dict,Vector{<:Dict}}=Dict(),
+    kwargs...,
 ) where {N,T<:Number}
-    comp_configs = config isa Dict ? fill(config, length(model.components)) : config
+    config = get(kwargs, :config, NamedTuple())
+    initstates = get(kwargs, :initstates, get_default_states(model, size(input, 2), eltype(input)))
+    comp_configs = config isa NamedTuple ? fill(config, length(model.components)) : config
     @assert length(comp_configs) == length(model.components) "component configs length must be equal to components length"
     @assert size(input, 1) == length(get_input_names(model)) "input variables length must be equal to input variables length"
-    initstates_ = length(initstates) == 0 ? get_default_states(model, size(input, 2), eltype(input)) : initstates
     outputs = input
     for (idx_, comp_, config_) in zip(model._varindices, model.components, comp_configs)
-        tmp_outputs = comp_(outputs[idx_, :, :], params; initstates=initstates_[get_state_names(comp_)], config_...)
+        tmp_outputs = comp_(outputs[idx_, :, :], params; initstates=initstates[get_state_names(comp_)], config_...)
         outputs = cat(outputs, tmp_outputs, dims=1)
     end
     return outputs[model._outputindices, :, :]
