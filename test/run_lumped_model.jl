@@ -53,7 +53,7 @@ step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
     node_params = ComponentVector(f=fill(f_value, 10), Smax=fill(Smax_value, 10), Qmax=fill(Qmax_value, 10), Df=fill(Df_value, 10), Tmax=fill(Tmax_value, 10), Tmin=fill(Tmin_value, 10))
     node_initstates = ComponentVector(snowpack=fill(snowpack_value, 10), soilwater=fill(soilwater_value, 10))
     node_pas = ComponentVector(params=node_params)
-    config = Dict(:timeidx => ts, :ptyidx => 1:10, :styidx => 1:10)
+    config = (timeidx=ts, ptyidx=1:10, styidx=1:10)
     result_arr = model(input_arr, node_pas; initstates=node_initstates, config=config)
     @test size(result_arr) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), 10, length(ts))
 end
@@ -120,7 +120,7 @@ end
         :fastflow, :slowflow_routed, :fastflow_routed, :exch, :routedflow, :flow, :new_routingstore, :routingstore])
 
     # Test single-node model run
-    result_mat = model(input_mat, pas, initstates=initstates, config=Dict(:timeidx => ts))
+    result_mat = model(input_mat, pas, initstates=initstates, config=(timeidx=ts,))
     @test size(result_mat) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), length(ts))
 
     # Test multi-node model run
@@ -131,7 +131,7 @@ end
     node_pas = ComponentVector(params=node_params)
 
     # Test output as 3D array
-    result_mat_vec = model(input_arr, node_pas, initstates=node_initstates, config=Dict(:timeidx => ts, :ptyidx => 1:10, :styidx => 1:10))
+    result_mat_vec = model(input_arr, node_pas, initstates=node_initstates, config=(timeidx=ts, ptyidx=1:10, styidx=1:10))
     @test size(result_mat_vec) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), 10, length(ts))
 end
 
@@ -223,7 +223,7 @@ end
     input_mat = Matrix(reduce(hcat, collect(input_ntp[[:prcp, :temp, :lday]]))')
 
     # Run the model and get results as a matrix
-    result_mat = model(input_mat, pas, initstates=initstates, config=Dict(:timeidx=>ts))
+    result_mat = model(input_mat, pas, initstates=initstates, config=(timeidx=ts,))
     @test size(result_mat) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), length(ts))
 
     # Prepare inputs and parameters for multiple nodes
@@ -238,6 +238,6 @@ end
     node_pas = ComponentVector(params=node_params, initstates=node_initstates, nns=nn_params)
 
     # Run the model for multiple nodes and get results as a 3D array
-    result_mat_vec = model(input_arr, node_pas, initstates=node_initstates, config=Dict(:timeidx=>ts))
+    result_mat_vec = model(input_arr, node_pas, initstates=node_initstates, config=(timeidx=ts,))
     @test size(result_mat_vec) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), 10, length(ts))
 end

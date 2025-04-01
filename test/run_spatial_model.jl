@@ -62,7 +62,7 @@ step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
     )
     node_pas = ComponentVector(params=node_params)
 
-    config = Dict(:timeidx=>ts, :ptyidx=>1:9, :styidx=>1:9)
+    config = (timeidx=ts, ptyidx=1:9, styidx=1:9)
     result_mat_vec = model(input_arr, node_pas; initstates=node_initstates, config=config)
     @test size(result_mat_vec) == (length(HydroModels.get_state_names(model))+length(HydroModels.get_output_names(model)), 9, length(ts))
 end
@@ -141,7 +141,7 @@ end
     )
     node_pas = ComponentVector(params=node_params)
 
-    config = Dict(:timeidx=>ts, :ptypes=>node_names)
+    config = (timeidx=ts, )
     result_mat_vec = model(input_arr, node_pas; initstates=node_initstates, config=config)
     @test size(result_mat_vec) == (length(HydroModels.get_state_names(model))+length(HydroModels.get_output_names(model)), 9, length(ts))
 end
