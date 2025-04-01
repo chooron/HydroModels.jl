@@ -121,7 +121,7 @@ function build_ele_func(
     # Create return expressions with concrete values
     return_flux = :(return [$(output_names...)])
     return_state = :(return [$(map(expr -> :($(toexpr(expr))), reduce(vcat, get_exprs.(dfluxes)))...)])
-    return_multi_state = :(return [$(map(expr -> :($(toexprv2(unwrap(expr)))), reduce(vcat, get_exprs.(dfluxes)))...)])
+    return_multi_state = :(return reduce(hcat, [$(map(expr -> :($(toexprv2(unwrap(expr)))), reduce(vcat, get_exprs.(dfluxes)))...)]) |> permutedims)
 
     # Create fcuntion expression
     meta_exprs = [:(Base.@_inline_meta)]
@@ -142,7 +142,7 @@ function build_ele_func(
 
     generated_flux_func = @RuntimeGeneratedFunction(flux_func_expr)
     generated_multi_flux_func = @RuntimeGeneratedFunction(multi_flux_func_expr)
-    
+
     if length(state_names) > 0
         diff_func_expr = :(function (inputs, states, pas)
             $(meta_exprs...)
