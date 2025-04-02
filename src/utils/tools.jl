@@ -73,8 +73,12 @@ where stability and computational efficiency are prioritized over high-order acc
 
 See also: [`AbstractHydroSolver`](@ref), [`solve`](@ref)
 """
-@kwdef struct ManualSolver{mutable}
-    dev = identity
+struct ManualSolver{mutable}
+    dev
+
+    function ManualSolver(;dev=identity, mutable::Bool=false)
+        return ManualSolver{mutable}(dev)
+    end
 end
 
 function (solver::ManualSolver{true})(
@@ -107,8 +111,7 @@ function (solver::ManualSolver{true})(
     tmp_initstates = copy(initstates)
     for (i, t) in enumerate(timeidx)
         tmp_du = du_func(tmp_initstates, pas, t)
-        tmp_du_mat = reduce(hcat, tmp_du)
-        tmp_initstates = tmp_initstates .+ tmp_du_mat
+        tmp_initstates = tmp_initstates .+ tmp_du
         states_results[:, :, i] .= tmp_initstates
     end
     states_results
@@ -117,10 +120,10 @@ end
 function (solver::ManualSolver{false})(
     du_func::Function,
     pas::AbstractVector,
-    initstates::AbstractArray,
+    initstates::AbstractArray{T, N},
     timeidx::AbstractVector;
     kwargs...
-)
+) where {T, N}
     function recur_op(::Nothing, t)
         new_states = du_func(initstates, pas, t) .+ initstates
         return [new_states], new_states
@@ -130,5 +133,5 @@ function (solver::ManualSolver{false})(
         return vcat(states_list, [new_states]), new_states
     end
     states_vec, _ = foldl_init(recur_op, timeidx)
-    stack(states_vec, dims=3)
+    stack(states_vec, dims=N+1)
 end
