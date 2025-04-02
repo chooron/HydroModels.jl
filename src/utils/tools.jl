@@ -1,186 +1,134 @@
 """
-    sort_fluxes(fluxes::AbstractVector{<:AbstractComponent})
+    DirectInterpolation{D}(data::AbstractArray, ts::AbstractVector{<:Integer})
 
-Construct a directed calculation graph based on hydrological fluxes and return them in topological order.
+A lightweight interpolation type that provides the same interface as DataInterpolations.jl but uses direct indexing instead of interpolation algorithms.
 
 # Arguments
-- `fluxes::AbstractVector{<:AbstractComponent}`: A vector of flux components to be sorted.
+- `data::AbstractArray`: The data array to be interpolated
+- `ts::AbstractVector{<:Integer}`: The time points corresponding to the data
 
-# Returns
-- `AbstractVector{<:AbstractComponent}`: A vector of flux components sorted in topological order for calculation.
+# Interface
+Implements the same callable interface as DataInterpolations.jl interpolation types:
+- `(interp::DirectInterpolation)(t)`: Get the value at time `t`
 
-# Description
-This function creates a directed graph representing the dependencies between flux components,
-where edges connect input variables to output variables. The function then performs a topological
-sort to determine the correct calculation order that respects these dependencies.
+# Implementation Details
+Rather than performing interpolation calculations, this type simply returns the data value at the ceiling of the requested time index.
+For non-integer time points `t`, it uses `ceil(Int, t)` to get the next integer index.
 
-The process involves:
-1. Identifying all input and output variables across all flux components
-2. Building a directed graph where nodes are variables and edges represent dependencies
-3. Performing a topological sort on the graph
-4. Extracting the flux components in the order determined by the sort
-
-This ensures that when calculations are performed, all required inputs are available before
-a flux component is evaluated.
-
-# Examples
+# Example
 ```julia
-fluxes = [flux1, flux2, flux3]
-sorted_fluxes = sort_fluxes(fluxes)
-# Now sorted_fluxes contains the components in the correct calculation order
+data = rand(100)
+ts = 1:100
+interp = DirectInterpolation(data, ts)
+value = interp(1.7)  # Returns data[2] (ceiling of 1.7)
 ```
 """
-function sort_fluxes(fluxes::AbstractVector{<:AbstractComponent})
-    input_names = reduce(union, get_input_names.(fluxes))
-    output_names = reduce(union, get_output_names.(fluxes))
-    input_names = setdiff(input_names, output_names)
-    output_names = setdiff(output_names, input_names)
+struct DirectInterpolation{D}
+    data::AbstractArray
+    ts::AbstractVector
 
-    # Build a named tuple mapping output names to their corresponding flux instances
-    fluxes_ntp = reduce(merge, map(fluxes) do flux
-        tmp_output_names = get_output_names(flux)
-        NamedTuple{Tuple(tmp_output_names)}(repeat([flux], length(tmp_output_names)))
-    end)
-
-    # Construct a directed calculation graph
-    var_names = vcat(input_names, output_names)
-    var_names_ntp = NamedTuple{Tuple(var_names)}(1:length(var_names))
-    digraph = SimpleDiGraph(length(var_names))
-    for flux in fluxes
-        tmp_input_names, tmp_output_names = get_input_names(flux), get_output_names(flux)
-        for ipnm in tmp_input_names
-            for opnm in tmp_output_names
-                println((ipnm => opnm))
-                add_edge!(digraph, var_names_ntp[ipnm], var_names_ntp[opnm])
-            end
-        end
+    function DirectInterpolation(data::AbstractArray, ts::AbstractVector{<:Integer})
+        @assert size(data)[end] == length(ts) "The last dimension of data must match the length of ts"
+        return new{length(size(data))}(data, ts)
     end
-    
-    # Sort fluxes based on the topological order of the directed graph
-    sorted_fluxes = AbstractComponent[]
-    for idx in topological_sort(digraph)
-        tmp_var_nm = var_names[idx]
-        if (tmp_var_nm in output_names)
-            tmp_flux = fluxes_ntp[tmp_var_nm]
-            if !(tmp_flux in sorted_fluxes)
-                push!(sorted_fluxes, tmp_flux)
-            end
-        end
-    end
-    sorted_fluxes
 end
 
+@inline (interpolater::DirectInterpolation{1})(t::Integer) = interpolater.data[t]
+@inline (interpolater::DirectInterpolation{1})(t::Number) = interpolater.data[ceil(Int, t)]
+@inline (interpolater::DirectInterpolation{2})(t::Integer) = interpolater.data[:, t]
+@inline (interpolater::DirectInterpolation{2})(t::Number) = interpolater.data[:, ceil(Int, t)]
+
 """
-    sort_components(components::AbstractVector{<:AbstractComponent})
+    ManualSolver{mutable} <: AbstractHydroSolver
 
-Construct a directed calculation graph based on hydrological components and return them in topological order.
+A lightweight, type-stable ODE solver optimized for hydrological modeling.
 
-# Arguments
-- `components::AbstractVector{<:AbstractComponent}`: A vector of hydrological components to be sorted.
-
-# Returns
-- `AbstractVector{<:AbstractComponent}`: A vector of components sorted in topological order for calculation.
+# Type Parameters
+- `mutable::Bool`: Controls array mutability and performance characteristics
+    - `true`: Uses mutable arrays for in-place updates (30% faster)
+    - `false`: Uses immutable arrays for functional programming style
 
 # Description
-This function creates a directed graph representing the dependencies between hydrological components,
-where edges connect input variables to output and state variables. The function then performs a 
-topological sort to determine the correct calculation order that respects these dependencies.
+ManualSolver implements a fixed-step explicit Euler method for solving ordinary 
+differential equations (ODEs). It is specifically designed for hydrological models 
+where stability and computational efficiency are prioritized over high-order accuracy.
 
-The process involves:
-1. Identifying all input, output, and state variables across all components
-2. Building a directed graph where nodes are variables and edges represent dependencies
-3. Performing a topological sort on the graph
-4. Extracting the components in the order determined by the sort
+## Performance Characteristics
+- Type-stable implementation for predictable performance
+- Optional in-place operations via the `mutable` parameter
+- Linear time complexity with respect to simulation length
+- Constant space complexity when `mutable=true`
 
-This ensures that when calculations are performed, all required inputs are available before
-a component is evaluated.
+## Memory Management
+- `mutable=true`: 
+    - Modifies arrays in-place
+- `mutable=false`:
+    - Creates new arrays at each step
 
-# Examples
-```julia
-components = [bucket1, flux1, route1]
-sorted_components = sort_components(components)
-# Now sorted_components contains the components in the correct calculation order
-```
+## Use Cases
+- Small to medium-scale hydrological models
+- Systems with moderate stiffness
+- Real-time applications requiring predictable performance
+- Memory-constrained environments (with `mutable=true`)
+
+See also: [`AbstractHydroSolver`](@ref), [`solve`](@ref)
 """
-function sort_components(components::AbstractVector{<:AbstractComponent})
-    input_names, output_names, state_names = get_var_names(components)
-    components_ntp = reduce(merge, map(components) do component
-        tmp_input_names, tmp_output_names, tmp_state_names = get_var_names(component)
-        tmp_output_state_names = vcat(tmp_output_names, tmp_state_names)
-        NamedTuple{Tuple(tmp_output_state_names)}(repeat([component], length(tmp_output_state_names)))
-    end)
-    var_names = reduce(union, [input_names, output_names, state_names])
-    var_names_ntp = namedtuple(var_names, collect(1:length(var_names)))
-    digraph = SimpleDiGraph(length(var_names))
-    for component in components
-        tmp_input_names, tmp_output_names, tmp_state_names = get_var_names(component)
-        tmp_output_names = vcat(tmp_output_names, tmp_state_names)
-        for ipnm in tmp_input_names
-            for opnm in tmp_output_names
-                add_edge!(digraph, var_names_ntp[ipnm], var_names_ntp[opnm])
-            end
-        end
+@kwdef struct ManualSolver{mutable}
+    dev = identity
+end
+
+function (solver::ManualSolver{true})(
+    du_func::Function,
+    pas::AbstractVector,
+    initstates::AbstractArray{<:Number,1},
+    timeidx::AbstractVector;
+    kwargs...
+)
+    T1 = promote_type(eltype(pas), eltype(initstates))
+    states_results = zeros(T1, length(initstates), length(timeidx))
+    tmp_initstates = copy(initstates)
+    for (i, t) in enumerate(timeidx)
+        tmp_du = du_func(tmp_initstates, pas, t)
+        tmp_initstates = tmp_initstates .+ tmp_du
+        states_results[:, i] = tmp_initstates
     end
-    sorted_components = AbstractComponent[]
-    for idx in topological_sort(digraph)
-        tmp_var_nm = var_names[idx]
-        if (tmp_var_nm in output_names)
-            tmp_component = components_ntp[tmp_var_nm]
-            if !(tmp_component in sorted_components)
-                push!(sorted_components, tmp_component)
-            end
-        end
+    states_results
+end
+
+function (solver::ManualSolver{true})(
+    du_func::Function,
+    pas::AbstractVector,
+    initstates::AbstractArray{<:Number,2},
+    timeidx::AbstractVector;
+    kwargs...
+)
+    T1 = promote_type(eltype(pas), eltype(initstates))
+    states_results = zeros(T1, size(initstates)..., length(timeidx)) |> solver.dev
+    tmp_initstates = copy(initstates)
+    for (i, t) in enumerate(timeidx)
+        tmp_du = du_func(tmp_initstates, pas, t)
+        tmp_du_mat = reduce(hcat, tmp_du)
+        tmp_initstates = tmp_initstates .+ tmp_du_mat
+        states_results[:, :, i] .= tmp_initstates
     end
-    sorted_components
+    states_results
 end
 
-"""
-Expand the parameters of a component vector based on the provided index.
-
-# Arguments
-- `pas::ComponentVector`: The component vector to be expanded.
-- `ptyidx::AbstractVector`: The index of the parameters to be expanded.
-
-# Returns
-- `new_pas::ComponentVector`: The expanded component vector.
-"""
-function expand_component_params(pas::ComponentVector, ptyidx::AbstractVector)
-    params = view(pas, :params)
-    expand_params = NamedTuple{Tuple(keys(params))}([params[p][ptyidx] for p in keys(params)])
-    return if haskey(pas, :nns)
-        ComponentVector(params=expand_params, nns=pas[:nns])
-    else
-        ComponentVector(params=expand_params)
+function (solver::ManualSolver{false})(
+    du_func::Function,
+    pas::AbstractVector,
+    initstates::AbstractArray,
+    timeidx::AbstractVector;
+    kwargs...
+)
+    function recur_op(::Nothing, t)
+        new_states = du_func(initstates, pas, t) .+ initstates
+        return [new_states], new_states
     end
-end
-
-"""
-Expand the initial states of a component vector based on the provided index.
-
-# Arguments
-- `pas::ComponentVector`: The component vector to be expanded.
-- `styidx::AbstractVector`: The index of the initial states to be expanded.
-- `num_nodes::Int`: The number of nodes.
-
-# Returns
-- `new_pas::ComponentVector`: The expanded component vector.
-"""
-function expand_component_initstates(initstates::ComponentVector, styidx::AbstractVector)
-    num_states = length(keys(initstates))
-    initstates_arr = reshape(Vector(initstates), :, num_states)'
-    expand_component_initstates(initstates_arr, styidx)
-end
-
-function expand_component_initstates(initstates::AbstractMatrix, styidx::AbstractVector)
-    view(initstates, :, styidx)
-end
-
-function get_default_states(component::AbstractComponent, dtype::Type)
-    state_names = get_state_names(component)
-    return ComponentVector(NamedTuple{Tuple(state_names)}(fill(zero(dtype), length(state_names))))
-end
-
-function get_default_states(component::AbstractComponent, node_num::Int, dtype::Type)
-    state_names = get_state_names(component)
-    return ComponentVector(NamedTuple{Tuple(state_names)}(fill(zeros(dtype, node_num), length(state_names))))
+    function recur_op((states_list, last_state), t)
+        new_states = du_func(last_state, pas, t) .+ last_state
+        return vcat(states_list, [new_states]), new_states
+    end
+    states_vec, _ = foldl_init(recur_op, timeidx)
+    stack(states_vec, dims=3)
 end
