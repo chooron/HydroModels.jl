@@ -27,13 +27,11 @@ using ModelingToolkit: isparameter
 # graph compute
 using Graphs
 
-# data interpolataion
-using DataInterpolations
-using DataInterpolations: AbstractInterpolation
-
 # deep learning
 using Lux
+using Lux:foldl_init
 using NNlib
+using MLUtils
 
 ## Abstract Component Types
 abstract type AbstractComponent end
@@ -57,13 +55,14 @@ export AbstractElement, AbstractBucket, AbstractHydrograph, AbstractRoute, Abstr
 include("utils/expression.jl")
 include("utils/attribute.jl")
 export get_var_names, get_state_names, get_output_names, get_input_names, get_param_names, get_nn_names, get_name
-include("utils/tools.jl")
+include("utils/miscellaneous.jl")
 include("utils/display.jl")
 include("utils/build.jl")
 include("utils/check.jl")
+include("utils/tools.jl")
 #! A discrete ODE solver, if want to use more efficient solver, please import HydroModelTools.jl
-include("utils/solver.jl")
-export ManualSolver
+#! When constructing an ODE problem to solve, use DataInterpolations.jl
+export ManualSolver, DirectInterpolation
 
 # framework build
 include("flux.jl")

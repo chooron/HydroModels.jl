@@ -115,7 +115,7 @@ Execute routing simulation for a river network.
 - `initstates::ComponentVector=ComponentVector()`: Initial states for all nodes
 - `config::Dict=Dict()`: Configuration options including:
   - `solver::AbstractHydroSolver`: ODE solver (e.g., `ManualSolver`, `Tsit5`)
-  - `interp::Function`: Input interpolation method (e.g., `LinearInterpolation`)
+  - `interp::Function`: Input interpolation method (e.g., `DirectInterpolation`)
   - `ptyidx::AbstractVector{Int}`: Parameter type indices for nodes
   - `styidx::AbstractVector{Int}`: State type indices for nodes
 
@@ -157,7 +157,7 @@ output = route(
     initstates=init_states,        # initial conditions
     config=Dict(
         :solver => ManualSolver{true}(),
-        :interp => LinearInterpolation,
+        :interp => DirectInterpolation,
         :ptyidx => 1:n_nodes
     )
 )
@@ -181,9 +181,9 @@ function (route::HydroRoute)(
     input_dims, num_nodes, time_len = size(input)
 
     #* get kwargs
-    ptyidx = get(kwargs, :ptyidx, 1:num_nodes)
-    styidx = get(kwargs, :styidx, 1:num_nodes)
-    interp = get(kwargs, :interp, LinearInterpolation)
+    ptyidx = get(kwargs, :ptyidx, collect(1:num_nodes))
+    styidx = get(kwargs, :styidx, collect(1:num_nodes))
+    interp = get(kwargs, :interp, DirectInterpolation)
     solver = get(kwargs, :solver, ManualSolver{true}())
     timeidx = get(kwargs, :timeidx, collect(1:time_len))
     device = get(kwargs, :device, identity)
@@ -213,12 +213,7 @@ function (route::HydroRoute)(
     )
     #* run other functions
     output = route.multi_flux_func(eachslice(input, dims=1), eachslice(solved_states, dims=1), new_pas)
-    output_arr = if length(output) > 1
-        permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), output), (3, 1, 2))
-    else
-        reshape(output[1], 1, num_nodes, time_len)
-    end
-    cat(solved_states, output_arr, dims=1)
+    cat(solved_states, stack(output, dims=1), dims=1)
 end
 
 """
@@ -505,7 +500,7 @@ Execute RAPID routing simulation for a river network.
 - `kwargs`: Configuration options including:
   - `delta_t::Float64=1.0`: Time step in seconds
   - `device::Function=identity`: Computing device (e.g., `identity` for CPU, `cu` for GPU)
-  - `interp::Function=LinearInterpolation`: Input interpolation method
+  - `interp::Function=DirectInterpolation`: Input interpolation method
   - `solver::AbstractHydroSolver=ManualSolver{true}()`: ODE solver
   - `ptyidx::AbstractVector{Int}`: Parameter type indices for nodes
   - `timeidx::AbstractVector{Int}`: Time indices for simulation
@@ -549,7 +544,7 @@ output = route(
     params;
     delta_t=1800.0,                    # 30-min timestep
     device=gpu_device(),                         # Run on GPU
-    interp=LinearInterpolation,        # Linear interpolation
+    interp=DirectInterpolation,        # Linear interpolation
     solver=ManualSolver{true}(),       # Manual timestepping
     ptyidx=1:n_nodes,                 # All nodes
     timeidx=1:n_timesteps             # Full simulation
@@ -568,7 +563,7 @@ function (route::RapidRoute)(input::Array, params::ComponentVector; kwargs...)
     device = get(kwargs, :device, identity)
     delta_t = get(kwargs, :delta_t, 1.0)
     #* get the interpolation type and solver type
-    interp = get(kwargs, :interp, LinearInterpolation)
+    interp = get(kwargs, :interp, DirectInterpolation)
     solver = get(kwargs, :solver, ManualSolver{true}())
     #* get the time index
     timeidx = get(kwargs, :timeidx, collect(1:size(input, 3)))

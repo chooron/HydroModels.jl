@@ -99,16 +99,16 @@ function build_ele_func(
             push!(state_compute_calls, :($(f.infos[:nn_outputs]) = $(f.func)($(f.infos[:nn_inputs]), $(f.infos[:nns][1]))))
             append!(state_compute_calls, [:($(nm) = $(f.infos[:nn_outputs])[$i]) for (i, nm) in enumerate(get_output_names(f))])
 
-            append!(multi_state_compute_calls, [:($(f.infos[:nn_inputs]) = permutedims(reduce(hcat, [$(get_input_names(f)...)])))])
+            push!(multi_state_compute_calls, :($(f.infos[:nn_inputs]) = stack([$(get_input_names(f)...)], dims=1)))
             push!(multi_state_compute_calls, :($(f.infos[:nn_outputs]) = $(f.func)($(f.infos[:nn_inputs]), $(f.infos[:nns][1]))))
             append!(multi_state_compute_calls, [:($(nm) = $(f.infos[:nn_outputs])[$i, :]) for (i, nm) in enumerate(get_output_names(f))])
 
-            append!(flux_compute_calls, [:($(f.infos[:nn_inputs]) = permutedims(reduce(hcat, [$(get_input_names(f)...)])))])
+            push!(flux_compute_calls, :($(f.infos[:nn_inputs]) = stack([$(get_input_names(f)...)], dims=1)))
             push!(flux_compute_calls, :($(f.infos[:nn_outputs]) = $(f.func)($(f.infos[:nn_inputs]), $(f.infos[:nns][1]))))
             append!(flux_compute_calls, [:($(nm) = $(f.infos[:nn_outputs])[$i, :]) for (i, nm) in enumerate(get_output_names(f))])
 
-            append!(multi_flux_compute_calls, [:($(f.infos[:nn_inputs]) = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), [$(get_input_names(f)...)]), (3, 1, 2)))])
-            push!(multi_flux_compute_calls, :($(f.infos[:nn_outputs]) = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), $(f.func).(eachslice($(f.infos[:nn_inputs]), dims=2), Ref($(f.infos[:nns][1])))), (1, 3, 2))))
+            push!(multi_flux_compute_calls, :($(f.infos[:nn_inputs]) = stack([$(get_input_names(f)...)], dims=1)))
+            push!(multi_flux_compute_calls, :($(f.infos[:nn_outputs]) = stack($(f.func).(eachslice($(f.infos[:nn_inputs]), dims=2), Ref($(f.infos[:nns][1]))), dims=2)))
             append!(multi_flux_compute_calls, [:($(nm) = $(f.infos[:nn_outputs])[$i, :, :]) for (i, nm) in enumerate(get_output_names(f))])
         else
             append!(state_compute_calls, [:($nm = $(toexpr(expr))) for (nm, expr) in zip(get_output_names(f), f.exprs)])
@@ -121,7 +121,7 @@ function build_ele_func(
     # Create return expressions with concrete values
     return_flux = :(return [$(output_names...)])
     return_state = :(return [$(map(expr -> :($(toexpr(expr))), reduce(vcat, get_exprs.(dfluxes)))...)])
-    return_multi_state = :(return reduce(hcat, [$(map(expr -> :($(toexprv2(unwrap(expr)))), reduce(vcat, get_exprs.(dfluxes)))...)]) |> permutedims)
+    return_multi_state = :(return stack([$(map(expr -> :($(toexprv2(unwrap(expr)))), reduce(vcat, get_exprs.(dfluxes)))...)], dims=1))
 
     # Create fcuntion expression
     meta_exprs = [:(Base.@_inline_meta)]
@@ -217,12 +217,12 @@ function build_route_func(
     state_compute_calls, flux_compute_calls, = [], []
     for f in fluxes
         if f isa AbstractNeuralFlux
-            append!(state_compute_calls, [:($(f.infos[:nn_inputs]) = permutedims(reduce(hcat, [$(get_input_names(f)...)])))])
+            push!(state_compute_calls, :($(f.infos[:nn_inputs]) = stack([$(get_input_names(f)...)], dims=1)))
             push!(state_compute_calls, :($(f.infos[:nn_outputs]) = $(f.func)($(f.infos[:nn_inputs]), $(f.infos[:nns]))))
             append!(state_compute_calls, [:($(nm) = $(f.infos[:nn_outputs])[$i, :]) for (i, nm) in enumerate(get_output_names(f))])
 
-            append!(flux_compute_calls, [:($(f.infos[:nn_inputs]) = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), [$(get_input_names(f)...)]), (3, 1, 2)))])
-            push!(flux_compute_calls, :($(f.infos[:nn_outputs]) = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), $(f.func).(eachslice($(f.infos[:nn_inputs]), dims=2), Ref($(f.infos[:nns][1])))), (1, 3, 2))))
+            push!(flux_compute_calls, :($(f.infos[:nn_inputs]) = stack([$(get_input_names(f)...)], dims=1)))
+            push!(flux_compute_calls, :($(f.infos[:nn_outputs]) = stack($(f.func).(eachslice($(f.infos[:nn_inputs]), dims=2), Ref($(f.infos[:nns][1]))), dims=2)))
             append!(flux_compute_calls, [:($(nm) = $(f.infos[:nn_outputs])[$i, :, :]) for (i, nm) in enumerate(get_output_names(f))])
         else
             append!(state_compute_calls, [:($(nm) = $(toexprv2(unwrap(expr)))) for (nm, expr) in zip(get_output_names(f), f.exprs)])

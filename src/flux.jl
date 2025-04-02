@@ -144,14 +144,10 @@ function (flux::HydroFlux{N})(input::AbstractArray{T,2}, params::ComponentVector
 end
 
 function (flux::HydroFlux{N})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T,N}
-    ptyidx = get(kwargs, :ptyidx, 1:size(input, 2))
+    ptyidx = get(kwargs, :ptyidx, collect(1:size(input, 2)))
     expand_params = expand_component_params(params, ptyidx)
     output = flux.func(eachslice(input, dims=1), expand_params)
-    return if length(output) == 1
-        reshape(output[1], 1, size(input, 2), size(input, 3))
-    else
-        permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), output), (3, 1, 2))
-    end
+    stack(output, dims=1)
 end
 
 """
@@ -303,16 +299,13 @@ output = flux(input, params)  # input: (2, n_nodes, timesteps)
 """
 function (flux::NeuralFlux{N})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T,N}
     nn_params = params[:nns][get_nn_names(flux)[1]]
-    output_arr = flux.func(input, nn_params)
-    return output_arr
+    flux.func(input, nn_params)
 end
 
 function (flux::NeuralFlux{N})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T,N}
     nn_params = params[:nns][get_nn_names(flux)[1]]
     #* array dims: (ts_len * node_names * var_names)
-    flux_output_vec = [flux.func(input[:, i, :], nn_params) for i in 1:size(input)[2]]
-    flux_output_arr = reduce((m1, m2) -> cat(m1, m2, dims=3), flux_output_vec)
-    permutedims(flux_output_arr, (1, 3, 2))
+    stack(ntuple(i -> flux.func(input[:, i, :], nn_params), size(input)[2]), dims=2)
 end
 
 """

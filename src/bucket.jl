@@ -68,11 +68,11 @@ struct HydroBucket{N,S} <: AbstractBucket
         input_names, output_names, state_names = get_var_names(fluxes, dfluxes)
         param_names = reduce(union, get_param_names.(vcat(fluxes, dfluxes)))
         nn_names = reduce(union, get_nn_names.(fluxes))
-        infos = (;inputs=input_names, outputs=output_names, states=state_names, params=param_names, nns=nn_names)
+        infos = (; inputs=input_names, outputs=output_names, states=state_names, params=param_names, nns=nn_names)
         #* Construct a function for ordinary differential calculation based on dfunc and funcs
         flux_funcs, ode_funcs = build_ele_func(fluxes, dfluxes, infos)
         bucket_name = isnothing(name) ? Symbol("##bucket#", hash(infos)) : name
-        return new{bucket_name, !isempty(state_names)}(fluxes, dfluxes, flux_funcs, ode_funcs, infos)
+        return new{bucket_name,!isempty(state_names)}(fluxes, dfluxes, flux_funcs, ode_funcs, infos)
     end
 end
 
@@ -126,7 +126,7 @@ metadata. All required parameters and initial states must be present in the para
 function (ele::HydroBucket{N,true})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T,N}
     #* get kwargs
     solver = get(kwargs, :solver, ManualSolver{true}())
-    interp = get(kwargs, :interp, LinearInterpolation)
+    interp = get(kwargs, :interp, DirectInterpolation)
     timeidx = get(kwargs, :timeidx, collect(1:size(input, 2)))
     #* prepare initstates
     initstates = get(kwargs, :initstates, zeros(eltype(params), length(get_state_names(ele))))
@@ -141,23 +141,22 @@ function (ele::HydroBucket{N,true})(input::AbstractArray{T,2}, params::Component
     )
     #* concatenate states and fluxes 
     flux_output = ele.flux_funcs[1](eachslice(input, dims=1), eachslice(solved_states, dims=1), params)
-    vcat(solved_states, permutedims(reduce(hcat, flux_output)))
+    vcat(solved_states, stack(flux_output, dims=1))
 end
 
 (ele::HydroBucket{N,false})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T,N} = begin
-    flux_output = ele.flux_funcs[1](eachslice(input, dims=1), nothing, params)
-    permutedims(reduce(hcat, flux_output))
+    stack(ele.flux_funcs[1](eachslice(input, dims=1), nothing, params), dims=1)
 end
 
 function (ele::HydroBucket{N,true})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T,N}
     input_dims, num_nodes, time_len = size(input)
 
     #* get kwargs
-    ptyidx = get(kwargs, :ptyidx, 1:size(input, 2))
-    styidx = get(kwargs, :styidx, 1:size(input, 2))
+    ptyidx = get(kwargs, :ptyidx, collect(1:num_nodes))
+    styidx = get(kwargs, :styidx, collect(1:num_nodes))
     device = get(kwargs, :device, identity)
     solver = get(kwargs, :solver, ManualSolver{true}())
-    interp = get(kwargs, :interp, LinearInterpolation)
+    interp = get(kwargs, :interp, DirectInterpolation)
     timeidx = get(kwargs, :timeidx, collect(1:size(input, 3)))
 
     #* prepare initstates
@@ -170,22 +169,19 @@ function (ele::HydroBucket{N,true})(input::AbstractArray{T,3}, params::Component
     params_vec, params_axes = Vector(new_params) |> device, getaxes(new_params)
 
     #* prepare input function
-    itpfuncs = interp(reshape(input, input_dims * num_nodes, time_len), timeidx)
+    itpfuncs = interp.(eachslice(input, dims=1), Ref(timeidx))
+
     solved_states = solver(
-        (u, p, t) -> begin
-            tmp_input = reshape(itpfuncs(t), input_dims, num_nodes)
-            reduce(hcat, ele.ode_funcs[2](eachslice(tmp_input, dims=1), eachslice(u, dims=1), ComponentVector(p, params_axes))) |> permutedims
-        end,
+        (u, p, t) -> ele.ode_funcs[2](
+            ntuple(i -> itpfuncs[i](t), length(itpfuncs)),
+            eachslice(u, dims=1),
+            ComponentVector(p, params_axes)
+        ),
         params_vec, initstates_mat, timeidx
     )
     #* run other functions
     output = ele.flux_funcs[2](eachslice(input, dims=1), eachslice(solved_states, dims=1), new_params)
-    output_arr = if length(output) > 1 
-        permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), output), (3, 1, 2))
-    else
-        reshape(output[1], 1, num_nodes, time_len)
-    end
-    cat(solved_states, output_arr, dims=1)
+    cat(solved_states, stack(output, dims=1), dims=1)
 end
 
 function (ele::HydroBucket{N,false})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T,N}
@@ -193,5 +189,5 @@ function (ele::HydroBucket{N,false})(input::AbstractArray{T,3}, params::Componen
     new_params = expand_component_params(params, ptyidx)
     #* run other functions
     output = ele.flux_funcs[2](eachslice(input, dims=1), nothing, new_params)
-    permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), output), (3, 1, 2))
+    stack(output, dims=1)
 end
