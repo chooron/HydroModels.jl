@@ -25,4 +25,4 @@ bucket_2 = HydroBucket(name=:soil, fluxes=fluxes_2, dfluxes=dfluxes_2)
 
 exphydro_model = HydroModel(name=:exphydro, components=[bucket_1, bucket_2]) 
 
-export bucket_1, fluxes_1, dfluxes_1
+export bucket_1, fluxes_1, dfluxes_1, fluxes_2, dfluxes_2

@@ -82,13 +82,15 @@ function build_ele_func(
     dfluxes::Vector{<:AbstractStateFlux},
     infos::NamedTuple,
 )
-    input_names, output_names = infos.inputs, infos.outputs
-    state_names, param_names = infos.states, infos.params
+    input_names = length(infos.inputs) == 0 ? [] : tosymbol.(infos.inputs)
+    output_names = length(infos.outputs) == 0 ? [] : tosymbol.(infos.outputs)
+    state_names = length(infos.states) == 0 ? [] : tosymbol.(infos.states)
+    param_names = length(infos.params) == 0 ? [] : tosymbol.(infos.params)
 
     input_define_calls = [:($i = inputs[$idx]) for (idx, i) in enumerate(input_names)]
     state_define_calls = [:($s = states[$idx]) for (idx, s) in enumerate(state_names)]
     params_assign_calls = [:($p = pas.params.$p) for p in param_names]
-    nn_params_assign_calls = [:($(nflux.infos[:nns][1]) = pas.nns.$(nflux.infos[:nns][1])) for nflux in filter(f -> f isa AbstractNeuralFlux, fluxes)]
+    nn_params_assign_calls = [:($nn = pas.nns.$nn) for nn in [get_nn_names(f)[1] for f in filter(f -> f isa AbstractNeuralFlux, fluxes)]]
     define_calls = reduce(vcat, [input_define_calls, state_define_calls, params_assign_calls, nn_params_assign_calls])
 
     # varibles definitions expressions
@@ -96,19 +98,19 @@ function build_ele_func(
     for f in fluxes
         if f isa AbstractNeuralFlux
             append!(state_compute_calls, [:($(f.infos[:nn_inputs]) = [$(get_input_names(f)...)])])
-            push!(state_compute_calls, :($(f.infos[:nn_outputs]) = $(f.func)($(f.infos[:nn_inputs]), $(f.infos[:nns][1]))))
+            push!(state_compute_calls, :($(f.infos[:nn_outputs]) = $(f.func)($(f.infos[:nn_inputs]), $(get_nn_names(f)[1]))))
             append!(state_compute_calls, [:($(nm) = $(f.infos[:nn_outputs])[$i]) for (i, nm) in enumerate(get_output_names(f))])
 
             push!(multi_state_compute_calls, :($(f.infos[:nn_inputs]) = stack([$(get_input_names(f)...)], dims=1)))
-            push!(multi_state_compute_calls, :($(f.infos[:nn_outputs]) = $(f.func)($(f.infos[:nn_inputs]), $(f.infos[:nns][1]))))
+            push!(multi_state_compute_calls, :($(f.infos[:nn_outputs]) = $(f.func)($(f.infos[:nn_inputs]), $(get_nn_names(f)[1]))))
             append!(multi_state_compute_calls, [:($(nm) = $(f.infos[:nn_outputs])[$i, :]) for (i, nm) in enumerate(get_output_names(f))])
 
             push!(flux_compute_calls, :($(f.infos[:nn_inputs]) = stack([$(get_input_names(f)...)], dims=1)))
-            push!(flux_compute_calls, :($(f.infos[:nn_outputs]) = $(f.func)($(f.infos[:nn_inputs]), $(f.infos[:nns][1]))))
+            push!(flux_compute_calls, :($(f.infos[:nn_outputs]) = $(f.func)($(f.infos[:nn_inputs]), $(get_nn_names(f)[1]))))
             append!(flux_compute_calls, [:($(nm) = $(f.infos[:nn_outputs])[$i, :]) for (i, nm) in enumerate(get_output_names(f))])
 
             push!(multi_flux_compute_calls, :($(f.infos[:nn_inputs]) = stack([$(get_input_names(f)...)], dims=1)))
-            push!(multi_flux_compute_calls, :($(f.infos[:nn_outputs]) = stack($(f.func).(eachslice($(f.infos[:nn_inputs]), dims=2), Ref($(f.infos[:nns][1]))), dims=2)))
+            push!(multi_flux_compute_calls, :($(f.infos[:nn_outputs]) = stack($(f.func).(eachslice($(f.infos[:nn_inputs]), dims=2), Ref($(get_nn_names(f)[1]))), dims=2)))
             append!(multi_flux_compute_calls, [:($(nm) = $(f.infos[:nn_outputs])[$i, :, :]) for (i, nm) in enumerate(get_output_names(f))])
         else
             append!(state_compute_calls, [:($nm = $(toexpr(expr))) for (nm, expr) in zip(get_output_names(f), f.exprs)])
@@ -206,23 +208,25 @@ function build_route_func(
     dfluxes::AbstractVector{<:AbstractStateFlux},
     infos::NamedTuple,
 )
-    input_names, output_names = tosymbol.(infos.inputs), tosymbol.(infos.outputs)
-    state_names, param_names = tosymbol.(infos.states), tosymbol.(infos.params)
+    input_names = length(infos.inputs) == 0 ? [] : tosymbol.(infos.inputs)
+    output_names = length(infos.outputs) == 0 ? [] : tosymbol.(infos.outputs)
+    state_names = length(infos.states) == 0 ? [] : tosymbol.(infos.states)
+    param_names = length(infos.params) == 0 ? [] : tosymbol.(infos.params)
 
     input_define_calls = [:($i = inputs[$idx]) for (idx, i) in enumerate(input_names)]
     state_define_calls = [:($s = states[$idx]) for (idx, s) in enumerate(state_names)]
     params_assign_calls = [:($p = pas.params.$p) for p in param_names]
-    nn_params_assign_calls = [:($nn = pas.nns.$nn) for nn in [nflux.infos[:nns][1] for nflux in filter(f -> f isa AbstractNeuralFlux, fluxes)]]
+    nn_params_assign_calls = [:($nn = pas.nns.$nn) for nn in [get_nn_names(f)[1] for f in filter(f -> f isa AbstractNeuralFlux, fluxes)]]
     define_calls = reduce(vcat, [input_define_calls, state_define_calls, params_assign_calls, nn_params_assign_calls])
     state_compute_calls, flux_compute_calls, = [], []
     for f in fluxes
         if f isa AbstractNeuralFlux
             push!(state_compute_calls, :($(f.infos[:nn_inputs]) = stack([$(get_input_names(f)...)], dims=1)))
-            push!(state_compute_calls, :($(f.infos[:nn_outputs]) = $(f.func)($(f.infos[:nn_inputs]), $(f.infos[:nns]))))
+            push!(state_compute_calls, :($(f.infos[:nn_outputs]) = $(f.func)($(f.infos[:nn_inputs]), $(get_nn_names(f)))))
             append!(state_compute_calls, [:($(nm) = $(f.infos[:nn_outputs])[$i, :]) for (i, nm) in enumerate(get_output_names(f))])
 
             push!(flux_compute_calls, :($(f.infos[:nn_inputs]) = stack([$(get_input_names(f)...)], dims=1)))
-            push!(flux_compute_calls, :($(f.infos[:nn_outputs]) = stack($(f.func).(eachslice($(f.infos[:nn_inputs]), dims=2), Ref($(f.infos[:nns][1]))), dims=2)))
+            push!(flux_compute_calls, :($(f.infos[:nn_outputs]) = stack($(f.func).(eachslice($(f.infos[:nn_inputs]), dims=2), Ref($(get_nn_names(f)[1]))), dims=2)))
             append!(flux_compute_calls, [:($(nm) = $(f.infos[:nn_outputs])[$i, :, :]) for (i, nm) in enumerate(get_output_names(f))])
         else
             append!(state_compute_calls, [:($(nm) = $(toexprv2(unwrap(expr)))) for (nm, expr) in zip(get_output_names(f), f.exprs)])

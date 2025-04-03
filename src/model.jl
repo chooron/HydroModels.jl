@@ -87,11 +87,11 @@ struct HydroModel{N} <: AbstractModel
         sort_components::Bool=false,
     ) where {C<:AbstractComponent}
         components = sort_components ? sort_components(components) : components
-        input_names, output_names, state_names = get_var_names(components)
-        param_names = reduce(union, get_param_names.(components))
-        nn_names = reduce(union, get_nn_names.(components))
-        input_idx, output_idx = _prepare_indices(components, input_names, vcat(state_names, output_names))
-        infos = (; inputs=input_names, outputs=output_names, states=state_names, params=param_names, nns=nn_names)
+        inputs, outputs, states = get_vars(components)
+        params = reduce(union, get_params.(components))
+        nns = reduce(union, get_nns.(components))
+        input_idx, output_idx = _prepare_indices(components, inputs, vcat(states, outputs))
+        infos = (; inputs=inputs, outputs=outputs, states=states, params=params, nns=nns)
         model_name = isnothing(name) ? Symbol("##model#", hash(infos)) : name
         new{model_name}(components, infos, input_idx, output_idx)
     end
@@ -138,8 +138,9 @@ This internal function manages the variable connections between components by:
 - Variable names must be unique across all components
 - The order of components affects the variable propagation chain
 """
-function _prepare_indices(components::Vector{<:AbstractComponent}, input_names::Vector{Symbol}, vcat_names::Vector{Symbol})
+function _prepare_indices(components::Vector{<:AbstractComponent}, inputs::Vector{Num}, vars::Vector{Num})
     input_idx, output_idx = Vector{Int}[], Vector{Int}()
+    input_names, var_names = tosymbol.(inputs), tosymbol.(vars)
     for component in components
         #* extract input index
         tmp_input_idx = map((nm) -> findfirst(varnm -> varnm == nm, input_names), get_input_names(component))
@@ -148,7 +149,7 @@ function _prepare_indices(components::Vector{<:AbstractComponent}, input_names::
         tmp_cpt_vcat_names = vcat(get_state_names(component), get_output_names(component))
         input_names = vcat(input_names, tmp_cpt_vcat_names)
     end
-    for name in vcat_names
+    for name in var_names
         push!(output_idx, findfirst(varnm -> varnm == name, input_names))
     end
     return input_idx, output_idx

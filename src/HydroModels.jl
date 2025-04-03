@@ -8,6 +8,7 @@ using Reexport
 using LinearAlgebra
 using SparseArrays
 using StableRNGs
+using Random
 using TOML
 
 ## package version
@@ -48,6 +49,9 @@ abstract type AbstractRoute <: AbstractElement end
 abstract type AbstractHydroRoute <: AbstractRoute end
 abstract type AbstractModel <: AbstractComponent end
 
+abstract type AbstractNNLayer <: AbstractLuxLayer end
+abstract type AbstractNNModel <: AbstractLuxLayer end
+
 export AbstractComponent, AbstractFlux, AbstractHydroFlux, AbstractNeuralFlux, AbstractStateFlux
 export AbstractElement, AbstractBucket, AbstractHydrograph, AbstractRoute, AbstractHydroRoute, AbstractModel
 
@@ -75,6 +79,9 @@ include("uh.jl")
 export UHFunction, UnitHydrograph
 include("model.jl")
 export HydroModel
+include("nn.jl")
+export HydroNNLayer, HydroNNModel
+
 include("utils/macros.jl")
 export @hydroflux, @stateflux, @neuralflux, @hydrobucket
 end # module HydroModels

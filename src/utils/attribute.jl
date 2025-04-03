@@ -1,44 +1,49 @@
 """
-    get_name(cpt::AbstractComponent)::Symbol
+    get(cpt::AbstractComponent)::Num
 
 Get the name of a component from its type parameters.
 """
-get_name(cpt::AbstractComponent)::Symbol = typeof(cpt).parameters[1]
+get_name(cpt::AbstractComponent)::Num = typeof(cpt).parameters[1]
 
 """
-    get_input_names(cpt::AbstractComponent)::AbstractVector{Symbol}
+    get_inputs(cpt::AbstractComponent)::AbstractVector{Num}
 
 Get input variable names from component metadata.
 """
-get_input_names(cpt::AbstractComponent)::AbstractVector{Symbol} = haskey(cpt.infos, :inputs) ? cpt.infos.inputs : Symbol[]
+get_inputs(cpt::AbstractComponent)::AbstractVector{Num} = haskey(cpt.infos, :inputs) ? cpt.infos.inputs : Num[]
+get_input_names(cpt::AbstractComponent) = length(get_inputs(cpt)) == 0 ? Symbol[] : tosymbol.(get_inputs(cpt))
 
 """
-    get_output_names(cpt::AbstractComponent)::AbstractVector{Symbol}
+    get_outputs(cpt::AbstractComponent)::AbstractVector{Num}
 
 Get output variable names from component metadata.
 """
-get_output_names(cpt::AbstractComponent)::AbstractVector{Symbol} = haskey(cpt.infos, :outputs) ? cpt.infos.outputs : Symbol[]
+get_outputs(cpt::AbstractComponent)::AbstractVector{Num} = haskey(cpt.infos, :outputs) ? cpt.infos.outputs : Num[]
+get_output_names(cpt::AbstractComponent) = length(get_outputs(cpt)) == 0 ? Symbol[] : tosymbol.(get_outputs(cpt))
 
 """
-    get_state_names(cpt::AbstractComponent)::AbstractVector{Symbol}
+    get_states(cpt::AbstractComponent)::AbstractVector{Num}
 
 Get state variable names from component metadata.
 """
-get_state_names(cpt::AbstractComponent)::AbstractVector{Symbol} = get(cpt.infos, :states, Symbol[])
+get_states(cpt::AbstractComponent)::AbstractVector{Num} = haskey(cpt.infos, :states) ? cpt.infos.states : Num[]
+get_state_names(cpt::AbstractComponent) = length(get_states(cpt)) == 0 ? Symbol[] : tosymbol.(get_states(cpt))
 
 """
-    get_param_names(cpt::AbstractComponent)::AbstractVector{Symbol}
+    get_params(cpt::AbstractComponent)::AbstractVector{Num}
 
 Get parameter names from component metadata.
 """
-get_param_names(cpt::AbstractComponent)::AbstractVector{Symbol} = get(cpt.infos, :params, Symbol[])
+get_params(cpt::AbstractComponent)::AbstractVector{Num} = haskey(cpt.infos, :params) ? cpt.infos.params : Num[]
+get_param_names(cpt::AbstractComponent) = length(get_params(cpt)) == 0 ? Symbol[] : tosymbol.(get_params(cpt))
 
 """
-    get_nn_names(cpt::AbstractComponent)::AbstractVector{Symbol}
+    get_nns(cpt::AbstractComponent)::AbstractVector{Num}
 
 Get neural network names from component metadata.
 """
-get_nn_names(cpt::AbstractComponent)::AbstractVector{Symbol} = get(cpt.infos, :nns, Symbol[])
+get_nns(cpt::AbstractComponent) = haskey(cpt.infos, :nns) ? cpt.infos.nns : Num[]
+get_nn_names(cpt::AbstractComponent) = length(get_nns(cpt)) == 0 ? Symbol[] : tosymbol.(unwrap.(get_nns(cpt)))
 
 """
     get_exprs(cpt::AbstractComponent)
@@ -48,30 +53,13 @@ Get expressions defined in component.
 get_exprs(cpt::AbstractComponent) = cpt.exprs
 
 """
-    get_var_names(comps::AbstractComponent)
+    get_vars(comps::AbstractComponent)
 
 Get all variable names (inputs, outputs, states) from a component.
-Returns (input_names, output_names, state_names).
+Returns (inputs, outputs, states).
 """
+get_vars(comps::AbstractComponent) = get_inputs(comps), get_outputs(comps), get_states(comps)
 get_var_names(comps::AbstractComponent) = get_input_names(comps), get_output_names(comps), get_state_names(comps)
-
-"""
-    get_var_names(funcs::Vector{<:AbstractHydroFlux})
-
-Get all variable names from flux functions, handling input/output dependencies.
-Returns (input_names, output_names).
-"""
-function get_var_names(funcs::Vector{<:AbstractHydroFlux})
-    input_names = Vector{Symbol}()
-    output_names = Vector{Symbol}()
-    for func in funcs
-        tmp_input_names = setdiff(get_input_names(func), output_names)
-        tmp_output_names = setdiff(get_output_names(func), input_names)
-        union!(input_names, tmp_input_names)
-        union!(output_names, tmp_output_names)
-    end
-    input_names, output_names
-end
 
 """
     get_var_names(funcs::Vector{<:AbstractFlux}, dfuncs::Vector{<:AbstractStateFlux})
@@ -79,38 +67,36 @@ end
 Get all variable names from flux and state flux functions.
 Returns (input_names, output_names, state_names).
 """
-function get_var_names(funcs::Vector{<:AbstractFlux}, dfuncs::Vector{<:AbstractStateFlux})
-    input_names = Vector{Symbol}()
-    output_names = Vector{Symbol}()
-    state_names = reduce(union, get_state_names.(dfuncs))
+function get_vars(funcs::Vector{<:AbstractFlux}, dfuncs::Vector{<:AbstractStateFlux})
+    inputs = Vector{Num}()
+    outputs = Vector{Num}()
+    states = reduce(union, get_states.(dfuncs))
     for func in vcat(funcs, dfuncs)
-        tmp_input_names = setdiff(setdiff(get_input_names(func), output_names), state_names)
-        tmp_output_names = setdiff(get_output_names(func), input_names)
-        union!(input_names, tmp_input_names)
-        union!(output_names, tmp_output_names)
+        tmp_inputs = setdiff(setdiff(get_inputs(func), outputs), states)
+        tmp_outputs = setdiff(get_outputs(func), inputs)
+        union!(inputs, tmp_inputs)
+        union!(outputs, tmp_outputs)
     end
-    input_names, output_names, state_names
+    inputs, outputs, states
 end
 
 """
-    get_var_names(components::Vector{<:AbstractComponent})
+    get_vars(components::Vector{<:AbstractComponent})
 
 Get all variable names from components, handling dependencies.
 Returns (input_names, output_names, state_names).
 """
-function get_var_names(components::Vector{<:AbstractComponent})
-    input_names = Vector{Symbol}()
-    output_names = Vector{Symbol}()
-    state_names = Vector{Symbol}()
+function get_vars(components::Vector{<:AbstractComponent})
+    inputs = Vector{Num}()
+    outputs = Vector{Num}()
+    states = Vector{Num}()
     for comp in components
-        tmp_input_names = get_input_names(comp)
-        tmp_output_names = get_output_names(comp)
-        tmp_state_names = get_state_names(comp)
-        tmp_input_names = setdiff(tmp_input_names, output_names)
-        tmp_input_names = setdiff(tmp_input_names, state_names)
-        union!(input_names, tmp_input_names)
-        union!(output_names, tmp_output_names)
-        union!(state_names, tmp_state_names)
+        tmp_inputs, tmp_outputs, tmp_states = get_vars(comp)
+        tmp_inputs = setdiff(tmp_inputs, outputs)
+        tmp_inputs = setdiff(tmp_inputs, states)
+        union!(inputs, tmp_inputs)
+        union!(outputs, tmp_outputs)
+        union!(states, tmp_states)
     end
-    input_names, output_names, state_names
+    inputs, outputs, states
 end

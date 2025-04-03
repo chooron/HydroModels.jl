@@ -65,14 +65,14 @@ struct HydroBucket{N,S} <: AbstractBucket
         #* sort the fluxes if needed
         fluxes = sort_fluxes ? sort_fluxes(fluxes) : fluxes
         #* Extract all variable names of fluxes and dfluxes
-        input_names, output_names, state_names = get_var_names(fluxes, dfluxes)
-        param_names = reduce(union, get_param_names.(vcat(fluxes, dfluxes)))
-        nn_names = reduce(union, get_nn_names.(fluxes))
-        infos = (; inputs=input_names, outputs=output_names, states=state_names, params=param_names, nns=nn_names)
+        inputs, outputs, states = get_vars(fluxes, dfluxes)
+        params = reduce(union, get_params.(vcat(fluxes, dfluxes)))
+        nns = reduce(union, get_nns.(fluxes))
+        infos = (; inputs=inputs, outputs=outputs, states=states, params=params, nns=nns)
         #* Construct a function for ordinary differential calculation based on dfunc and funcs
         flux_funcs, ode_funcs = build_ele_func(fluxes, dfluxes, infos)
         bucket_name = isnothing(name) ? Symbol("##bucket#", hash(infos)) : name
-        return new{bucket_name,!isempty(state_names)}(fluxes, dfluxes, flux_funcs, ode_funcs, infos)
+        return new{bucket_name,!isempty(states)}(fluxes, dfluxes, flux_funcs, ode_funcs, infos)
     end
 end
 

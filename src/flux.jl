@@ -73,15 +73,11 @@ struct HydroFlux{N} <: AbstractHydroFlux
         exprs::Vector{T},
         name::Union{Symbol,Nothing}=nothing,
     ) where {T}
-        #* construct meta
-        input_names = length(inputs) == 0 ? Symbol[] : tosymbol.(inputs)
-        output_names = length(outputs) == 0 ? Symbol[] : tosymbol.(outputs)
-        param_names = length(params) == 0 ? Symbol[] : tosymbol.(params)
         @assert length(exprs) == length(outputs) "The number of expressions and outputs must match, but got expressions: $(length(exprs)) and outputs: $(length(outputs))"
         #* build flux function
         flux_func = build_flux_func(inputs, outputs, params, exprs)
         #* use hash of exprs to name the flux
-        infos = (; inputs=input_names, outputs=output_names, params=param_names)
+        infos = (; inputs=inputs, outputs=outputs, params=params)
         flux_name = isnothing(name) ? Symbol("##hydro_flux#", hash(infos)) : name
         return new{flux_name}(exprs, flux_func, infos)
     end
@@ -226,15 +222,13 @@ struct NeuralFlux{N} <: AbstractNeuralFlux
     ) where {T<:Num}
         #* Check chain name
         chain_name = chain_name === nothing ? chain.name : chain_name
-        input_names = length(inputs) == 0 ? Symbol[] : tosymbol.(inputs)
-        output_names = length(outputs) == 0 ? Symbol[] : tosymbol.(outputs)
-
         ps, st = Lux.setup(StableRNG(42), chain)
         ps_axes = getaxes(ComponentVector(ps))
         nn_func = (x, p) -> LuxCore.apply(chain, x, ComponentVector(p, ps_axes), st)[1]
+        nn_ps = @parameters $chain_name[1:length(ComponentVector(ps))]
 
         nn_input_name, nn_output_name = Symbol(chain_name, :_input), Symbol(chain_name, :_output)
-        infos = (; inputs=input_names, outputs=output_names, nns=[chain_name], nn_inputs=nn_input_name, nn_outputs=nn_output_name)
+        infos = (; inputs=inputs, outputs=outputs, nns=nn_ps, nn_inputs=nn_input_name, nn_outputs=nn_output_name)
         flux_name = isnothing(name) ? Symbol("##neural_flux#", hash(infos)) : name
         new{flux_name}(chain, nn_func, infos)
     end
@@ -394,19 +388,15 @@ struct StateFlux{N} <: AbstractStateFlux
         expr::T,
         name::Union{Symbol,Nothing}=nothing,
     ) where {T<:Num}
-        #* Convert to a symbol based on the variable
-        input_names = length(inputs) == 0 ? Symbol[] : tosymbol.(inputs)
-        state_names = length(state) == 0 ? Symbol[] : [tosymbol(state)]
-        param_names = length(params) == 0 ? Symbol[] : tosymbol.(params)
-        infos = (; inputs=input_names, states=state_names, params=param_names)
+        infos = (; inputs=inputs, states=[state], params=params)
         flux_name = isnothing(name) ? Symbol("##state_flux#", hash(infos)) : name
         return new{flux_name}([expr], infos)
     end
     #* construct state flux with input fluxes and output fluxes
     function StateFlux(fluxes::Pair{Vector{Num},Vector{Num}}, state::Num, name::Union{Symbol,Nothing}=nothing)
         expr = sum(fluxes[1]) - sum(fluxes[2])
-        inflow_names, outflow_names, state_name = tosymbol.(fluxes[1]), tosymbol.(fluxes[2]), tosymbol(state)
-        infos = (; inputs=vcat(inflow_names, outflow_names), states=[state_name], params=Symbol[], inflows=inflow_names, outflows=outflow_names)
+        inflow_names, outflow_names = tosymbol.(fluxes[1]), tosymbol.(fluxes[2])
+        infos = (; inputs=vcat(fluxes[1], fluxes[2]), states=[state], params=Num[], inflows=inflow_names, outflows=outflow_names)
         flux_name = isnothing(name) ? Symbol("##state_flux#", hash(infos)) : name
         return new{flux_name}([expr], infos)
     end

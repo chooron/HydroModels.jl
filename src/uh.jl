@@ -101,7 +101,7 @@ struct UnitHydrograph{N,ST} <: AbstractHydrograph
     ) where {T<:Num,UF<:UHFunction}
         @assert solvetype in [:DISCRETE, :SPARSE] "solvetype must be one of [:DISCRETE, :SPARSE]"
         #* Setup the name information of the hydroroutement
-        infos = (;inputs = [tosymbol(input)], outputs = [tosymbol(output)], params = tosymbol.(params))
+        infos = (;inputs = [input], outputs = [output], params = params)
         uh_name = isnothing(name) ? Symbol("##uh#", hash(infos)) : name
         return new{uh_name, solvetype}(uhfunc, infos)
     end

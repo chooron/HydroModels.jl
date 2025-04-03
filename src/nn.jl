@@ -1,4 +1,4 @@
-struct HydroNNLayer{N} <: AbstractHydroNNLayer
+struct HydroNNLayer{N} <: AbstractNNLayer
     "hydrological fluxes"
     fluxes::Vector{<:AbstractHydroFlux}
     "hydrological state derivatives"
@@ -17,34 +17,81 @@ struct HydroNNLayer{N} <: AbstractHydroNNLayer
         #* sort the fluxes if needed
         fluxes = sort_fluxes ? sort_fluxes(fluxes) : fluxes
         #* Extract all variable names of fluxes and dfluxes
-        input_names, output_names, state_names = get_var_names(fluxes, dfluxes)
+        input_names, output_names, state_names = get_vars(fluxes, dfluxes)
         param_names = reduce(union, get_param_names.(vcat(fluxes, dfluxes)))
         nn_names = reduce(union, get_nn_names.(fluxes))
         infos = (; inputs=input_names, outputs=output_names, states=state_names, params=param_names, nns=nn_names)
         #* Construct a function for ordinary differential calculation based on dfunc and funcs
-        layer_func = build_layer_func(fluxes, dfluxes, infos)
+        layer_func = _build_layer_func(fluxes, dfluxes, infos)
         layer_name = isnothing(name) ? Symbol("##layer#", hash(infos)) : name
-        return new{layer_name,!isempty(state_names)}(fluxes, dfluxes, layer_func, infos)
+        return new{layer_name}(fluxes, dfluxes, layer_func, infos)
     end
 end
 
+function _build_layer_func(fluxes::Vector{<:AbstractHydroFlux}, dfluxes::Vector{<:AbstractStateFlux}, infos::NamedTuple)
+    input_names, output_names = infos.inputs, infos.outputs
+    state_names, param_names = infos.states, infos.params
+
+    input_define_calls = [:($i = inputs[$idx]) for (idx, i) in enumerate(input_names)]
+    state_define_calls = [:($s = states[$idx]) for (idx, s) in enumerate(state_names)]
+    params_assign_calls = [:($p = pas.params.$p) for p in param_names]
+    nn_params_assign_calls = [:($(nflux.infos[:nns][1]) = pas.nns.$(nflux.infos[:nns][1])) for nflux in filter(f -> f isa AbstractNeuralFlux, fluxes)]
+    define_calls = reduce(vcat, [input_define_calls, state_define_calls, params_assign_calls, nn_params_assign_calls])
+
+    # varibles definitions expressions
+    compute_calls = []
+    for f in fluxes
+        if f isa AbstractNeuralFlux
+            push!(compute_calls, :($(f.infos[:nn_inputs]) = stack([$(get_input_names(f)...)], dims=1)))
+            push!(compute_calls, :($(f.infos[:nn_outputs]) = $(f.func)($(f.infos[:nn_inputs]), $(f.infos[:nns][1]))))
+            append!(compute_calls, [:($(nm) = $(f.infos[:nn_outputs])[$i, :]) for (i, nm) in enumerate(get_output_names(f))])
+        else
+            append!(compute_calls, [:($nm = $(toexprv2(unwrap(expr)))) for (nm, expr) in zip(get_output_names(f), f.exprs)])
+        end
+    end
+
+    # Create return expressions with concrete values
+    return_flux = :(return tuple($(output_names...)), tuple($(map(expr -> :($(toexprv2(unwrap(expr)))), reduce(vcat, get_exprs.(dfluxes)))...)))
+
+    # Create fcuntion expression
+    meta_exprs = [:(Base.@_inline_meta)]
+
+    func_expr = :(function (inputs, pas, states)
+        $(meta_exprs...)
+        $(define_calls...)
+        $(compute_calls...)
+        $(return_flux)
+    end)
+
+
+    println(func_expr)
+
+    return @RuntimeGeneratedFunction(func_expr)
+end
+
+get_input_names(layer::HydroNNLayer) = layer.infos.inputs
+get_output_names(layer::HydroNNLayer) = layer.infos.outputs
+get_param_names(layer::HydroNNLayer) = layer.infos.params
+get_state_names(layer::HydroNNLayer) = layer.infos.states
+get_nn_names(layer::HydroNNLayer) = layer.infos.nns
+
 function LuxCore.initialparameters(rng::AbstractRNG, layer::HydroNNLayer)
-    init_params = NamedTuple{Tuple{get_param_names(layer)}}(map(x -> rand(rng, x), get_param_names(layer)))
-    init_nns = NamedTuple{Tuple{get_nn_names(layer)}}(map(x -> rand(rng, x), get_nn_names(layer)))
+    init_params = NamedTuple{Tuple(get_param_names(layer))}(fill(rand(rng, layer.hidden_dims), length(get_param_names(layer))))
+    init_nns = NamedTuple{Tuple(get_nn_names(layer))}(map(x -> rand(rng, x), get_nn_names(layer)))
     return ComponentVector(params=init_params, nns=init_nns)
 end
 
 function LuxCore.initialstates(rng::AbstractRNG, layer::HydroNNLayer)
-    init_states = NamedTuple{Tuple{get_state_names(layer)}}(map(x -> rand(rng, x), get_state_names(layer)))
+    init_states = NamedTuple{Tuple(get_state_names(layer))}(map(x -> rand(rng, x), get_state_names(layer)))
     return init_states
 end
 
-function (layer::HydroNNLayer)(input::AbstractArray{T,2}, params::ComponentVector, states::NamedTuple)
+function (layer::HydroNNLayer)(input::AbstractArray{T,2}, params::ComponentVector, states::NamedTuple) where {T}
     return layer.layer_func(eachslice(input, dims=1), params, [states[nm] for nm in get_state_names(layer)])
 end
 
-struct HydroNNModel{N} <: AbstractHydroNNModel
-    recur_layers::Vector{<:AbstractHydroNNLayer}
+struct HydroNNModel{N} <: AbstractNNModel
+    recur_layers::Vector{<:AbstractNNLayer}
     "fc-layer的几种情况: (1) 接入一个dense然后整合不同节点的计算结果,(2) 接入一个UH然后求和每个节点的汇流结果"
     fc_layer::AbstractLuxLayer
     recur_op::Function
@@ -52,7 +99,7 @@ struct HydroNNModel{N} <: AbstractHydroNNModel
     infos::NamedTuple
 
     function HydroNNModel(;
-        recur_layers::Vector{<:AbstractHydroNNLayer},
+        recur_layers::Vector{<:AbstractNNLayer},
         fc_layer::AbstractLuxLayer,
         name::Union{Symbol,Nothing}=nothing,
         fc_variables::Union{AbstractArray{<:Symbol},Nothing}=nothing,
@@ -69,7 +116,7 @@ struct HydroNNModel{N} <: AbstractHydroNNModel
     end
 end
 
-function _build_recur_op(layers::Vector{<:AbstractHydroNNLayer}, infos::NamedTuple)
+function _build_recur_op(layers::Vector{<:AbstractNNLayer}, infos::NamedTuple)
     input_define_calls = [:($i = inputs[$idx]) for (idx, i) in enumerate(infos.inputs)]
     state_define_calls = [:($s = states[$idx]) for (idx, s) in enumerate(infos.states)]
     state_update_names = Symbol.(infos.states, :_)
@@ -89,7 +136,7 @@ function _build_recur_op(layers::Vector{<:AbstractHydroNNLayer}, infos::NamedTup
     end
 end
 
-function (nn::HydroNNModel)(input::AbstractArray{T,2}, params::ComponentVector, st::NamedTuple; initstates::NamedTuple)
+function (nn::HydroNNModel)(input::AbstractArray{T,3}, params::ComponentVector, st::NamedTuple; initstates::NamedTuple) where {T}
     function recur_op(::Nothing, input)
         (out, carry), st′ = nn.recur_op((input, initstates), params, st)
         return [out], carry, st′

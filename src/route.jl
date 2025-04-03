@@ -86,11 +86,11 @@ struct HydroRoute{N} <: AbstractHydroRoute
         name::Union{Symbol,Nothing}=nothing,
     )
         #* Extract all variable names of funcs and dfuncs
-        input_names, output_names, state_names = get_var_names(rfluxes, dfluxes)
-        param_names = reduce(union, get_param_names.(rfluxes))
-        nn_names = reduce(union, get_nn_names.(rfluxes))
+        inputs, outputs, states = get_vars(rfluxes, dfluxes)
+        params = reduce(union, get_params.(rfluxes))
+        nns = reduce(union, get_nns.(rfluxes))
         #* Setup the name information of the hydrobucket
-        infos = (;inputs=input_names, outputs=output_names, states=state_names, params=param_names, nns=nn_names)
+        infos = (;inputs, outputs, states, params, nns)
         #* define the route name
         route_name = isnothing(name) ? Symbol("##route#", hash(infos)) : name
         #* build the route function
@@ -472,10 +472,10 @@ struct RapidRoute{N} <: AbstractRoute
         @parameters rapid_k rapid_x
         #* Extract all variable names of funcs and dfuncs
         inputs, outputs = fluxes[1], fluxes[2]
-        input_names, output_names = tosymbol.(inputs), tosymbol.(outputs)
         @assert length(inputs) == length(outputs) == 1 "The length of inputs and outputs must be the 1, but got inputs: $(length(inputs)) and outputs: $(length(outputs))"
         #* Setup the name information of the hydrobucket
-        infos = (;inputs=input_names, outputs=output_names, states=Symbol[], params=[:rapid_k, :rapid_x])
+        @parameters rapid_k rapid_x
+        infos = (;inputs=inputs, outputs=outputs, states=Num[], params=[rapid_k, rapid_x])
         route_name = isnothing(name) ? Symbol("##route#", hash(infos)) : name
         #* generate adjacency matrix from network
         adjacency = adjacency_matrix(network)'
