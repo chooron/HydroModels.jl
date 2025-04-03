@@ -77,7 +77,7 @@ struct ManualSolver{mutable}
     dev
 
     function ManualSolver(;dev=identity, mutable::Bool=false)
-        return ManualSolver{mutable}(dev)
+        return new{mutable}(dev)
     end
 end
 
