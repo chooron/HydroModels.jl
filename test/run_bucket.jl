@@ -32,7 +32,7 @@
             @test Set(HydroModels.get_state_names(snow_ele)) == Set((:snowpack,))
         end
         pas = ComponentVector(params=params[HydroModels.get_param_names(snow_ele)])
-        result = snow_ele(input, pas; initstates=init_states, timeidx=ts, solver=ManualSolver{true}())
+        result = snow_ele(input, pas; initstates=init_states, timeidx=ts, solver=ManualSolver(mutable=true))
         ele_state_and_output_names = vcat(HydroModels.get_state_names(snow_ele), HydroModels.get_output_names(snow_ele))
         result = NamedTuple{Tuple(ele_state_and_output_names)}(eachslice(result, dims=1))
 
@@ -52,7 +52,7 @@
         #     itpfunc_list = map((var) -> LinearInterpolation(var, ts, extrapolate=true), eachrow(input))
         #     ode_input_func = (t) -> [itpfunc(t) for itpfunc in itpfunc_list]
         #     du_func = HydroModels._get_du_func(snow_ele, ode_input_func, param_func, nn_param_func)
-        #     solver = ManualSolver{true}()
+        #     solver = ManualSolver(mutable=true)
         #     initstates_mat = collect(pas[:initstates][HydroModels.get_state_names(snow_ele)])
         #     #* solve the problem by call the solver
         #     snowpack_vec = solver(du_func, pas, initstates_mat, ts)[1, :]
@@ -80,7 +80,7 @@
             node_input = permutedims(node_input, (2, 3, 1))
             config = (ptyidx=1:10, styidx=1:10, timeidx=ts)
             node_output = snow_ele(node_input, node_pas; initstates=node_states, config...)
-            single_output = snow_ele(input, pas, initstates=init_states, timeidx=ts, solver=ManualSolver{true}())
+            single_output = snow_ele(input, pas, initstates=init_states, timeidx=ts, solver=ManualSolver(mutable=true))
             target_output = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([single_output], 10)), (1, 3, 2))
             @test node_output == target_output
         end
@@ -98,7 +98,7 @@
             node_input = permutedims(node_input, (2, 3, 1))
             config = (ptyidx=[1, 2, 2, 2, 1, 3, 3, 2, 3, 2], styidx=[1, 2, 2, 2, 1, 3, 3, 2, 3, 2], timeidx=ts)
             node_output = snow_ele(node_input, node_pas; initstates=node_states, config...)
-            single_output = snow_ele(input, pas, initstates=init_states, timeidx=ts, solver=ManualSolver{true}())
+            single_output = snow_ele(input, pas, initstates=init_states, timeidx=ts, solver=ManualSolver(mutable=true))
             target_output = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([single_output], 10)), (1, 3, 2))
             @test node_output == target_output
         end

@@ -26,7 +26,7 @@
     input_arr = ones(1, 9, 20)
     timeidx = collect(1:20)
 
-    output_arr = route(input_arr, pas, initstates=initstates, solver=ManualSolver{true}(), interp=LinearInterpolation, ptyidx=ptyidx, styidx=styidx, timeidx=timeidx)
+    output_arr = route(input_arr, pas, initstates=initstates, solver=ManualSolver(mutable=true), interp=LinearInterpolation, ptyidx=ptyidx, styidx=styidx, timeidx=timeidx)
     @test size(output_arr) == size(ones(2, 9, 20))
 end
 
@@ -58,7 +58,7 @@ end
 
     input_arr = rand(1, 9, 20)
     timeidx = collect(1:20)
-    sol_2 = vroute(input_arr, pas, initstates=initstates, timeidx=timeidx, ptyidx=ptyidx, styidx=styidx, solver=HydroModels.ManualSolver{true}())
+    sol_2 = vroute(input_arr, pas, initstates=initstates, timeidx=timeidx, ptyidx=ptyidx, styidx=styidx, solver=HydroModels.ManualSolver(mutable=true))
     @test size(sol_2) == size(ones(2, 9, 20))
 end
 
@@ -82,6 +82,6 @@ end
     vroute = HydroModels.RapidRoute([q] => [q_routed], network=network)
     input_arr = ones(1, 9, 20)
     timeidx = collect(1:20)
-    sol_2 = vroute(input_arr, pas, timeidx=timeidx, ptyidx=ptyidx, solver=ManualSolver{true}())
+    sol_2 = vroute(input_arr, pas, timeidx=timeidx, ptyidx=ptyidx, solver=ManualSolver(mutable=true))
     @test size(sol_2) == size(ones(1, 9, 20))
 end
