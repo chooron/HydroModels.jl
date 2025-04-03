@@ -3,7 +3,7 @@
 
 Get the name of a component from its type parameters.
 """
-get_name(cpt::AbstractComponent)::Num = typeof(cpt).parameters[1]
+get_name(cpt::AbstractComponent)::Symbol = typeof(cpt).parameters[1]
 
 """
     get_inputs(cpt::AbstractComponent)::AbstractVector{Num}
