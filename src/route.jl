@@ -184,7 +184,7 @@ function (route::HydroRoute)(
     ptyidx = get(kwargs, :ptyidx, collect(1:num_nodes))
     styidx = get(kwargs, :styidx, collect(1:num_nodes))
     interp = get(kwargs, :interp, DirectInterpolation)
-    solver = get(kwargs, :solver, ManualSolver{true}())
+    solver = get(kwargs, :solver, ManualSolver(mutable=true))
     timeidx = get(kwargs, :timeidx, collect(1:time_len))
     device = get(kwargs, :device, identity)
 
@@ -564,7 +564,7 @@ function (route::RapidRoute)(input::Array, params::ComponentVector; kwargs...)
     delta_t = get(kwargs, :delta_t, 1.0)
     #* get the interpolation type and solver type
     interp = get(kwargs, :interp, DirectInterpolation)
-    solver = get(kwargs, :solver, ManualSolver{true}())
+    solver = get(kwargs, :solver, ManualSolver(mutable=true))
     #* get the time index
     timeidx = get(kwargs, :timeidx, collect(1:size(input, 3)))
     #* get the initial states

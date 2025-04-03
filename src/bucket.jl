@@ -125,7 +125,7 @@ metadata. All required parameters and initial states must be present in the para
 """
 function (ele::HydroBucket{N,true})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T,N}
     #* get kwargs
-    solver = get(kwargs, :solver, ManualSolver{true}())
+    solver = get(kwargs, :solver, ManualSolver(mutable=true))
     interp = get(kwargs, :interp, DirectInterpolation)
     timeidx = get(kwargs, :timeidx, collect(1:size(input, 2)))
     #* prepare initstates
@@ -155,7 +155,7 @@ function (ele::HydroBucket{N,true})(input::AbstractArray{T,3}, params::Component
     ptyidx = get(kwargs, :ptyidx, collect(1:num_nodes))
     styidx = get(kwargs, :styidx, collect(1:num_nodes))
     device = get(kwargs, :device, identity)
-    solver = get(kwargs, :solver, ManualSolver{true}())
+    solver = get(kwargs, :solver, ManualSolver(mutable=true))
     interp = get(kwargs, :interp, DirectInterpolation)
     timeidx = get(kwargs, :timeidx, collect(1:size(input, 3)))
 

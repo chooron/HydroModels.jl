@@ -146,7 +146,7 @@ Apply the unit hydrograph flux model to input data of various dimensions.
 (::UnitHydrograph)(::AbstractVector, ::ComponentVector; kwargs...) = @error "UnitHydrograph is not support for single timepoint"
 
 function (flux::UnitHydrograph{N,:DISCRETE})(input::AbstractArray{T,2}, params::AbstractVector; kwargs...) where {T,N}
-    solver = get(kwargs, :solver, ManualSolver{true}())
+    solver = get(kwargs, :solver, ManualSolver(mutable=true))
     timeidx = get(kwargs, :timeidx, collect(1:size(input, 2)))
     input_vec = input[1, :]
     #* convert the lagflux to a discrete problem
