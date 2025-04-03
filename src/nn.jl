@@ -29,8 +29,10 @@ struct HydroNNLayer{N} <: AbstractNNLayer
 end
 
 function _build_layer_func(fluxes::Vector{<:AbstractHydroFlux}, dfluxes::Vector{<:AbstractStateFlux}, infos::NamedTuple)
-    input_names, output_names = infos.inputs, infos.outputs
-    state_names, param_names = infos.states, infos.params
+    input_names = length(infos.inputs) == 0 ? [] : tosymbol.(infos.inputs)
+    output_names = length(infos.outputs) == 0 ? [] : tosymbol.(infos.outputs)
+    state_names = length(infos.states) == 0 ? [] : tosymbol.(infos.states)
+    param_names = length(infos.params) == 0 ? [] : tosymbol.(infos.params)
 
     input_define_calls = [:($i = inputs[$idx]) for (idx, i) in enumerate(input_names)]
     state_define_calls = [:($s = states[$idx]) for (idx, s) in enumerate(state_names)]
@@ -69,20 +71,21 @@ function _build_layer_func(fluxes::Vector{<:AbstractHydroFlux}, dfluxes::Vector{
     return @RuntimeGeneratedFunction(func_expr)
 end
 
-get_input_names(layer::HydroNNLayer) = layer.infos.inputs
-get_output_names(layer::HydroNNLayer) = layer.infos.outputs
-get_param_names(layer::HydroNNLayer) = layer.infos.params
-get_state_names(layer::HydroNNLayer) = layer.infos.states
-get_nn_names(layer::HydroNNLayer) = layer.infos.nns
-
 function LuxCore.initialparameters(rng::AbstractRNG, layer::HydroNNLayer)
-    init_params = NamedTuple{Tuple(get_param_names(layer))}(fill(rand(rng, layer.hidden_dims), length(get_param_names(layer))))
-    init_nns = NamedTuple{Tuple(get_nn_names(layer))}(map(x -> rand(rng, x), get_nn_names(layer)))
+    init_params = NamedTuple{Tuple(get_param_names(layer))}(map(get_params(layer)) do p
+        lb, ub = getbounds(p)
+        rand(rng, layer.hidden_dims) .* (ub - lb) .+ lb
+    end)
+    init_nns = NamedTuple{Tuple(get_nn_names(layer))}(map(get_nn_names(layer)) do nn
+        glorot_normal(rng, length(nn))
+    end)
     return ComponentVector(params=init_params, nns=init_nns)
 end
 
 function LuxCore.initialstates(rng::AbstractRNG, layer::HydroNNLayer)
-    init_states = NamedTuple{Tuple(get_state_names(layer))}(map(x -> rand(rng, x), get_state_names(layer)))
+    init_states = NamedTuple{Tuple(get_state_names(layer))}(map(get_states(layer)) do s
+        zeros(layer.hidden_dims)
+    end)
     return init_states
 end
 
@@ -117,9 +120,11 @@ struct HydroNNModel{N} <: AbstractNNModel
 end
 
 function _build_recur_op(layers::Vector{<:AbstractNNLayer}, infos::NamedTuple)
-    input_define_calls = [:($i = inputs[$idx]) for (idx, i) in enumerate(infos.inputs)]
-    state_define_calls = [:($s = states[$idx]) for (idx, s) in enumerate(infos.states)]
-    state_update_names = Symbol.(infos.states, :_)
+    input_names = length(infos.inputs) == 0 ? [] : tosymbol.(infos.inputs)
+    state_names = length(infos.states) == 0 ? [] : tosymbol.(infos.states)
+    input_define_calls = [:($i = inputs[$idx]) for (idx, i) in enumerate(input_names)]
+    state_define_calls = [:($s = states[$idx]) for (idx, s) in enumerate(state_names)]
+    state_update_names = Symbol.(state_names, :_)
     compute_calls = map(layers) do layer
         i, s, o = get_var_names(layer)
         s′ = Symbol.(s, :_)
