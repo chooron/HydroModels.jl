@@ -49,8 +49,8 @@ abstract type AbstractRoute <: AbstractElement end
 abstract type AbstractHydroRoute <: AbstractRoute end
 abstract type AbstractModel <: AbstractComponent end
 
-abstract type AbstractNNLayer <: AbstractLuxLayer end
-abstract type AbstractNNModel <: AbstractLuxLayer end
+abstract type AbstractNNLayer <: AbstractComponent end
+abstract type AbstractNNModel <: AbstractComponent end
 
 export AbstractComponent, AbstractFlux, AbstractHydroFlux, AbstractNeuralFlux, AbstractStateFlux
 export AbstractElement, AbstractBucket, AbstractHydrograph, AbstractRoute, AbstractHydroRoute, AbstractModel
