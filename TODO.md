@@ -30,4 +30,5 @@
 - [ ] 模型运行期间最好不要有数据检查的方法,这些全部归纳到check方法中
 - [ ] V2.0后gradient计算耗时为57s,一定程度降低了计算所需的时间,而使用EnzymeVJP耗时为3s,提升的效率极大
 - [ ] Multi-Nodes在支持多节点梯度计算时存在问题,仅能使用ZygoteVJP,无法利用EnzymeVJP,但是Multi-Nodes的应用是绝对必要的,因此需要其他的解决方法,考虑使用
-- [ ] 引入MLUtils的计算方法
+- [X] 引入MLUtils的计算方法
+- [ ] unithydrograph, hydroroute的macro化表达
