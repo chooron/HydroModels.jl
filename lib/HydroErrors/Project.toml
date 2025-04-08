@@ -1,0 +1,8 @@
+name = "HydroErrors"
+uuid = "cde335eb-da38-4796-83c8-e508648b3902"
+authors = ["jingx <50790703+chooron@users.noreply.github.com>"]
+version = "0.1.0"
+
+[deps]
+DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
