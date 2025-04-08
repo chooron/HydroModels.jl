@@ -209,6 +209,11 @@ function Base.show(io::IO, ele::AbstractBucket)
         printstyled(io, "Params:  ", color=:light_magenta)
         println(io, "[", join(get_param_names(ele), ", "), "]")
         
+        # Print neural networks with a different color
+        print(io, "│ ")
+        printstyled(io, "NNs:     ", color=:light_cyan)
+        println(io, "[", join(get_nn_names(ele), ", "), "]")
+        
         printstyled(io, "└─", color=:light_blue)
         println(io)
     end
