@@ -1,3 +1,13 @@
+module HydroModelSolvers
+
+using TOML
+using OrdinaryDiffEq
+using SciMLSensitivity
+
+const version = VersionNumber(TOML.parsefile(joinpath(@__DIR__, "..", "Project.toml"))["version"])
+
+abstract type AbstractHydroSolver end
+
 """
 A custom ODEProblem solver
 """
@@ -70,3 +80,5 @@ function (solver::DiscreteSolver)(
         return sol
     end
 end
+
+end # module HydroModelSolvers

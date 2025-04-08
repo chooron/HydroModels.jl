@@ -1,0 +1,24 @@
+name = "HydroModelOptimisers"
+uuid = "ba5228b9-ba40-4fc8-b725-31ff0f22b938"
+authors = ["jingx <50790703+chooron@users.noreply.github.com>"]
+version = "0.1.0"
+
+[deps]
+ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+IterTools = "c8e1da08-722c-5040-9ed9-7db0dc04731e"
+NamedTupleTools = "d9ec5142-1e00-5aa0-9d6a-321866360f50"
+Optimization = "7f7a1694-90dd-40f0-9382-eb1efda571ba"
+ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
+TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+
+[compat]
+ComponentArrays = "0.15.26"
+DataFrames = "1.7.0"
+Dates = "1.11.0"
+IterTools = "1.10.0"
+NamedTupleTools = "0.14.3"
+Optimization = "4.1.2"
+ProgressMeter = "1.10.4"
+TOML = "1.0.3"

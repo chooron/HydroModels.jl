@@ -1,0 +1,14 @@
+name = "HydroModelSolvers"
+uuid = "4dff54ff-8dad-4534-9a0f-a1cce6faced8"
+authors = ["jingx <50790703+chooron@users.noreply.github.com>"]
+version = "0.1.0"
+
+[deps]
+OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
+SciMLSensitivity = "1ed8b502-d754-442c-8d5d-10ac956f44a1"
+TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+
+[compat]
+OrdinaryDiffEq = "6.93.0"
+SciMLSensitivity = "7.76.0"
+TOML = "1.0.3"

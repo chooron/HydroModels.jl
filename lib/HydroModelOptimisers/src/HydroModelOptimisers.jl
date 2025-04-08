@@ -1,6 +1,22 @@
+module HydroModelOptimisers
+
+using TOML
+using Dates
+using DataFrames
+using ProgressMeter
+using IterTools: ncycle
+using NamedTupleTools
+using ComponentArrays
+using ComponentArrays: indexmap, getval
+using Optimization
+
+const version = VersionNumber(TOML.parsefile(joinpath(@__DIR__, "..", "Project.toml"))["version"])
+
+abstract type AbstractHydroOptimizer end
+
 @kwdef struct HydroOptimizer{C,S,A} <: AbstractHydroOptimizer
     component::C
-    solve_alg::S = BBO_adaptive_de_rand_1_bin_radiuslimited()
+    solve_alg::S
     adtype::A = nothing
     maxiters::Int = 1000
     warmup::Int = 100
@@ -66,7 +82,7 @@ end
 
 @kwdef struct BatchOptimizer{C,S} <: AbstractHydroOptimizer
     component::C
-    solve_alg::S = Adam()
+    solve_alg::S
     maxiters::Int = 100
     warmup::Int = 100
     adtype::AbstractADType = AutoForwardDiff()
@@ -133,3 +149,6 @@ function (opt::BatchOptimizer{C,S})(
         return opt_pas
     end
 end
+
+
+end # module HydroModelOptimisers
