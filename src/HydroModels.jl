@@ -30,41 +30,36 @@ using Graphs
 
 # deep learning
 using Lux
-using Lux:foldl_init
+using Lux: foldl_init
 using NNlib
 using MLUtils
 
-## Abstract Component Types
-abstract type AbstractComponent end
+@reexport using HydroModelCore:
+    AbstractComponent,
+    AbstractFlux,
+    AbstractHydroFlux,
+    AbstractNeuralFlux,
+    AbstractStateFlux,
+    AbstractElement,
+    AbstractBucket,
+    AbstractHydrograph,
+    AbstractRoute,
+    AbstractHydroRoute,
+    AbstractModel,
+    AbstractNNLayer,
+    AbstractNNModel
 
-abstract type AbstractFlux <: AbstractComponent end
-abstract type AbstractHydroFlux <: AbstractFlux end
-abstract type AbstractNeuralFlux <: AbstractHydroFlux end
-abstract type AbstractStateFlux <: AbstractFlux end
-
-abstract type AbstractElement <: AbstractComponent end
-abstract type AbstractBucket <: AbstractElement end
-abstract type AbstractHydrograph <: AbstractElement end
-abstract type AbstractRoute <: AbstractElement end
-abstract type AbstractHydroRoute <: AbstractRoute end
-abstract type AbstractModel <: AbstractComponent end
-
-abstract type AbstractNNLayer <: AbstractComponent end
-abstract type AbstractNNModel <: AbstractComponent end
-
-export AbstractComponent, AbstractFlux, AbstractHydroFlux, AbstractNeuralFlux, AbstractStateFlux
-export AbstractElement, AbstractBucket, AbstractHydrograph, AbstractRoute, AbstractHydroRoute, AbstractModel
+using HydroModelCore: get_var_names, get_state_names, get_output_names, get_input_names, get_param_names, get_nn_names, get_name
 
 # utils
 include("utils/expression.jl")
-include("utils/attribute.jl")
-export get_var_names, get_state_names, get_output_names, get_input_names, get_param_names, get_nn_names, get_name
 include("utils/miscellaneous.jl")
 include("utils/display.jl")
 include("utils/build.jl")
-include("utils/check.jl")
 include("utils/tools.jl")
-#! A discrete ODE solver, if want to use more efficient solver, please import HydroModelTools.jl
+include("utils/macros.jl")
+export @hydroflux, @stateflux, @neuralflux, @hydrobucket, @hydroroute, @hydromodel
+#! A discrete ODE solver, if want to use more efficient solver, please import HydroModelSolvers.jl
 #! When constructing an ODE problem to solve, use DataInterpolations.jl
 export ManualSolver, DirectInterpolation
 
@@ -82,6 +77,4 @@ export HydroModel
 include("nn.jl")
 export HydroNNLayer, HydroNNModel
 
-include("utils/macros.jl")
-export @hydroflux, @stateflux, @neuralflux, @hydrobucket
 end # module HydroModels
