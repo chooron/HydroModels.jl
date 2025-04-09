@@ -73,11 +73,11 @@ function Base.show(io::IO, flux::AbstractStateFlux)
         printstyled(io, "Params:  ", color=:light_magenta)
         println(io, "[", join(get_param_names(flux), ", "), "]")
         
-        if !isempty(flux.exprs)
+        if !isempty(get_exprs(flux))
             print(io, "│ ")
             printstyled(io, "Expressions:", color=:cyan)
             println(io)
-            for (state, expr) in zip(get_state_names(flux), flux.exprs)
+            for (state, expr) in zip(get_state_names(flux), get_exprs(flux))
                 print(io, "│   ")
                 printstyled(io, "$state = ", color=:blue)
                 println(io, expr)
@@ -182,6 +182,7 @@ function Base.show(io::IO, ele::AbstractBucket)
         print(io, ", states=[", join(get_state_names(ele), ","), "]")
         print(io, ", outputs=[", join(get_output_names(ele), ","), "]")
         print(io, ", params=[", join(get_param_names(ele), ","), "]")
+        print(io, ", nns=[", join(get_nn_names(ele), ","), "]")
         print(io, ")")
     else
         printstyled(io, "┌ ", color=:light_blue, bold=true)
@@ -213,6 +214,28 @@ function Base.show(io::IO, ele::AbstractBucket)
         print(io, "│ ")
         printstyled(io, "NNs:     ", color=:light_cyan)
         println(io, "[", join(get_nn_names(ele), ", "), "]")
+
+        # Print fluxes expressions
+        println(io, "│")
+        print(io, "│ ")
+        printstyled(io, "Fluxes:", color=:yellow)
+        println(io)
+        for expr in get_exprs(ele.fluxes)
+            print(io, "│   ")
+            println(io, expr)
+        end
+
+        # Print dfluxes expressions if any
+        if !isempty(ele.dfluxes)
+            println(io, "│")
+            print(io, "│ ")
+            printstyled(io, "State Fluxes:", color=:yellow)
+            println(io)
+            for expr in get_exprs(ele.dfluxes)
+                print(io, "│   ")
+                println(io, expr)
+            end
+        end
         
         printstyled(io, "└─", color=:light_blue)
         println(io)
