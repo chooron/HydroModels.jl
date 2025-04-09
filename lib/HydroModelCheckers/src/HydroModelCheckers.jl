@@ -1,3 +1,8 @@
+module HydroModelCheckers
+
+using ComponentArrays
+using HydroModelCore: AbstractComponent
+
 function check_input(component::AbstractComponent, input::AbstractArray{<:Number,2}, timeidx::AbstractVector)
     @assert size(input, 1) == length(get_input_names(component)) "Input variables in component '$(component.meta.name)' do not match required dimensions. Expected $(length(get_input_names(component))) variables ($(get_input_names(component))), got $(size(input, 1)) variables"
     @assert size(input, 2) == length(timeidx) "Time steps in component '$(component.meta.name)' do not match required length. Expected $(length(timeidx)) steps, got $(size(input, 2)) steps"
@@ -90,9 +95,9 @@ function process_pas(c::AbstractComponent, pas::ComponentVector)
     check_pas(c, pas)
     pas_type = eltype(pas)
     new_pas = ComponentVector(
-        params=haskey(pas, :params) ? Vector(pas[:params][HydroModels.get_param_names(c)]) : Vector{pas_type}(undef,0),
-        initstates=haskey(pas, :initstates) ? Vector(pas[:initstates][HydroModels.get_state_names(c)]) : Vector{pas_type}(undef,0),
-        nns=haskey(pas, :nns) ? Vector(pas[:nns][HydroModels.get_nn_names(c)]) : Vector{pas_type}(undef,0),
+        params=haskey(pas, :params) ? Vector(pas[:params][HydroModelCore.get_param_names(c)]) : Vector{pas_type}(undef, 0),
+        initstates=haskey(pas, :initstates) ? Vector(pas[:initstates][HydroModelCore.get_state_names(c)]) : Vector{pas_type}(undef, 0),
+        nns=haskey(pas, :nns) ? Vector(pas[:nns][HydroModelCore.get_nn_names(c)]) : Vector{pas_type}(undef, 0),
     )
     return new_pas
 end
@@ -108,13 +113,13 @@ function process_pas(c::AbstractComponent, pas::ComponentVector, ptypes::Abstrac
     ptype_indices = [findfirst(isequal(ptype), unq_ptypes) for ptype in ptypes]
     stype_indices = [findfirst(isequal(stype), unq_stypes) for stype in stypes]
 
-    params_mat  = isempty(params_names) ? Matrix{pas_type}(undef, 0, 0) : reduce(hcat, [Vector(pas[:params][ptype][params_names]) for ptype in unq_ptypes])
-    initstates_mat  = isempty(state_names) ? Matrix{pas_type}(undef, 0, 0) : reduce(hcat, [Vector(pas[:initstates][stype][state_names]) for stype in unq_stypes])
+    params_mat = isempty(params_names) ? Matrix{pas_type}(undef, 0, 0) : reduce(hcat, [Vector(pas[:params][ptype][params_names]) for ptype in unq_ptypes])
+    initstates_mat = isempty(state_names) ? Matrix{pas_type}(undef, 0, 0) : reduce(hcat, [Vector(pas[:initstates][stype][state_names]) for stype in unq_stypes])
 
     new_pas = ComponentVector(
         params=params_mat,
         initstates=initstates_mat,
-        nns=haskey(pas, :nns) ? Vector(pas[:nns][HydroModels.get_nn_names(c)]) : Vector{pas_type}(undef,0),
+        nns=haskey(pas, :nns) ? Vector(pas[:nns][HydroModelCore.get_nn_names(c)]) : Vector{pas_type}(undef, 0),
     )
     return new_pas, ptype_indices, stype_indices
 end
@@ -150,7 +155,7 @@ function process_pas(c::AbstractComponent, pas::ComponentVector, ptypes::Abstrac
     new_pas = ComponentVector(
         params=params_mat,
         initstates=initstates_mat,
-        nns=haskey(pas, :nns) ? Vector(pas[:nns][HydroModels.get_nn_names(c)]) : Vector{pas_type}(undef,0),
+        nns=haskey(pas, :nns) ? Vector(pas[:nns][HydroModelCore.get_nn_names(c)]) : Vector{pas_type}(undef, 0),
     )
 
     ptype_indices = map(unq_ptypes) do unq_ptype
@@ -162,3 +167,5 @@ function process_pas(c::AbstractComponent, pas::ComponentVector, ptypes::Abstrac
 
     return new_pas, ptype_indices, stype_indices
 end
+
+end # module HydroModelCheckers
