@@ -65,18 +65,11 @@ where stability and computational efficiency are prioritized over high-order acc
 - `mutable=false`:
     - Creates new arrays at each step
 
-## Use Cases
-- Small to medium-scale hydrological models
-- Systems with moderate stiffness
-- Real-time applications requiring predictable performance
-- Memory-constrained environments (with `mutable=true`)
-
-See also: [`AbstractHydroSolver`](@ref), [`solve`](@ref)
 """
 struct ManualSolver{mutable}
     dev
 
-    function ManualSolver(;dev=identity, mutable::Bool=false)
+    function ManualSolver(; dev=identity, mutable::Bool=false)
         return new{mutable}(dev)
     end
 end
@@ -84,35 +77,17 @@ end
 function (solver::ManualSolver{true})(
     du_func::Function,
     pas::AbstractVector,
-    initstates::AbstractArray{<:Number,1},
+    initstates::AbstractArray{<:Number,N},
     timeidx::AbstractVector;
     kwargs...
-)
-    T1 = promote_type(eltype(pas), eltype(initstates))
-    states_results = zeros(T1, length(initstates), length(timeidx))
-    tmp_initstates = copy(initstates)
-    for (i, t) in enumerate(timeidx)
-        tmp_du = du_func(tmp_initstates, pas, t)
-        tmp_initstates = tmp_initstates .+ tmp_du
-        states_results[:, i] = tmp_initstates
-    end
-    states_results
-end
-
-function (solver::ManualSolver{true})(
-    du_func::Function,
-    pas::AbstractVector,
-    initstates::AbstractArray{<:Number,2},
-    timeidx::AbstractVector;
-    kwargs...
-)
+) where N
     T1 = promote_type(eltype(pas), eltype(initstates))
     states_results = zeros(T1, size(initstates)..., length(timeidx)) |> solver.dev
     tmp_initstates = copy(initstates)
     for (i, t) in enumerate(timeidx)
         tmp_du = du_func(tmp_initstates, pas, t)
         tmp_initstates = tmp_initstates .+ tmp_du
-        states_results[:, :, i] .= tmp_initstates
+        states_results[ntuple(_ -> Colon(), N)..., i] .= tmp_initstates
     end
     states_results
 end
@@ -120,10 +95,10 @@ end
 function (solver::ManualSolver{false})(
     du_func::Function,
     pas::AbstractVector,
-    initstates::AbstractArray{T, N},
+    initstates::AbstractArray{T,N},
     timeidx::AbstractVector;
     kwargs...
-) where {T, N}
+) where {T,N}
     function recur_op(::Nothing, t)
         new_states = du_func(initstates, pas, t) .+ initstates
         return [new_states], new_states
@@ -133,5 +108,5 @@ function (solver::ManualSolver{false})(
         return vcat(states_list, [new_states]), new_states
     end
     states_vec, _ = foldl_init(recur_op, timeidx)
-    stack(states_vec, dims=N+1)
+    stack(states_vec, dims=N + 1)
 end
