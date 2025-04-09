@@ -50,15 +50,13 @@ using MLUtils
     AbstractNNModel
 
 using HydroModelCore: get_var_names, get_state_names, get_output_names, get_input_names, get_param_names, get_nn_names, get_name
+using HydroModelCore: get_vars, get_states, get_outputs, get_inputs, get_params, get_nns, get_exprs
 
 # utils
 include("utils/expression.jl")
 include("utils/miscellaneous.jl")
-include("utils/display.jl")
 include("utils/build.jl")
 include("utils/tools.jl")
-include("utils/macros.jl")
-export @hydroflux, @stateflux, @neuralflux, @hydrobucket, @hydroroute, @hydromodel
 #! A discrete ODE solver, if want to use more efficient solver, please import HydroModelSolvers.jl
 #! When constructing an ODE problem to solve, use DataInterpolations.jl
 export ManualSolver, DirectInterpolation
@@ -76,5 +74,5 @@ include("model.jl")
 export HydroModel
 include("nn.jl")
 export HydroNNLayer, HydroNNModel
-
+export @hydroflux, @stateflux, @neuralflux, @hydrobucket, @hydroroute, @hydromodel
 end # module HydroModels
