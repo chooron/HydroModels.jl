@@ -24,25 +24,23 @@ HydroModels.@neuralflux :neuralflux [d, e] ~ chain([a,b])
 HydroModels.@neuralflux :neuralflux d ~ chain([a,b])
 
 bucket1 = HydroModels.@hydrobucket :bucket1 begin
-    fluxes = [
+    fluxes = begin
         HydroModels.@hydroflux :flux1 a ~ k1 * b - k2 * c
         HydroModels.@hydroflux :flux2 d ~ k1 * b - k2 * c
-    ]
-    dfluxes = [
+    end
+    dfluxes = begin
         HydroModels.@stateflux :dflux1 c ~ b - a - d
-    ]
+    end
 end
 
 bucket2 = HydroModels.@hydrobucket :route1 begin
-    fluxes = [
+    fluxes = begin
         HydroModels.@hydroflux :flux1 a ~ k1 * b - k2 * c
         HydroModels.@hydroflux :flux2 d ~ k1 * b - k2 * c
-    ]
-    dfluxes = [
+    end
+    dfluxes = begin
         HydroModels.@stateflux :dflux1 c ~ b - a - d
-    ]
-
-    rfunc = ...
+    end
 end
 
 HydroModels.@hydromodel :model1 begin
