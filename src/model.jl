@@ -241,37 +241,20 @@ output = model(
 - Configuration can be shared or component-specific
 """
 function (model::HydroModel{N})(
-    input::AbstractArray{T,2},
+    input::AbstractArray{T,D},
     params::ComponentVector;
     kwargs...,
-) where {N,T<:Number}
-    initstates = get(kwargs, :initstates, get_default_states(model, eltype(input)))
+) where {N,T<:Number,D}
     config = get(kwargs, :config, NamedTuple())
+    initstates = get(kwargs, :initstates, get_default_states(model, input))
     comp_configs = config isa NamedTuple ? fill(config, length(model.components)) : config
+    @assert D in (2, 3) "input array dimension must be 2 or 3"
     @assert length(comp_configs) == length(model.components) "component configs length must be equal to components length"
     @assert size(input, 1) == length(get_input_names(model)) "input variables length must be equal to input variables length"
     outputs = input
     for (idx_, comp_, config_) in zip(model._varindices, model.components, comp_configs)
-        tmp_outputs = comp_(outputs[idx_, :], params; initstates=initstates[get_state_names(comp_)], config_...)
+        tmp_outputs = comp_(outputs[idx_, ntuple(_ -> Colon(), D-1)...], params; initstates=initstates, config_...)
         outputs = cat(outputs, tmp_outputs, dims=1)
     end
-    return outputs[model._outputindices, :]
-end
-
-function (model::HydroModel{N})(
-    input::AbstractArray{T,3},
-    params::ComponentVector;
-    kwargs...,
-) where {N,T<:Number}
-    config = get(kwargs, :config, NamedTuple())
-    initstates = get(kwargs, :initstates, get_default_states(model, size(input, 2), eltype(input)))
-    comp_configs = config isa NamedTuple ? fill(config, length(model.components)) : config
-    @assert length(comp_configs) == length(model.components) "component configs length must be equal to components length"
-    @assert size(input, 1) == length(get_input_names(model)) "input variables length must be equal to input variables length"
-    outputs = input
-    for (idx_, comp_, config_) in zip(model._varindices, model.components, comp_configs)
-        tmp_outputs = comp_(outputs[idx_, :, :], params; initstates=initstates[get_state_names(comp_)], config_...)
-        outputs = cat(outputs, tmp_outputs, dims=1)
-    end
-    return outputs[model._outputindices, :, :]
+    return outputs[model._outputindices, ntuple(_ -> Colon(), D-1)...]
 end
