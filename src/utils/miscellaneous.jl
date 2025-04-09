@@ -50,7 +50,6 @@ function sort_fluxes(fluxes::AbstractVector{<:AbstractComponent})
         tmp_input_names, tmp_output_names = get_input_names(flux), get_output_names(flux)
         for ipnm in tmp_input_names
             for opnm in tmp_output_names
-                println((ipnm => opnm))
                 add_edge!(digraph, var_names_ntp[ipnm], var_names_ntp[opnm])
             end
         end
