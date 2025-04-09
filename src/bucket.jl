@@ -144,10 +144,6 @@ function (ele::HydroBucket{N,true})(input::AbstractArray{T,2}, params::Component
     vcat(solved_states, stack(flux_output, dims=1))
 end
 
-(ele::HydroBucket{N,false})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T,N} = begin
-    stack(ele.flux_funcs[1](eachslice(input, dims=1), nothing, params), dims=1)
-end
-
 function (ele::HydroBucket{N,true})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T,N}
     input_dims, num_nodes, time_len = size(input)
 
@@ -179,15 +175,18 @@ function (ele::HydroBucket{N,true})(input::AbstractArray{T,3}, params::Component
         ),
         params_vec, initstates_mat, timeidx
     )
+
     #* run other functions
     output = ele.flux_funcs[2](eachslice(input, dims=1), eachslice(solved_states, dims=1), new_params)
     cat(solved_states, stack(output, dims=1), dims=1)
 end
 
+(ele::HydroBucket{N,false})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T,N} = begin
+    stack(ele.flux_funcs[1](eachslice(input, dims=1), nothing, params), dims=1)
+end
+
 function (ele::HydroBucket{N,false})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T,N}
     ptyidx = get(kwargs, :ptyidx, 1:size(input, 2))
-    new_params = expand_component_params(params, ptyidx)
-    #* run other functions
-    output = ele.flux_funcs[2](eachslice(input, dims=1), nothing, new_params)
+    output = ele.flux_funcs[2](eachslice(input, dims=1), nothing, expand_component_params(params, ptyidx))
     stack(output, dims=1)
 end
