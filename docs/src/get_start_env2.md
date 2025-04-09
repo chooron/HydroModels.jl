@@ -8,7 +8,7 @@
 ] add HydroModels
 ```
 
-## Build a ExpHydro Model
+## Build an ExpHydro Model
 
 ### Introduction to ExpHydro Model
 
@@ -63,13 +63,13 @@ Define the model parameters, state variables, and other variables (including pre
 
 #### Build Flux Formulas by HydroFlux
 
-Next, we need to construct the various computational formulas of the model, including state equations and intermediate variable calculations. Let's use the snowmelt formula as an example to demonstrate how to use `HydroFlux`:
+Next, we need to construct the various computational formulas of the model, including state equations and intermediate variable calculations. Let's use the snowmelt formula as an example to demonstrate how to build a `HydroFlux`:
 
 ```julia
 # define the step function
 step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
 
-melt_flux = HydroFlux([snowpack, temp] => [melt], [Tmax, Df], exprs=[step_func(temp - Tmax) * step_func(snowpack) * min(snowpack, Df * (temp - Tmax))])
+melt_flux = @hydroflux step_func(temp - Tmax) * step_func(snowpack) * min(snowpack, Df * (temp - Tmax))
 ```
 
 When constructing `HydroFlux`, several points need attention:
