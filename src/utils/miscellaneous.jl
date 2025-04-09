@@ -175,12 +175,12 @@ function expand_component_initstates(initstates::AbstractMatrix, styidx::Abstrac
     initstates[:, styidx]
 end
 
-function get_default_states(component::AbstractComponent, dtype::Type)
+function get_default_states(component::AbstractComponent, input::AbstractArray{T,2}) where {T}
     state_names = get_state_names(component)
-    return ComponentVector(NamedTuple{Tuple(state_names)}(fill(zero(dtype), length(state_names))))
+    return ComponentVector(NamedTuple{Tuple(state_names)}(fill(zero(T), length(state_names))))
 end
 
-function get_default_states(component::AbstractComponent, node_num::Int, dtype::Type)
+function get_default_states(component::AbstractComponent, input::AbstractArray{T,3}) where {T}
     state_names = get_state_names(component)
-    return ComponentVector(NamedTuple{Tuple(state_names)}(fill(zeros(dtype, node_num), length(state_names))))
+    return ComponentVector(NamedTuple{Tuple(state_names)}(fill(zeros(T, size(input, 2)), length(state_names))))
 end
