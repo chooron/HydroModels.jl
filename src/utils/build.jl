@@ -22,8 +22,9 @@ The function generates code that:
 4. Returns a vector of computed outputs
 """
 function build_flux_func(inputs::Vector{Num}, outputs::Vector{Num}, params::Vector{Num}, exprs::Vector{Num})
-    input_names, output_names = Symbolics.tosymbol.(inputs), Symbolics.tosymbol.(outputs)
-    param_names = Symbolics.tosymbol.(params)
+    input_names = length(inputs) == 0 ? [] : tosymbol.(inputs)
+    output_names = length(outputs) == 0 ? [] : tosymbol.(outputs)
+    param_names = length(params) == 0 ? [] : tosymbol.(params)
     flux_exprs = toexprv2.(unwrap.(exprs))
     input_assign_calls = [:($i = inputs[$idx]) for (idx, i) in enumerate(input_names)]
     params_assign_calls = [:($p = pas.params.$p) for p in param_names]
@@ -218,7 +219,7 @@ function build_route_func(
     params_assign_calls = [:($p = pas.params.$p) for p in param_names]
     nn_params_assign_calls = [:($nn = pas.nns.$nn) for nn in [get_nn_names(f)[1] for f in filter(f -> f isa AbstractNeuralFlux, fluxes)]]
     define_calls = reduce(vcat, [input_define_calls, state_define_calls, params_assign_calls, nn_params_assign_calls])
-    state_compute_calls, flux_compute_calls, = [], []
+    state_compute_calls, flux_compute_calls = [], []
     for f in fluxes
         if f isa AbstractNeuralFlux
             push!(state_compute_calls, :($(f.infos[:nn_inputs]) = stack([$(get_input_names(f)...)], dims=1)))
