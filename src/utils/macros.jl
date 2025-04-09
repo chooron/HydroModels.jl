@@ -50,7 +50,7 @@ macro hydroflux(args...)
             rhs_terms = [eq.rhs for eq in processed_eqs]
             outputs = Num.(lhs_terms)
 
-            all_vars = mapreduce(get_variables, union, rhs_terms, init=Set{Num}())
+            all_vars = Num.(mapreduce(get_variables, union, rhs_terms, init=Set{Num}()))
             inputs = Num.(filter(x -> !ModelingToolkit.isparameter(x), collect(all_vars)))
             params = Num.(filter(x -> ModelingToolkit.isparameter(x), collect(all_vars)))
             inputs = setdiff(inputs, outputs)
@@ -89,9 +89,7 @@ macro neuralflux(args...)
     name = length(args) == 1 ? nothing : args[1]
     eqs_expr = length(args) == 1 ? args[1] : args[2]
 
-    if eqs_expr.head != :call || eqs_expr.args[1] != :~
-        error("Expected equation in the form: outputs ~ chain(inputs)")
-    end
+    @assert eqs_expr.head == :call && eqs_expr.args[1] == :~ "Expected equation in the form: outputs ~ chain(inputs)"
 
     # Get left and right sides of the tilde
     lhs = eqs_expr.args[2]  # Output variable(s)
@@ -141,10 +139,6 @@ macro stateflux(args...)
     name = length(args) == 1 ? nothing : args[1]
     eq_expr = length(args) == 1 ? args[1] : args[2]
 
-    if Meta.isexpr(eq_expr, :block)
-        error("@stateflux only supports single equation syntax, not begin...end blocks")
-    end
-
     # Handle both = and ~ operators
     if Meta.isexpr(eq_expr, :(=))
         lhs, rhs = eq_expr.args[1], eq_expr.args[2]
@@ -159,7 +153,7 @@ macro stateflux(args...)
             eq = Symbolics.Equation($lhs, $rhs)
             state = Num(eq.lhs)
 
-            all_vars = get_variables(eq.rhs)
+            all_vars = Num.(get_variables(eq.rhs))
             inputs = Num.(filter(x -> !ModelingToolkit.isparameter(x), collect(all_vars)))
             params = Num.(filter(x -> ModelingToolkit.isparameter(x), collect(all_vars)))
             inputs = setdiff(inputs, state)
@@ -191,52 +185,26 @@ end
 ```
 """
 macro hydrobucket(name, expr)
-    if !Meta.isexpr(expr, :block)
-        error("Expected a begin...end block after bucket name")
-    end
-
-    # Filter out LineNumberNodes and get assignments
-    assignments = filter(x -> !(x isa LineNumberNode), expr.args)
-
-    # Initialize containers for fluxes and dfluxes
-    fluxes_expr = nothing
-    dfluxes_expr = nothing
-
-    # Process assignments
-    for assign in assignments
-        if !Meta.isexpr(assign, :(=))
-            error("Expected assignments in the form 'fluxes = [...]' and 'dfluxes = [...]'")
-        end
-
+    @assert Meta.isexpr(expr, :block) "Expected a begin...end block after bucket name"
+    fluxes_expr, dfluxes_expr = nothing, nothing
+    for assign in filter(x -> !(x isa LineNumberNode), expr.args)
+        @assert Meta.isexpr(assign, :(=)) "Expected assignments in the form 'fluxes = begin...end'"
         lhs, rhs = assign.args
         if lhs == :fluxes
-            fluxes_expr = rhs
+            @assert Meta.isexpr(rhs, :block) "Expected 'fluxes' to be defined in a begin...end block"
+            fluxes_expr = Expr(:vect, filter(x -> !(x isa LineNumberNode), rhs.args)...)
         elseif lhs == :dfluxes
-            dfluxes_expr = rhs
+            @assert Meta.isexpr(rhs, :block) "Expected 'dfluxes' to be defined in a begin...end block"
+            dfluxes_expr = Expr(:vect, filter(x -> !(x isa LineNumberNode), rhs.args)...)
         else
             error("Unknown assignment: $lhs. Expected 'fluxes' or 'dfluxes'")
         end
     end
-
-    # Ensure both fluxes and dfluxes are provided
-    if isnothing(fluxes_expr) || isnothing(dfluxes_expr)
-        error("Both 'fluxes' and 'dfluxes' must be specified")
-    end
-
-    # Create the bucket
+    @assert !isnothing(fluxes_expr) "'fluxes' must be specified"
     return esc(quote
         let
-            # Evaluate the flux arrays
             fluxes = $fluxes_expr
-            dfluxes = $dfluxes_expr
-
-            # Validate flux types
-            all(f -> f isa Union{HydroFlux,NeuralFlux}, fluxes) ||
-                error("All elements in fluxes must be HydroFlux or NeuralFlux objects")
-            all(f -> f isa StateFlux, dfluxes) ||
-                error("All elements in dfluxes must be StateFlux objects")
-
-            # Create the bucket
+            dfluxes = isnothing($dfluxes_expr) ? [] : $dfluxes_expr
             HydroBucket(name=$(name), fluxes=fluxes, dfluxes=dfluxes)
         end
     end)
@@ -273,58 +241,29 @@ end
 ```
 """
 macro hydroroute(name, expr)
-    if !Meta.isexpr(expr, :block)
-        error("Expected a begin...end block after route name")
-    end
-
-    # Filter out LineNumberNodes and get assignments
-    assignments = filter(x -> !(x isa LineNumberNode), expr.args)
-
-    # Initialize containers
-    fluxes_expr = nothing
-    dfluxes_expr = nothing
-    proj_func_expr = nothing
-
-    # Process assignments
-    for assign in assignments
-        if !Meta.isexpr(assign, :(=))
-            error("Expected assignments in the form 'fluxes = [...]', 'dfluxes = [...]', and 'proj_func = f(x)'")
-        end
-
+    @assert Meta.isexpr(expr, :block) "Expected a begin...end block after route name"
+    fluxes_expr, dfluxes_expr, proj_func_expr = nothing, nothing, nothing
+    for assign in filter(x -> !(x isa LineNumberNode), expr.args)
+        @assert Meta.isexpr(assign, :(=)) "Expected assignments in the form 'fluxes = begin...end', 'dfluxes = begin...end', and 'proj_func = f(x)'"
         lhs, rhs = assign.args
         if lhs == :fluxes
-            fluxes_expr = rhs
+            @assert Meta.isexpr(rhs, :block) "Expected 'fluxes' to be defined in a begin...end block"
+            fluxes_expr = Expr(:vect, filter(x -> !(x isa LineNumberNode), rhs.args)...)
         elseif lhs == :dfluxes
-            dfluxes_expr = rhs
+            @assert Meta.isexpr(rhs, :block) "Expected 'dfluxes' to be defined in a begin...end block"
+            dfluxes_expr = Expr(:vect, filter(x -> !(x isa LineNumberNode), rhs.args)...)
         elseif lhs == :proj_func
             proj_func_expr = rhs
         else
             error("Unknown assignment: $lhs. Expected 'fluxes', 'dfluxes', or 'proj_func'")
         end
     end
-
-    # Ensure all required components are provided
-    if isnothing(fluxes_expr) || isnothing(dfluxes_expr) || isnothing(proj_func_expr)
-        error("'fluxes', 'dfluxes', and 'proj_func' must all be specified")
-    end
-
-    # Create the route
+    @assert !isnothing(fluxes_expr) && !isnothing(dfluxes_expr) && !isnothing(proj_func_expr) "'fluxes', 'dfluxes', and 'proj_func' must all be specified"
     return esc(quote
         let
-            # Evaluate the flux arrays and projection function
             fluxes = $fluxes_expr
             dfluxes = $dfluxes_expr
             proj_func = $proj_func_expr
-
-            # Validate flux types
-            all(f -> f isa Union{HydroFlux,NeuralFlux}, fluxes) ||
-                error("All elements in fluxes must be HydroFlux or NeuralFlux objects")
-            all(f -> f isa StateFlux, dfluxes) ||
-                error("All elements in dfluxes must be StateFlux objects")
-            proj_func isa Function ||
-                error("proj_func must be a function")
-
-            # Create the route
             HydroRoute(
                 rfluxes=fluxes,
                 dfluxes=dfluxes,
@@ -361,10 +300,8 @@ end
 ```
 """
 macro hydromodel(name, expr)
-    if !Meta.isexpr(expr, :block)
-        error("Expected a begin...end block after model name")
-    end
-
+    @assert Meta.isexpr(expr, :block) "Expected a begin...end block after model name"
+    
     # Filter out LineNumberNodes and get components
     components = filter(x -> !(x isa LineNumberNode), expr.args)
 
