@@ -11,5 +11,5 @@ HydroModelCore = "7efcb156-82fb-4ff2-92b5-82bb75f40fa9"
 HydroModelCore = {path = "../../lib/HydroModelCore"}
 
 [compat]
-ComponentArrays = "0.15.26"
+ComponentArrays = "0.15"
 HydroModelCore = "0.1"
