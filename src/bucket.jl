@@ -77,6 +77,57 @@ struct HydroBucket{N,S} <: AbstractBucket
 end
 
 """
+    @hydrobucket name begin
+        fluxes = begin
+            ...
+        end
+        dfluxes = begin
+            ...
+        end
+    end
+
+Creates a HydroBucket with the specified name, fluxes, and dfluxes.
+
+# Arguments
+- `name`: Symbol for the bucket name
+- `fluxes`: Array of HydroFlux or NeuralFlux objects
+- `dfluxes`: Array of StateFlux objects
+
+# Example
+```julia
+@hydrobucket :bucket1 begin
+    fluxes = [flux1, flux2]
+    dfluxes = [dflux1, dflux2]
+end
+```
+"""
+macro hydrobucket(name, expr)
+    @assert Meta.isexpr(expr, :block) "Expected a begin...end block after bucket name"
+    fluxes_expr, dfluxes_expr = nothing, nothing
+    for assign in filter(x -> !(x isa LineNumberNode), expr.args)
+        @assert Meta.isexpr(assign, :(=)) "Expected assignments in the form 'fluxes = begin...end'"
+        lhs, rhs = assign.args
+        if lhs == :fluxes
+            @assert Meta.isexpr(rhs, :block) "Expected 'fluxes' to be defined in a begin...end block"
+            fluxes_expr = Expr(:vect, filter(x -> !(x isa LineNumberNode), rhs.args)...)
+        elseif lhs == :dfluxes
+            @assert Meta.isexpr(rhs, :block) "Expected 'dfluxes' to be defined in a begin...end block"
+            dfluxes_expr = Expr(:vect, filter(x -> !(x isa LineNumberNode), rhs.args)...)
+        else
+            error("Unknown assignment: $lhs. Expected 'fluxes' or 'dfluxes'")
+        end
+    end
+    @assert !isnothing(fluxes_expr) "'fluxes' must be specified"
+    return esc(quote
+        let
+            fluxes = $fluxes_expr
+            dfluxes = isnothing($dfluxes_expr) ? [] : $dfluxes_expr
+            HydroBucket(name=$(name), fluxes=fluxes, dfluxes=dfluxes)
+        end
+    end)
+end
+
+"""
     (bucket::HydroBucket{N,S})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...)
     (bucket::HydroBucket{N,S})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...)
 

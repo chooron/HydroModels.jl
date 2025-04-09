@@ -100,6 +100,74 @@ struct HydroRoute{N} <: AbstractHydroRoute
 end
 
 """
+    @hydroroute name begin
+        fluxes = begin
+            ...
+        end
+        dfluxes = begin
+            ...
+        end
+        proj_func = f(x)
+    end
+
+A macro to construct a HydroRoute object.
+
+# Arguments
+- `name: The name of the route, a Symbol
+- `expr`: A code block containing the following component definitions:
+- `fluxes`: An array of HydroFlux or NeuralFlux objects, defining the flow calculations for the route
+- `dfluxes`: An array of StateFlux objects, defining the changes in state variables
+- `proj_func`: A projection function of type Function, used to ensure state variables remain within valid ranges
+
+# Example
+```julia
+route = @hydroroute :route1 begin
+    fluxes = [
+        @hydroflux a ~ k1 * b - k2 * c
+        @hydroflux d ~ k1 * b - k2 * c
+    ]
+    dfluxes = [
+        @stateflux c ~ b - a - d
+    ]
+    proj_func = x -> max(0, x)
+end
+```
+"""
+macro hydroroute(name, expr)
+    @assert Meta.isexpr(expr, :block) "Expected a begin...end block after route name"
+    fluxes_expr, dfluxes_expr, proj_func_expr = nothing, nothing, nothing
+    for assign in filter(x -> !(x isa LineNumberNode), expr.args)
+        @assert Meta.isexpr(assign, :(=)) "Expected assignments in the form 'fluxes = begin...end', 'dfluxes = begin...end', and 'proj_func = f(x)'"
+        lhs, rhs = assign.args
+        if lhs == :fluxes
+            @assert Meta.isexpr(rhs, :block) "Expected 'fluxes' to be defined in a begin...end block"
+            fluxes_expr = Expr(:vect, filter(x -> !(x isa LineNumberNode), rhs.args)...)
+        elseif lhs == :dfluxes
+            @assert Meta.isexpr(rhs, :block) "Expected 'dfluxes' to be defined in a begin...end block"
+            dfluxes_expr = Expr(:vect, filter(x -> !(x isa LineNumberNode), rhs.args)...)
+        elseif lhs == :proj_func
+            proj_func_expr = rhs
+        else
+            error("Unknown assignment: $lhs. Expected 'fluxes', 'dfluxes', or 'proj_func'")
+        end
+    end
+    @assert !isnothing(fluxes_expr) && !isnothing(dfluxes_expr) && !isnothing(proj_func_expr) "'fluxes', 'dfluxes', and 'proj_func' must all be specified"
+    return esc(quote
+        let
+            fluxes = $fluxes_expr
+            dfluxes = $dfluxes_expr
+            proj_func = $proj_func_expr
+            HydroRoute(
+                rfluxes=fluxes,
+                dfluxes=dfluxes,
+                proj_func=proj_func,
+                name=$(name)
+            )
+        end
+    end)
+end
+
+"""
     (route::HydroRoute)(
         input::AbstractArray{T,3}, 
         params::ComponentVector;

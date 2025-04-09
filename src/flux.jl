@@ -94,6 +94,66 @@ struct HydroFlux{N} <: AbstractHydroFlux
 end
 
 """
+    @hydroflux(name, eqs...)
+
+Create a `HydroFlux` from a set of equations, where:
+- Left sides of equations are output variables
+- Right sides contain input variables and parameters
+- Parameters are identified using ModelingToolkit's `isparameter`
+- `name` is an optional name for the flux (provide as first argument)
+
+# Examples
+```julia
+@variables x, y, z
+@parameters a, b
+
+# Create a named flux with one equation
+flux1 = @hydroflux :my_flux z = a*x + b*y
+
+# Create a flux with multiple equations
+flux2 = @hydroflux begin
+    z₁ = a*x + b*y
+    z₂ = x^2 + y^2
+end
+```
+"""
+macro hydroflux(args...)
+    name = length(args) == 1 ? nothing : args[1]
+    eqs_expr = length(args) == 1 ? args[1] : args[2]
+    vect_eqs_expr = if Meta.isexpr(eqs_expr, :block)
+        Expr(:vect, filter(arg -> !(arg isa LineNumberNode) && !Meta.isexpr(arg, :line), eqs_expr.args)...)
+    else
+        Expr(:vect, eqs_expr)
+    end
+
+    return esc(quote
+        let
+            equations = $vect_eqs_expr
+            # processed_eqs = map(equations) do eq
+            #     if eq isa Equation
+            #         eq
+            #     elseif Meta.isexpr(eq, :(=)) || Meta.isexpr(eq, :(~))
+            #         Symbolics.Equation(eq.args[1], eq.args[2])
+            #     else
+            #         error("Expected equation (using = or ~), got: $eq")
+            #     end
+            # end
+            processed_eqs = equations
+
+            lhs_terms = Num.([eq.lhs for eq in processed_eqs])
+            rhs_terms = Num.([eq.rhs for eq in processed_eqs])
+
+            all_vars = Num.(mapreduce(get_variables, union, rhs_terms, init=Set{Num}()))
+            inputs = Num.(filter(x -> !ModelingToolkit.isparameter(x), collect(all_vars)))
+            params = Num.(filter(x -> ModelingToolkit.isparameter(x), collect(all_vars)))
+            inputs = setdiff(inputs, lhs_terms)
+
+            HydroFlux(inputs, lhs_terms, params, exprs=Num.(rhs_terms), name=$(name))
+        end
+    end)
+end
+
+"""
     (flux::AbstractHydroFlux)(input::AbstractArray, params::ComponentVector; kwargs...)
 
 Apply a HydroFlux model to input data for calculating water fluxes.
@@ -238,6 +298,50 @@ struct NeuralFlux{N} <: AbstractNeuralFlux
     function NeuralFlux(fluxes::Pair{Vector{Num},Vector{Num}}, chain, name::Union{Symbol,Nothing}=nothing)
         return NeuralFlux(fluxes[1], fluxes[2], chain, name=name)
     end
+end
+
+(chain::LuxCore.AbstractLuxLayer)(inputs::Vector{Num}) = (chain=chain, inputs=inputs, name=hasproperty(chain, :name) ? chain.name : nothing)
+
+"""
+    @neuralflux(eq::Expr)
+
+Create a `NeuralFlux` using the syntax: `output ~ chain(inputs)`, where:
+- `output` is the output variable or a vector of output variables
+- `~` is the separator
+- `chain` is a Lux neural network chain
+- `inputs` is a vector of input variables
+
+# Examples
+```julia
+@variables x, y, z
+chain = Chain(Dense(2 => 10, relu), Dense(10 => 1), name=:my_net)
+
+# Create a neural flux with a single output
+flux1 = @neuralflux z ~ chain([x, y])
+
+# Create a neural flux with multiple outputs
+chain2 = Chain(Dense(2 => 16, relu), Dense(16 => 2), name=:multi_net)
+flux2 = @neuralflux [z₁, z₂] ~ chain2([x, y])
+```
+"""
+macro neuralflux(args...)
+    name = length(args) == 1 ? nothing : args[1]
+    eqs_expr = length(args) == 1 ? args[1] : args[2]
+    @assert eqs_expr.head == :call && eqs_expr.args[1] == :~ "Expected equation in the form: outputs ~ chain(inputs)"
+    lhs, rhs = eqs_expr.args[2], eqs_expr.args[3]  # Output variable(s) and Chain info expressio
+    return esc(quote
+        let
+            # Extract outputs (already Num type)
+            outputs = $lhs isa Vector ? $lhs : [$lhs]
+            # Get the chain info
+            chain_info = $rhs
+            # Create the NeuralFlux
+            NeuralFlux(
+                chain_info.inputs, outputs, chain_info.chain;
+                name=$(name), chain_name=chain_info.name
+            )
+        end
+    end)
 end
 
 """
@@ -396,13 +500,62 @@ struct StateFlux{N} <: AbstractStateFlux
     #* construct state flux with input fluxes and output fluxes
     function StateFlux(fluxes::Pair{Vector{Num},Vector{Num}}, state::Num, name::Union{Symbol,Nothing}=nothing)
         expr = sum(fluxes[1]) - sum(fluxes[2])
-        inflow_names, outflow_names = tosymbol.(fluxes[1]), tosymbol.(fluxes[2])
-        infos = (; inputs=vcat(fluxes[1], fluxes[2]), states=[state], params=Num[], inflows=inflow_names, outflows=outflow_names)
+        infos = (; inputs=vcat(fluxes[1], fluxes[2]), states=[state], params=Num[])
         flux_name = isnothing(name) ? Symbol("##state_flux#", hash(infos)) : name
         return new{flux_name}([expr], infos)
     end
     #* construct state flux with state variables
     StateFlux(states::Pair{Num,Num}, name::Union{Symbol,Nothing}=nothing) = StateFlux([states[2]], states[1], expr=states[2] - states[1], name=name)
+end
+
+
+"""
+    stateflux(name, eq)
+
+Create a `StateFlux` from an equation, where:
+- Left side of the equation is the state variable
+- Right side contains the expression for the state variable's change
+- `name` is an optional name for the flux (provide as first argument)
+
+# Examples
+```julia
+@variables x, y, z
+@parameters a, b
+
+# Create a named state flux
+flux1 = @stateflux_build :my_flux z = a*x + b*y
+
+# Create a state flux without a name
+flux2 = @stateflux_build z = a*x + b*y
+```
+"""
+macro stateflux(args...)
+    # Process arguments
+    name = length(args) == 1 ? nothing : args[1]
+    eq_expr = length(args) == 1 ? args[1] : args[2]
+
+    # Handle both = and ~ operators
+    if Meta.isexpr(eq_expr, :(=))
+        lhs, rhs = eq_expr.args[1], eq_expr.args[2]
+    elseif Meta.isexpr(eq_expr, :call) && eq_expr.args[1] == :~
+        lhs, rhs = eq_expr.args[2], eq_expr.args[3]
+    else
+        error("Expected equation (using = or ~), got: $eq_expr")
+    end
+
+    return esc(quote
+        let
+            eq = Symbolics.Equation($lhs, $rhs)
+            state = Num(eq.lhs)
+
+            all_vars = Num.(get_variables(eq.rhs))
+            inputs = Num.(filter(x -> !ModelingToolkit.isparameter(x), collect(all_vars)))
+            params = Num.(filter(x -> ModelingToolkit.isparameter(x), collect(all_vars)))
+            inputs = setdiff(inputs, state)
+
+            StateFlux(inputs, only(state), params, expr=Num(eq.rhs), name=$(name))
+        end
+    end)
 end
 
 (::AbstractStateFlux)(::AbstractArray{T,2}, ::ComponentVector; kwargs...) where {T} = @error "State Flux cannot run directly, please using HydroFlux to run"

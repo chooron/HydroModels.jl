@@ -97,7 +97,6 @@ struct HydroModel{N} <: AbstractModel
     end
 end
 
-
 """
     _prepare_indices(components::Vector{<:AbstractComponent}, 
                     input_names::Vector{Symbol}, 
@@ -153,6 +152,46 @@ function _prepare_indices(components::Vector{<:AbstractComponent}, inputs::Vecto
         push!(output_idx, findfirst(varnm -> varnm == name, input_names))
     end
     return input_idx, output_idx
+end
+
+"""
+    @hydromodel name begin
+        component1
+        component2
+        ...
+    end
+
+Creates a HydroModel with the specified name and components.
+
+# Arguments
+- `name`: Symbol for the model name
+- Components can be:
+  - HydroBucket instances
+  - Flux definitions (using @hydroflux, @neuralflux, etc.)
+  - Other model components
+
+# Example
+```julia
+@hydromodel :model1 begin
+    bucket1
+    @neuralflux :flux1 [y] ~ chain([x1, x2])
+    bucket2
+end
+```
+"""
+macro hydromodel(name, expr)
+    @assert Meta.isexpr(expr, :block) "Expected a begin...end block after model name"
+
+    # Filter out LineNumberNodes and get components
+    components = filter(x -> !(x isa LineNumberNode), expr.args)
+
+    # Create the model
+    return esc(quote
+        let
+            # Create the model with all components
+            HydroModel(; name=$(name), components=[$(components...)])
+        end
+    end)
 end
 
 """
