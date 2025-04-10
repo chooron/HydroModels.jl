@@ -20,7 +20,6 @@ df = DataFrame(data);
 ts = collect(1:10000)
 input = (lday=df[ts, "dayl(day)"], temp=df[ts, "tmean(C)"], prcp=df[ts, "prcp(mm/day)"])
 
-
 # multi node input
 node_num = 10
 node_names = [Symbol(:node, i) for i in 1:node_num]
@@ -36,5 +35,5 @@ node_pas = ComponentVector(params=node_params)
 input_arr = reduce(hcat, collect(input[HydroModels.get_input_names(ele)])) |> gpu
 node_input = reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([input_arr], length(node_names)))
 node_input = permutedims(node_input, (2, 3, 1))
-config = (ptyidx=1:10, styidx=1:10, timeidx=ts, solver=HydroModels.ManualSolver(mutable=false, dev=gpu))
-result = ele(node_input, node_pas, config=config)
+config = (ptyidx=1:10, styidx=1:10, timeidx=ts, solver=HydroModels.ManualSolver(mutable=false, dev=gpu), device=gpu)
+result = exphydro_model(node_input, node_pas; config=config)
