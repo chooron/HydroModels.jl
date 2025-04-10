@@ -4,18 +4,20 @@
 
     ndtypes = [:ntype1, :ntype2, :ntype3]
     hrunames = [:nid1, :nid2, :nid3, :nid4, :nid5, :nid6, :nid7, :nid8, :nid9]
+    
     @variables q1 q1_routed s_river
     @parameters lag
-    rflux = HydroModels.HydroFlux([q1, s_river] => [q1_routed], [lag], exprs=[s_river / (1 + lag)])
-    dflux = HydroModels.StateFlux([q1] => [q1_routed], s_river)
 
-    @test HydroModels.get_input_names(rflux) == [:q1, :s_river]
-    @test HydroModels.get_output_names(rflux) == [:q1_routed]
-    @test HydroModels.get_param_names(rflux) == [:lag]
-    params = ComponentVector(lag=fill(0.2, length(ndtypes)))
-    initstates = ComponentVector(s_river=fill(0.0, length(hrunames)))
-    pas = ComponentVector(params=params)
-    route = HydroModels.GridRoute(rfluxes=[rflux], dfluxes=[dflux], flwdir=flwdir, positions=positions)
+    route = @hydroroute begin
+        fluxes = begin
+            @hydroflux q1_routed ~ s_river / (1 + lag)
+        end
+        dfluxes = begin
+            @stateflux s_river ~ q1 - q1_routed
+        end
+        aggr_func = HydroModels.build_aggr_func(flwdir, positions)
+    end
+
     @test HydroModels.get_input_names(route) == [:q1]
     @test HydroModels.get_output_names(route) == [:q1_routed]
     @test HydroModels.get_param_names(route) == [:lag]
@@ -25,7 +27,9 @@
     styidx = [1, 2, 3, 4, 5, 6, 7, 8, 9]
     input_arr = ones(1, 9, 20)
     timeidx = collect(1:20)
-
+    params = ComponentVector(lag=fill(0.2, length(ndtypes)))
+    initstates = ComponentVector(s_river=fill(0.0, length(hrunames)))
+    pas = ComponentVector(params=params)
     output_arr = route(input_arr, pas, initstates=initstates, solver=ManualSolver(mutable=true), interp=LinearInterpolation, ptyidx=ptyidx, styidx=styidx, timeidx=timeidx)
     @test size(output_arr) == size(ones(2, 9, 20))
 end
@@ -33,8 +37,6 @@ end
 @testset "test vector route based on discharge route flux" begin
     @variables q1 q1_routed s_river q_gen
     @parameters lag
-    rflux = HydroModels.HydroFlux([q1, s_river] => [q1_routed], [lag], exprs=[s_river / (1 + lag)])
-    dflux = HydroModels.StateFlux([q1] => [q1_routed], s_river)
 
     network = DiGraph(9)
     add_edge!(network, 1, 2)
@@ -51,14 +53,23 @@ end
     params = ComponentVector(lag=fill(0.2, length(ndtypes)))
     initstates = ComponentVector(s_river=fill(0.0, length(hrunames)))
     pas = ComponentVector(params=params)
-    vroute = HydroModels.VectorRoute(rfluxes=[rflux], dfluxes=[dflux], network=network)
+
+    route = @hydroroute begin
+        fluxes = begin
+            @hydroflux q1_routed ~ s_river / (1 + lag)
+        end
+        dfluxes = begin
+            @stateflux s_river ~ q1 - q1_routed
+        end
+        aggr_func = HydroModels.build_aggr_func(network)
+    end
 
     ptyidx = [1, 1, 1, 2, 2, 2, 3, 3, 3]
     styidx = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
     input_arr = rand(1, 9, 20)
     timeidx = collect(1:20)
-    sol_2 = vroute(input_arr, pas, initstates=initstates, timeidx=timeidx, ptyidx=ptyidx, styidx=styidx, solver=HydroModels.ManualSolver(mutable=true))
+    sol_2 = route(input_arr, pas, initstates=initstates, timeidx=timeidx, ptyidx=ptyidx, styidx=styidx, solver=HydroModels.ManualSolver(mutable=true))
     @test size(sol_2) == size(ones(2, 9, 20))
 end
 

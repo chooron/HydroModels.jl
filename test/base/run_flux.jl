@@ -1,18 +1,35 @@
 @testset "test hydro flux (build by Symbolics.jl)" begin
     @variables a b c
     @parameters p1 p2
-    simple_flux_1 = HydroModels.HydroFlux([a, b] => [c], [p1, p2], exprs=[a * p1 + b * p2])
-    @test HydroModels.get_input_names(simple_flux_1) == [:a, :b]
-    @test HydroModels.get_param_names(simple_flux_1) == [:p1, :p2]
-    @test HydroModels.get_output_names(simple_flux_1) == [:c,]
+    simple_flux_1 = @hydroflux c ~ a * p1 + b * p2
+    @test Set(HydroModels.get_input_names(simple_flux_1)) == Set([:a, :b])
+    @test Set(HydroModels.get_param_names(simple_flux_1)) == Set([:p1, :p2])
+    @test Set(HydroModels.get_output_names(simple_flux_1)) == Set([:c])
     output_mat = [18.0 17.0 11.0]
     # @test simple_flux_1([2.0, 3.0], ComponentVector(params=(p1=3.0, p2=4.0))) == [2.0 * 3.0 + 3.0 * 4.0]
     @test simple_flux_1([2.0 3.0 1.0; 3.0 2.0 2.0], ComponentVector(params=(p1=3.0, p2=4.0))) == output_mat
     # test with multiple nodes
     input_arr = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), [2.0 3.0 1.0; 3.0 2.0 2.0] for _ in 1:10), (1, 3, 2))
-    ndtypes = [Symbol("node_$i") for i in 1:10]
     input_pas = ComponentVector(params=(p1=fill(3.0, 10), p2=fill(4.0, 10)))
     @test simple_flux_1(input_arr, input_pas, config=(;ptyidx=1:10)) == permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), output_mat for _ in 1:10), (1, 3, 2))
+end
+
+@testset "test hydro flux with multiple output" begin
+    @variables a b c d
+    @parameters p1 p2
+    simple_flux_1 = @hydroflux begin
+        c ~ a * p1 + b * p2
+        d ~ a + p1 + b + p2
+    end
+    @test Set(HydroModels.get_input_names(simple_flux_1)) == Set([:a, :b])
+    @test Set(HydroModels.get_param_names(simple_flux_1)) == Set([:p1, :p2])
+    @test Set(HydroModels.get_output_names(simple_flux_1)) == Set([:c, :d])
+    output_mat = [18.0 12.0; 17.0 12.0; 16.0 12.0]'
+    @test simple_flux_1([2.0 3.0; 3.0 2.0; 4.0 1.0]', ComponentVector(params=(p1=3.0, p2=4.0))) == output_mat
+    input_arr = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), [2.0 3.0; 3.0 2.0; 4.0 1.0]' for _ in 1:10), (1, 3, 2))
+    input_pas = ComponentVector(params=(p1=fill(3.0, 10), p2=fill(4.0, 10)))
+    @test simple_flux_1(input_arr, input_pas, config=(;ptyidx=1:10)) == permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), output_mat for _ in 1:10), (1, 3, 2))
+
 end
 
 @testset "test state flux (build by Symbolics.jl)" begin
@@ -20,30 +37,19 @@ end
     @variables a b c d e
     @parameters p1 p2
 
-    # Create HydroFlux objects for comparison
-    simple_flux_1 = HydroModels.HydroFlux([a, b] => [c], [p1, p2], exprs=[a * p1 + b * p2])
-    simple_flux = HydroModels.HydroFlux([a, b] => [d], [p1, p2], exprs=[a / p1 + b / p2])
-
     # Test StateFlux with input and output, but no parameters
-    state_flux_1 = HydroModels.StateFlux([a, b] => [c, d], e)
-    @test HydroModels.get_input_names(state_flux_1) == [:a, :b, :c, :d]
-    @test HydroModels.get_param_names(state_flux_1) == Symbol[]
-    @test HydroModels.get_output_names(state_flux_1) == Symbol[]
-    @test HydroModels.get_state_names(state_flux_1) == [:e]
+    state_flux_1 = @stateflux e ~ (a + b) - (c + d)
+    @test Set(HydroModels.get_input_names(state_flux_1)) == Set([:a, :b, :c, :d])
+    @test Set(HydroModels.get_param_names(state_flux_1)) == Set(Symbol[])
+    @test Set(HydroModels.get_output_names(state_flux_1)) == Set(Symbol[])
+    @test Set(HydroModels.get_state_names(state_flux_1)) == Set([:e])
 
     # Test StateFlux with input, parameters, and a custom expression
-    state_flux = HydroModels.StateFlux([a, b, c, d], e, [p1, p2], expr=a * p1 + b * p2 - c - d)
-    @test HydroModels.get_input_names(state_flux) == [:a, :b, :c, :d]
-    @test HydroModels.get_param_names(state_flux) == [:p1, :p2]
-    @test HydroModels.get_output_names(state_flux) == Symbol[]
-    @test HydroModels.get_state_names(state_flux) == [:e]
-
-    # Test StateFlux with a single input and state
-    state_flux_3 = HydroModels.StateFlux(d => e)
-    @test HydroModels.get_input_names(state_flux_3) == [:e,]
-    @test HydroModels.get_param_names(state_flux_3) == Symbol[]
-    @test HydroModels.get_output_names(state_flux_3) == Symbol[]
-    @test HydroModels.get_state_names(state_flux_3) == [:d,]
+    state_flux_2 = @stateflux e ~ (a * p1 + b * p2) - (c + d)
+    @test Set(HydroModels.get_input_names(state_flux_2)) == Set([:a, :b, :c, :d])
+    @test Set(HydroModels.get_param_names(state_flux_2)) == Set([:p1, :p2])
+    @test Set(HydroModels.get_output_names(state_flux_2)) == Set(Symbol[])
+    @test Set(HydroModels.get_state_names(state_flux_2)) == Set([:e])
 end
 
 @testset "test neural flux (single output)" begin
@@ -56,11 +62,11 @@ end
     )
     nn_ps = ComponentVector(LuxCore.initialparameters(StableRNG(42), nn_1))
     func_1 = (x, p) -> LuxCore.stateless_apply(nn_1, x, p)
-    nn_flux_1 = HydroModels.NeuralFlux([a, b, c] => [d], nn_1)
-    @test HydroModels.get_input_names(nn_flux_1) == [:a, :b, :c]
-    @test HydroModels.get_param_names(nn_flux_1) == Symbol[]
-    @test HydroModels.get_nn_names(nn_flux_1) == [:testnn]
-    @test HydroModels.get_output_names(nn_flux_1) == [:d]
+    nn_flux_1 = @neuralflux [d] ~ nn_1([a, b, c])
+    @test Set(HydroModels.get_input_names(nn_flux_1)) == Set([:a, :b, :c])
+    @test Set(HydroModels.get_param_names(nn_flux_1)) == Set(Symbol[])
+    @test Set(HydroModels.get_nn_names(nn_flux_1)) == Set([:testnn])
+    @test Set(HydroModels.get_output_names(nn_flux_1)) == Set([:d])
     # @test nn_flux_1([1, 2, 3], ComponentVector(nns=(testnn=nn_ps_vec,))) ≈ func_1([1, 2, 3], nn_ps)
     test_input = [1 3 3; 2 2 2; 1 2 1; 3 1 2]'
     expected_output = func_1(test_input, nn_ps)
@@ -82,14 +88,13 @@ end
     )
     nn_ps = LuxCore.initialparameters(StableRNG(42), nn)
     func = (x, p) -> LuxCore.stateless_apply(nn, x, p)
-    nn_flux = HydroModels.NeuralFlux([a, b, c] => [d, e], nn)
-    @test HydroModels.get_input_names(nn_flux) == [:a, :b, :c]
-    @test HydroModels.get_param_names(nn_flux) == Symbol[]
-    @test HydroModels.get_nn_names(nn_flux) == [:testnn]
-    @test HydroModels.get_output_names(nn_flux) == [:d, :e]
+    nn_flux = @neuralflux [d, e] ~ nn([a, b, c])
+    @test Set(HydroModels.get_input_names(nn_flux)) == Set([:a, :b, :c])
+    @test Set(HydroModels.get_param_names(nn_flux)) == Set(Symbol[])
+    @test Set(HydroModels.get_nn_names(nn_flux)) == Set([:testnn])
+    @test Set(HydroModels.get_output_names(nn_flux)) == Set([:d, :e])
     test_input = [1 3 3; 2 2 2; 1 2 1; 3 1 2]'
     test_output = func(test_input, nn_ps)
-    # @test nn_flux([1, 2, 3], ComponentVector(nns=(testnn=nn_ps_vec,))) ≈ func([1, 2, 3], nn_ps)
     @test nn_flux(test_input, ComponentVector(nns=(testnn=nn_ps,))) ≈ test_output
     # test with multiple nodes
     input_arr = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), test_input for _ in 1:10), (1, 3, 2))
