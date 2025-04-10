@@ -5,7 +5,7 @@
     file_path = "../data/exphydro/01013500.csv"
     data = CSV.File(file_path)
     df = DataFrame(data)
-    ts = collect(1:10000)
+    ts = collect(1:100)
     input = (lday=df[ts, "dayl(day)"], temp=df[ts, "tmean(C)"], prcp=df[ts, "prcp(mm/day)"])
 
     # multi node input
