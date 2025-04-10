@@ -127,29 +127,16 @@ macro hydroflux(args...)
     end
 
     return esc(quote
-        let
-            equations = $vect_eqs_expr
-            # processed_eqs = map(equations) do eq
-            #     if eq isa Equation
-            #         eq
-            #     elseif Meta.isexpr(eq, :(=)) || Meta.isexpr(eq, :(~))
-            #         Symbolics.Equation(eq.args[1], eq.args[2])
-            #     else
-            #         error("Expected equation (using = or ~), got: $eq")
-            #     end
-            # end
-            processed_eqs = equations
+        equations = $vect_eqs_expr
+        lhs_terms = Num.([eq.lhs for eq in equations])
+        rhs_terms = Num.([eq.rhs for eq in equations])
 
-            lhs_terms = Num.([eq.lhs for eq in processed_eqs])
-            rhs_terms = Num.([eq.rhs for eq in processed_eqs])
+        all_vars = Num.(mapreduce(get_variables, union, rhs_terms, init=Set{Num}()))
+        inputs = Num.(filter(x -> !isparameter(x), collect(all_vars)))
+        params = Num.(filter(x -> isparameter(x), collect(all_vars)))
+        inputs = setdiff(inputs, lhs_terms)
 
-            all_vars = Num.(mapreduce(get_variables, union, rhs_terms, init=Set{Num}()))
-            inputs = Num.(filter(x -> !ModelingToolkit.isparameter(x), collect(all_vars)))
-            params = Num.(filter(x -> ModelingToolkit.isparameter(x), collect(all_vars)))
-            inputs = setdiff(inputs, lhs_terms)
-
-            HydroFlux(inputs, lhs_terms, params, exprs=Num.(rhs_terms), name=$(name))
-        end
+        HydroFlux(inputs, lhs_terms, params, exprs=Num.(rhs_terms), name=$(name))
     end)
 end
 
@@ -300,7 +287,7 @@ struct NeuralFlux{N} <: AbstractNeuralFlux
     end
 end
 
-(chain::LuxCore.AbstractLuxLayer)(inputs::Vector{Num}) = (chain=chain, inputs=inputs, name=hasproperty(chain, :name) ? chain.name : nothing)
+(chain::LuxCore.AbstractLuxLayer)(inputs::AbstractVector{Num}) = (chain=chain, inputs=inputs, name=hasproperty(chain, :name) ? chain.name : nothing)
 
 """
     @neuralflux(eq::Expr)
@@ -343,6 +330,7 @@ macro neuralflux(args...)
         end
     end)
 end
+
 
 """
     (flux::NeuralFlux)(input::AbstractArray, params::ComponentVector; kwargs...)
@@ -508,7 +496,6 @@ struct StateFlux{N} <: AbstractStateFlux
     StateFlux(states::Pair{Num,Num}, name::Union{Symbol,Nothing}=nothing) = StateFlux([states[2]], states[1], expr=states[2] - states[1], name=name)
 end
 
-
 """
     stateflux(name, eq)
 
@@ -544,19 +531,13 @@ macro stateflux(args...)
     end
 
     return esc(quote
-        let
-            eq = Symbolics.Equation($lhs, $rhs)
-            state = Num(eq.lhs)
+        all_vars = Num.(get_variables($rhs))
+        inputs = Num.(filter(x -> !isparameter(x), collect(all_vars)))
+        params = Num.(filter(x -> isparameter(x), collect(all_vars)))
+        inputs = setdiff(inputs, only($lhs))
 
-            all_vars = Num.(get_variables(eq.rhs))
-            inputs = Num.(filter(x -> !ModelingToolkit.isparameter(x), collect(all_vars)))
-            params = Num.(filter(x -> ModelingToolkit.isparameter(x), collect(all_vars)))
-            inputs = setdiff(inputs, state)
-
-            StateFlux(inputs, only(state), params, expr=Num(eq.rhs), name=$(name))
-        end
+        StateFlux(inputs, only($lhs), params, expr=Num($rhs), name=$(name))
     end)
 end
 
-(::AbstractStateFlux)(::AbstractArray{T,2}, ::ComponentVector; kwargs...) where {T} = @error "State Flux cannot run directly, please using HydroFlux to run"
-(::AbstractStateFlux)(::AbstractArray{T,3}, ::ComponentVector; kwargs...) where {T} = @error "State Flux cannot run directly, please using HydroFlux to run"
+(::StateFlux)(::AbstractArray, ::ComponentVector; kwargs...) = @error "State Flux cannot run directly, please using HydroFlux to run"
