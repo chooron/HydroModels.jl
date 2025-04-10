@@ -123,9 +123,6 @@ function build_ele_func(
 
     # Create return expressions with concrete values
     return_flux = :(return [$(output_names...)])
-    return_state = :(return [$(map(expr -> :($(toexpr(expr))), reduce(vcat, get_exprs.(dfluxes)))...)])
-    return_multi_state = :(return stack([$(map(expr -> :($(toexprv2(unwrap(expr)))), reduce(vcat, get_exprs.(dfluxes)))...)], dims=1))
-
     # Create fcuntion expression
     meta_exprs = [:(Base.@_inline_meta)]
 
@@ -147,6 +144,9 @@ function build_ele_func(
     generated_multi_flux_func = @RuntimeGeneratedFunction(multi_flux_func_expr)
 
     if length(state_names) > 0
+        return_state = :(return [$(map(expr -> :($(toexpr(expr))), reduce(vcat, get_exprs.(dfluxes)))...)])
+        return_multi_state = :(return stack([$(map(expr -> :($(toexprv2(unwrap(expr)))), reduce(vcat, get_exprs.(dfluxes)))...)], dims=1))
+
         diff_func_expr = :(function (inputs, states, pas)
             $(meta_exprs...)
             $(define_calls...)
@@ -235,8 +235,7 @@ function build_route_func(
         end
     end
 
-    dfluxes_outflows = reduce(vcat, [dflux.infos.outflows for dflux in dfluxes])
-    return_state = :(return [$(map(expr -> :($(toexprv2(unwrap(expr)))), reduce(vcat, get_exprs.(dfluxes)))...)], [$(dfluxes_outflows...)])
+    return_state = :(return [$(map(expr -> :($(toexprv2(unwrap(expr)))), reduce(vcat, get_exprs.(dfluxes)))...)], [$(output_names...)])
     # Create function expression
     meta_exprs = [:(Base.@_inline_meta)]
 
