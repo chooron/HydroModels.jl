@@ -1,114 +1,136 @@
 """
-    DirectInterpolation{D}(data::AbstractArray, ts::AbstractVector{<:Integer})
+    sort_fluxes(fluxes::AbstractVector{<:AbstractComponent})
 
-A lightweight interpolation type that provides the same interface as DataInterpolations.jl but uses direct indexing instead of interpolation algorithms.
+Construct a directed calculation graph based on hydrological fluxes and return them in topological order.
 
 # Arguments
-- `data::AbstractArray`: The data array to be interpolated
-- `ts::AbstractVector{<:Integer}`: The time points corresponding to the data
+- `fluxes::AbstractVector{<:AbstractComponent}`: A vector of flux components to be sorted.
 
-# Interface
-Implements the same callable interface as DataInterpolations.jl interpolation types:
-- `(interp::DirectInterpolation)(t)`: Get the value at time `t`
-
-# Implementation Details
-Rather than performing interpolation calculations, this type simply returns the data value at the ceiling of the requested time index.
-For non-integer time points `t`, it uses `ceil(Int, t)` to get the next integer index.
-
-# Example
-```julia
-data = rand(100)
-ts = 1:100
-interp = DirectInterpolation(data, ts)
-value = interp(1.7)  # Returns data[2] (ceiling of 1.7)
-```
-"""
-struct DirectInterpolation{D}
-    data::AbstractArray
-    ts::AbstractVector
-
-    function DirectInterpolation(data::AbstractArray, ts::AbstractVector{<:Integer})
-        @assert size(data)[end] == length(ts) "The last dimension of data must match the length of ts"
-        return new{length(size(data))}(data, ts)
-    end
-end
-
-@inline (interpolater::DirectInterpolation{1})(t::Integer) = interpolater.data[t]
-@inline (interpolater::DirectInterpolation{1})(t::Number) = interpolater.data[ceil(Int, t)]
-@inline (interpolater::DirectInterpolation{2})(t::Integer) = interpolater.data[:, t]
-@inline (interpolater::DirectInterpolation{2})(t::Number) = interpolater.data[:, ceil(Int, t)]
-
-"""
-    ManualSolver{mutable} <: AbstractHydroSolver
-
-A lightweight, type-stable ODE solver optimized for hydrological modeling.
-
-# Type Parameters
-- `mutable::Bool`: Controls array mutability and performance characteristics
-    - `true`: Uses mutable arrays for in-place updates (30% faster)
-    - `false`: Uses immutable arrays for functional programming style
+# Returns
+- `AbstractVector{<:AbstractComponent}`: A vector of flux components sorted in topological order for calculation.
 
 # Description
-ManualSolver implements a fixed-step explicit Euler method for solving ordinary 
-differential equations (ODEs). It is specifically designed for hydrological models 
-where stability and computational efficiency are prioritized over high-order accuracy.
+This function creates a directed graph representing the dependencies between flux components,
+where edges connect input variables to output variables. The function then performs a topological
+sort to determine the correct calculation order that respects these dependencies.
 
-## Performance Characteristics
-- Type-stable implementation for predictable performance
-- Optional in-place operations via the `mutable` parameter
-- Linear time complexity with respect to simulation length
-- Constant space complexity when `mutable=true`
+The process involves:
+1. Identifying all input and output variables across all flux components
+2. Building a directed graph where nodes are variables and edges represent dependencies
+3. Performing a topological sort on the graph
+4. Extracting the flux components in the order determined by the sort
 
-## Memory Management
-- `mutable=true`: 
-    - Modifies arrays in-place
-- `mutable=false`:
-    - Creates new arrays at each step
+This ensures that when calculations are performed, all required inputs are available before
+a flux component is evaluated.
+
+# Examples
+```julia
+fluxes = [flux1, flux2, flux3]
+sorted_fluxes = sort_fluxes(fluxes)
+# Now sorted_fluxes contains the components in the correct calculation order
+```
+"""
+function sort_fluxes(fluxes::AbstractVector{<:AbstractComponent})
+    input_names = reduce(union, get_input_names.(fluxes))
+    output_names = reduce(union, get_output_names.(fluxes))
+    input_names = setdiff(input_names, output_names)
+    output_names = setdiff(output_names, input_names)
+
+    # Build a named tuple mapping output names to their corresponding flux instances
+    fluxes_ntp = reduce(merge, map(fluxes) do flux
+        tmp_output_names = get_output_names(flux)
+        NamedTuple{Tuple(tmp_output_names)}(repeat([flux], length(tmp_output_names)))
+    end)
+
+    # Construct a directed calculation graph
+    var_names = vcat(input_names, output_names)
+    var_names_ntp = NamedTuple{Tuple(var_names)}(1:length(var_names))
+    digraph = SimpleDiGraph(length(var_names))
+    for flux in fluxes
+        tmp_input_names, tmp_output_names = get_input_names(flux), get_output_names(flux)
+        for ipnm in tmp_input_names
+            for opnm in tmp_output_names
+                add_edge!(digraph, var_names_ntp[ipnm], var_names_ntp[opnm])
+            end
+        end
+    end
+    
+    # Sort fluxes based on the topological order of the directed graph
+    sorted_fluxes = AbstractComponent[]
+    for idx in topological_sort(digraph)
+        tmp_var_nm = var_names[idx]
+        if (tmp_var_nm in output_names)
+            tmp_flux = fluxes_ntp[tmp_var_nm]
+            if !(tmp_flux in sorted_fluxes)
+                push!(sorted_fluxes, tmp_flux)
+            end
+        end
+    end
+    sorted_fluxes
+end
 
 """
-struct ManualSolver{mutable}
-    dev
+    sort_components(components::AbstractVector{<:AbstractComponent})
 
-    function ManualSolver(; dev=identity, mutable::Bool=false)
-        return new{mutable}(dev)
-    end
-end
+Construct a directed calculation graph based on hydrological components and return them in topological order.
 
-function (solver::ManualSolver{true})(
-    du_func::Function,
-    pas::AbstractVector,
-    initstates::AbstractArray{<:Number,N},
-    timeidx::AbstractVector;
-    kwargs...
-) where N
-    T1 = promote_type(eltype(pas), eltype(initstates))
-    states_results = zeros(T1, size(initstates)..., length(timeidx)) |> solver.dev
-    tmp_initstates = copy(initstates)
-    for (i, t) in enumerate(timeidx)
-        tmp_du = du_func(tmp_initstates, pas, t)
-        tmp_initstates = tmp_initstates .+ tmp_du
-        states_results[ntuple(_ -> Colon(), N)..., i] .= tmp_initstates
-    end
-    states_results
-end
+# Arguments
+- `components::AbstractVector{<:AbstractComponent}`: A vector of hydrological components to be sorted.
 
-function (solver::ManualSolver{false})(
-    du_func::Function,
-    pas::AbstractVector,
-    initstates::AbstractArray{T,N},
-    timeidx::AbstractVector;
-    kwargs...
-) where {T,N}
-    function recur_op(::Nothing, t)
-        new_states = du_func(initstates, pas, t) .+ initstates
-        return [new_states], new_states
+# Returns
+- `AbstractVector{<:AbstractComponent}`: A vector of components sorted in topological order for calculation.
+
+# Description
+This function creates a directed graph representing the dependencies between hydrological components,
+where edges connect input variables to output and state variables. The function then performs a 
+topological sort to determine the correct calculation order that respects these dependencies.
+
+The process involves:
+1. Identifying all input, output, and state variables across all components
+2. Building a directed graph where nodes are variables and edges represent dependencies
+3. Performing a topological sort on the graph
+4. Extracting the components in the order determined by the sort
+
+This ensures that when calculations are performed, all required inputs are available before
+a component is evaluated.
+
+# Examples
+```julia
+components = [bucket1, flux1, route1]
+sorted_components = sort_components(components)
+# Now sorted_components contains the components in the correct calculation order
+```
+"""
+function sort_components(components::AbstractVector{<:AbstractComponent})
+    input_names, output_names, state_names = get_var_names(components)
+    components_ntp = reduce(merge, map(components) do component
+        tmp_input_names, tmp_output_names, tmp_state_names = get_var_names(component)
+        tmp_output_state_names = vcat(tmp_output_names, tmp_state_names)
+        NamedTuple{Tuple(tmp_output_state_names)}(repeat([component], length(tmp_output_state_names)))
+    end)
+    var_names = reduce(union, [input_names, output_names, state_names])
+    var_names_ntp = namedtuple(var_names, collect(1:length(var_names)))
+    digraph = SimpleDiGraph(length(var_names))
+    for component in components
+        tmp_input_names, tmp_output_names, tmp_state_names = get_var_names(component)
+        tmp_output_names = vcat(tmp_output_names, tmp_state_names)
+        for ipnm in tmp_input_names
+            for opnm in tmp_output_names
+                add_edge!(digraph, var_names_ntp[ipnm], var_names_ntp[opnm])
+            end
+        end
     end
-    function recur_op((states_list, last_state), t)
-        new_states = du_func(last_state, pas, t) .+ last_state
-        return vcat(states_list, [new_states]), new_states
+    sorted_components = AbstractComponent[]
+    for idx in topological_sort(digraph)
+        tmp_var_nm = var_names[idx]
+        if (tmp_var_nm in output_names)
+            tmp_component = components_ntp[tmp_var_nm]
+            if !(tmp_component in sorted_components)
+                push!(sorted_components, tmp_component)
+            end
+        end
     end
-    states_vec, _ = foldl_init(recur_op, timeidx)
-    stack(states_vec, dims=N + 1)
+    sorted_components
 end
 
 
