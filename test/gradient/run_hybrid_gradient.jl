@@ -27,17 +27,14 @@
     pas = ComponentVector(params=params, nns=nn_params)
     input_ntp = (prcp=prcp_vec, lday=dayl_vec, temp=temp_vec)
     input_mat = Matrix(reduce(hcat, collect(input_ntp[HydroModels.get_input_names(m50_model)]))')
+    config = (timeidx=ts, interp=LinearInterpolation, solver=HydroModelSolvers.ODESolver(sensealg=BacksolveAdjoint(autojacvec=EnzymeVJP())))
 
     # Run the model to get output
-    output = m50_model(input_mat, pas, initstates=initstates,
-        config=(timeidx=ts, solver=HydroModelSolvers.ODESolver(sensealg=BacksolveAdjoint(autojacvec=EnzymeVJP())))
-    )
+    output = m50_model(input_mat, pas, initstates=initstates, config=config)
 
     # Calculate gradient using Zygote
     gradient_result = Zygote.gradient(pas) do p
-        output = m50_model(input_mat, p, initstates=initstates,
-            config=(timeidx=ts, solver=HydroModelSolvers.ODESolver(sensealg=BacksolveAdjoint(autojacvec=EnzymeVJP())))
-        )
+        output = m50_model(input_mat, p, initstates=initstates, config=config)
         output[end, :] |> sum
     end
 

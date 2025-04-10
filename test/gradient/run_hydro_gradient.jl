@@ -36,7 +36,7 @@
     @testset "test hydro gradient computation under ode solver" begin
         # Test Zygote gradient calculation
         zygote_grad = Zygote.gradient(pas) do p
-            bucket_1(input_arr, p, inistates=init_states, solver=HydroModelSolvers.ODESolver()) |> sum
+            bucket_1(input_arr, p, inistates=init_states, interp=LinearInterpolation, solver=HydroModelSolvers.ODESolver()) |> sum
         end
 
         # Test that gradient is not nothing and contains values
@@ -44,7 +44,7 @@
 
         # Test ForwardDiff gradient calculation
         forwarddiff_grad = ForwardDiff.gradient(pas) do p
-            bucket_1(input_arr, p, inistates=init_states, solver=HydroModelSolvers.ODESolver()) |> sum
+            bucket_1(input_arr, p, inistates=init_states, interp=LinearInterpolation, solver=HydroModelSolvers.ODESolver()) |> sum
         end
 
         # Test that gradient is not nothing and contains values
@@ -54,7 +54,7 @@
     @testset "test hydro gradient computation under discrete solver" begin
         # Test Zygote gradient calculation
         zygote_grad = Zygote.gradient(pas) do p
-            bucket_1(input_arr, p, inistates=init_states, solver=HydroModelSolvers.DiscreteSolver()) |> sum
+            bucket_1(input_arr, p, inistates=init_states, interp=LinearInterpolation, solver=HydroModelSolvers.DiscreteSolver()) |> sum
         end
 
         # Test that gradient is not nothing and contains values
@@ -62,7 +62,7 @@
 
         # Test ForwardDiff gradient calculation
         forwarddiff_grad = ForwardDiff.gradient(pas) do p
-            bucket_1(input_arr, p, inistates=init_states, solver=HydroModelSolvers.DiscreteSolver()) |> sum
+            bucket_1(input_arr, p, inistates=init_states, interp=LinearInterpolation, solver=HydroModelSolvers.DiscreteSolver()) |> sum
         end
 
         # Test that gradient is not nothing and contains values
