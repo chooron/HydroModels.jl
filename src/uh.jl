@@ -39,6 +39,19 @@ end
 
 get_uh_tmax(::UHFunction{:UH_2_FULL}, lag) = 2 * ceil(lag)
 
+# """
+# ```
+# @uhfunc begin
+#     2*lag => 1.0
+#     lag => (1 - 0.5 * abs(2 - t / lag)^2.5)
+#     0 => 0.5 * abs(t / lag)^2.5
+# end
+# ```
+# 使用多组键值对记录每个时段的公式
+# """
+# macro uhfunc(expr)
+
+# end
 
 """
     UnitHydrograph{solvetype} <: AbstractRouteFlux
@@ -101,9 +114,9 @@ struct UnitHydrograph{N,ST} <: AbstractHydrograph
     ) where {T<:Num,UF<:UHFunction}
         @assert solvetype in [:DISCRETE, :SPARSE] "solvetype must be one of [:DISCRETE, :SPARSE]"
         #* Setup the name information of the hydroroutement
-        infos = (;inputs = [input], outputs = [output], params = params)
+        infos = (; inputs=[input], outputs=[output], params=params)
         uh_name = isnothing(name) ? Symbol("##uh#", hash(infos)) : name
-        return new{uh_name, solvetype}(uhfunc, infos)
+        return new{uh_name,solvetype}(uhfunc, infos)
     end
 
     function UnitHydrograph(
@@ -117,6 +130,57 @@ struct UnitHydrograph{N,ST} <: AbstractHydrograph
         return UnitHydrograph(input, output, params, uhfunc=uhfunc, solvetype=solvetype)
     end
 end
+
+"""
+    @hydrobucket name begin
+        fluxes = begin
+            ...
+        end
+        dfluxes = begin
+            ...
+        end
+    end
+
+Creates a HydroBucket with the specified name, fluxes, and dfluxes.
+
+# Arguments
+- `name`: Symbol for the bucket name
+- `fluxes`: Array of HydroFlux or NeuralFlux objects
+- `dfluxes`: Array of StateFlux objects
+
+# Example
+```julia
+@hydrobucket :bucket1 begin
+    fluxes = [flux1, flux2]
+    dfluxes = [dflux1, dflux2]
+end
+```
+"""
+# macro hydrobucket(name, expr)
+#     @assert Meta.isexpr(expr, :block) "Expected a begin...end block after bucket name"
+#     fluxes_expr, dfluxes_expr = nothing, nothing
+#     for assign in filter(x -> !(x isa LineNumberNode), expr.args)
+#         @assert Meta.isexpr(assign, :(=)) "Expected assignments in the form 'fluxes = begin...end'"
+#         lhs, rhs = assign.args
+#         if lhs == :fluxes
+#             @assert Meta.isexpr(rhs, :block) "Expected 'fluxes' to be defined in a begin...end block"
+#             fluxes_expr = Expr(:vect, filter(x -> !(x isa LineNumberNode), rhs.args)...)
+#         elseif lhs == :dfluxes
+#             @assert Meta.isexpr(rhs, :block) "Expected 'dfluxes' to be defined in a begin...end block"
+#             dfluxes_expr = Expr(:vect, filter(x -> !(x isa LineNumberNode), rhs.args)...)
+#         else
+#             error("Unknown assignment: $lhs. Expected 'fluxes' or 'dfluxes'")
+#         end
+#     end
+#     @assert !isnothing(fluxes_expr) "'fluxes' must be specified"
+#     return esc(quote
+#         let
+#             fluxes = $fluxes_expr
+#             dfluxes = isnothing($dfluxes_expr) ? [] : $dfluxes_expr
+#             HydroBucket(name=$(name), fluxes=fluxes, dfluxes=dfluxes)
+#         end
+#     end)
+# end
 
 """
     (flux::UnitHydrograph)(input::Union{Vector,Matrix,Array}, pas::ComponentVector; ptypes::AbstractVector{Symbol}=Symbol[], kwargs...)
