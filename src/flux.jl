@@ -67,27 +67,19 @@ struct HydroFlux{N} <: AbstractHydroFlux
     infos::NamedTuple
 
     function HydroFlux(
-        inputs::Vector{T},
-        outputs::Vector{T},
-        params::Vector{T};
-        exprs::Vector{T},
-        name::Union{Symbol,Nothing}=nothing,
+        inputs::Vector{T}, outputs::Vector{T}, params::Vector{T};
+        exprs::Vector{T}, name::Union{Symbol,Nothing}=nothing,
     ) where {T}
         @assert length(exprs) == length(outputs) "The number of expressions and outputs must match, but got expressions: $(length(exprs)) and outputs: $(length(outputs))"
-        #* build flux function
         flux_func = build_flux_func(inputs, outputs, params, exprs)
-        #* use hash of exprs to name the flux
         infos = (; inputs=inputs, outputs=outputs, params=params)
         flux_name = isnothing(name) ? Symbol("##hydro_flux#", hash(infos)) : name
         return new{flux_name}(exprs, flux_func, infos)
     end
 
-    #* construct hydro flux with input fluxes and output fluxes
     function HydroFlux(
-        fluxes::Pair{Vector{Num},Vector{Num}},
-        params::Vector{Num}=Num[];
-        exprs::Vector,
-        name::Union{Symbol,Nothing}=nothing,
+        fluxes::Pair{Vector{Num},Vector{Num}}, params::Vector{Num}=Num[];
+        exprs::Vector, name::Union{Symbol,Nothing}=nothing,
     )
         return HydroFlux(fluxes[1], fluxes[2], params, exprs=exprs, name=name)
     end
@@ -315,19 +307,14 @@ macro neuralflux(args...)
     name = length(args) == 1 ? nothing : args[1]
     eqs_expr = length(args) == 1 ? args[1] : args[2]
     @assert eqs_expr.head == :call && eqs_expr.args[1] == :~ "Expected equation in the form: outputs ~ chain(inputs)"
-    lhs, rhs = eqs_expr.args[2], eqs_expr.args[3]  # Output variable(s) and Chain info expressio
+    lhs, rhs = eqs_expr.args[2], eqs_expr.args[3]  # Output variable(s) and Chain info expression
     return esc(quote
-        let
-            # Extract outputs (already Num type)
-            outputs = $lhs isa Vector ? $lhs : [$lhs]
-            # Get the chain info
-            chain_info = $rhs
-            # Create the NeuralFlux
-            NeuralFlux(
-                chain_info.inputs, outputs, chain_info.chain;
-                name=$(name), chain_name=chain_info.name
-            )
-        end
+        outputs = $lhs isa Vector ? $lhs : [$lhs]
+        chain_info = $rhs
+        NeuralFlux(
+            chain_info.inputs, outputs, chain_info.chain;
+            name=$(name), chain_name=chain_info.name
+        )
     end)
 end
 

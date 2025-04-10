@@ -29,19 +29,32 @@ using Lux: foldl_init
 using NNlib
 using MLUtils
 
-# load HydroModelCore
-using HydroModelCore: AbstractComponent, AbstractFlux, AbstractHydroFlux, AbstractNeuralFlux, AbstractStateFlux, AbstractElement,
-    AbstractBucket, AbstractHydrograph, AbstractRoute, AbstractHydroRoute, AbstractModel, AbstractNNLayer, AbstractNNModel
-using HydroModelCore: get_var_names, get_state_names, get_output_names, get_input_names, get_param_names, get_nn_names, get_name
-using HydroModelCore: get_vars, get_states, get_outputs, get_inputs, get_params, get_nns, get_exprs
+abstract type AbstractComponent end
 
-@reexport using HydroModelSolvers, HydroModelWrappers, HydroModelOptimisers, HydroModelCheckers
+abstract type AbstractFlux <: AbstractComponent end
+abstract type AbstractHydroFlux <: AbstractFlux end
+abstract type AbstractNeuralFlux <: AbstractHydroFlux end
+abstract type AbstractStateFlux <: AbstractFlux end
+
+abstract type AbstractElement <: AbstractComponent end
+abstract type AbstractBucket <: AbstractElement end
+abstract type AbstractHydrograph <: AbstractElement end
+abstract type AbstractRoute <: AbstractElement end
+abstract type AbstractHydroRoute <: AbstractRoute end
+abstract type AbstractModel <: AbstractComponent end
+
+abstract type AbstractNNLayer <: AbstractComponent end
+abstract type AbstractNNModel <: AbstractComponent end
 
 # utils
+include("utils/attribute.jl")
+include("utils/check.jl")
+include("utils/display.jl")
+include("utils/aggregation.jl")
 include("utils/expression.jl")
+include("utils/tools.jl")
 include("utils/miscellaneous.jl")
 include("utils/build.jl")
-include("utils/aggregation.jl")
 #! A discrete ODE solver, if want to use more efficient solver, please import HydroModelSolvers.jl
 #! When constructing an ODE problem to solve, use DataInterpolations.jl
 export ManualSolver, DirectInterpolation
