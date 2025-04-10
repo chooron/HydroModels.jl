@@ -1,17 +1,17 @@
 """
-	HydroRoute(; rfunc::AbstractHydroFlux, rstate::Num, proj_func::AbstractHydroFlux, name::Union{Symbol,Nothing}=nothing)
+	HydroRoute(; rfunc::AbstractHydroFlux, rstate::Num, aggr_func::AbstractHydroFlux, name::Union{Symbol,Nothing}=nothing)
 
 Represents a routing component for simulating water movement through a hydrological network.
 
 # Arguments
 - `rfunc::AbstractHydroFlux`: Flow calculation function that determines outflow from each node
 - `rstate::Num`: State variable representing water storage in routing system
-- `proj_func::AbstractHydroFlux`: Flow projection function that distributes water to downstream nodes
+- `aggr_func::AbstractHydroFlux`: Flow projection function that distributes water to downstream nodes
 - `name::Union{Symbol,Nothing}=nothing`: Optional identifier for the routing component
 
 # Fields
 - `rfunc::AbstractHydroFlux`: Flow calculation function
-- `proj_func::AbstractHydroFlux`: Flow projection function
+- `aggr_func::AbstractHydroFlux`: Flow projection function
 - `meta::HydroMeta`: Component metadata including:
   - `inputs`: Required input variables
   - `outputs`: Generated output variables
@@ -29,7 +29,7 @@ local flow calculations and inter-node water transfer.
    - Uses local state and input variables
    - Can be parameter-based or neural network-based
 
-2. Flow Projection (`proj_func`):
+2. Flow Projection (`aggr_func`):
    - Determines water distribution between nodes
    - Handles network connectivity
    - Maintains mass conservation
@@ -46,7 +46,7 @@ local flow calculations and inter-node water transfer.
    route = HydroRoute(
        rfunc=HydroFlux([:storage] => [:outflow], :(k * storage)),
        rstate=:storage,
-       proj_func=HydroFlux([:outflow] => [:inflow], :outflow)
+       aggr_func=HydroFlux([:outflow] => [:inflow], :outflow)
    )
    ```
 
@@ -56,7 +56,7 @@ local flow calculations and inter-node water transfer.
    route = HydroRoute(
        rfunc=NeuralFlux([:storage] => [:outflow]),
        rstate=:storage,
-       proj_func=HydroFlux([:outflow] => [:inflow], :outflow)
+       aggr_func=HydroFlux([:outflow] => [:inflow], :outflow)
    )
    ```
 
@@ -75,14 +75,14 @@ struct HydroRoute{N} <: AbstractHydroRoute
     "Generated function for ordinary differential equations (ODE) calculations, or nothing if no ODE calculations are needed."
     multi_ode_func::Function
     "Outflow projection function"
-    proj_func::Function
+    aggr_func::Function
     "Metadata: contains keys for input, output, param, state, and nn"
     infos::NamedTuple
 
     function HydroRoute(;
         rfluxes::Vector{<:AbstractFlux},
         dfluxes::Vector{<:AbstractStateFlux},
-        proj_func::Function,
+        aggr_func::Function,
         name::Union{Symbol,Nothing}=nothing,
     )
         #* Extract all variable names of funcs and dfuncs
@@ -95,7 +95,7 @@ struct HydroRoute{N} <: AbstractHydroRoute
         route_name = isnothing(name) ? Symbol("##route#", hash(infos)) : name
         #* build the route function
         multi_flux_func, multi_ode_func = build_route_func(rfluxes, dfluxes, infos)
-        return new{route_name}(rfluxes, multi_flux_func, multi_ode_func, proj_func, infos)
+        return new{route_name}(rfluxes, multi_flux_func, multi_ode_func, aggr_func, infos)
     end
 end
 
@@ -107,7 +107,7 @@ end
         dfluxes = begin
             ...
         end
-        proj_func = f(x)
+        aggr_func = f(x)
     end
 
 A macro to construct a HydroRoute object.
@@ -117,7 +117,7 @@ A macro to construct a HydroRoute object.
 - `expr`: A code block containing the following component definitions:
 - `fluxes`: An array of HydroFlux or NeuralFlux objects, defining the flow calculations for the route
 - `dfluxes`: An array of StateFlux objects, defining the changes in state variables
-- `proj_func`: A projection function of type Function, used to ensure state variables remain within valid ranges
+- `aggr_func`: A projection function of type Function, used to ensure state variables remain within valid ranges
 
 # Example
 ```julia
@@ -129,15 +129,18 @@ route = @hydroroute :route1 begin
     dfluxes = [
         @stateflux c ~ b - a - d
     ]
-    proj_func = x -> max(0, x)
+    aggr_func = x -> max(0, x)
 end
 ```
 """
-macro hydroroute(name, expr)
+macro hydroroute(args...)
+    name = length(args) == 1 ? nothing : args[1]
+    expr = length(args) == 1 ? args[1] : args[2]
+
     @assert Meta.isexpr(expr, :block) "Expected a begin...end block after route name"
-    fluxes_expr, dfluxes_expr, proj_func_expr = nothing, nothing, nothing
+    fluxes_expr, dfluxes_expr, aggr_func_expr = nothing, nothing, nothing
     for assign in filter(x -> !(x isa LineNumberNode), expr.args)
-        @assert Meta.isexpr(assign, :(=)) "Expected assignments in the form 'fluxes = begin...end', 'dfluxes = begin...end', and 'proj_func = f(x)'"
+        @assert Meta.isexpr(assign, :(=)) "Expected assignments in the form 'fluxes = begin...end', 'dfluxes = begin...end', and 'aggr_func = f(x)'"
         lhs, rhs = assign.args
         if lhs == :fluxes
             @assert Meta.isexpr(rhs, :block) "Expected 'fluxes' to be defined in a begin...end block"
@@ -145,22 +148,22 @@ macro hydroroute(name, expr)
         elseif lhs == :dfluxes
             @assert Meta.isexpr(rhs, :block) "Expected 'dfluxes' to be defined in a begin...end block"
             dfluxes_expr = Expr(:vect, filter(x -> !(x isa LineNumberNode), rhs.args)...)
-        elseif lhs == :proj_func
-            proj_func_expr = rhs
+        elseif lhs == :aggr_func
+            aggr_func_expr = rhs
         else
-            error("Unknown assignment: $lhs. Expected 'fluxes', 'dfluxes', or 'proj_func'")
+            error("Unknown assignment: $lhs. Expected 'fluxes', 'dfluxes', or 'aggr_func'")
         end
     end
-    @assert !isnothing(fluxes_expr) && !isnothing(dfluxes_expr) && !isnothing(proj_func_expr) "'fluxes', 'dfluxes', and 'proj_func' must all be specified"
+    @assert !isnothing(fluxes_expr) && !isnothing(dfluxes_expr) && !isnothing(aggr_func_expr) "'fluxes', 'dfluxes', and 'aggr_func' must all be specified"
     return esc(quote
         let
             fluxes = $fluxes_expr
             dfluxes = $dfluxes_expr
-            proj_func = $proj_func_expr
+            aggr_func = $aggr_func_expr
             HydroRoute(
                 rfluxes=fluxes,
                 dfluxes=dfluxes,
-                proj_func=proj_func,
+                aggr_func=aggr_func,
                 name=$(name)
             )
         end
@@ -273,7 +276,7 @@ function (route::HydroRoute)(
             tmp_input = reshape(itpfuncs(t), input_dims, num_nodes)
             tmp_states, tmp_outflow = route.multi_ode_func(eachslice(tmp_input, dims=1), eachslice(u, dims=1), ComponentVector(p, params_axes))
             tmp_states_arr = reduce(hcat, tmp_states)
-            tmp_inflow_arr = reduce(hcat, route.proj_func.(tmp_outflow))
+            tmp_inflow_arr = reduce(hcat, route.aggr_func.(tmp_outflow))
             # todo 这里元编程表达一直存在问题
             tmp_states_arr .+ tmp_inflow_arr |> permutedims
         end,
@@ -282,180 +285,6 @@ function (route::HydroRoute)(
     #* run other functions
     output = route.multi_flux_func(eachslice(input, dims=1), eachslice(solved_states, dims=1), new_pas)
     cat(solved_states, stack(output, dims=1), dims=1)
-end
-
-"""
-    GridRoute(;
-        rfluxes::Vector{<:AbstractHydroFlux},
-        dfluxes::Vector{<:AbstractStateFlux},
-        proj_func::Function,
-        name::Union{Symbol,Nothing}=nothing,
-    )
-
-Create a specialized routing component for grid-based river networks.
-
-# Arguments
-- `rfluxes::Vector{<:AbstractHydroFlux}`: Vector of routing flux functions for different flow processes
-- `dfluxes::Vector{<:AbstractStateFlux}`: Vector of state derivative flux functions
-- `proj_func::Function`: Function for projecting flow between grid cells
-- `name::Union{Symbol,Nothing}=nothing`: Optional identifier for the routing component
-
-# Returns
-`HydroRoute`: A configured routing component for grid-based networks
-
-# Description
-GridRoute implements a specialized routing system for regular grid networks, supporting 
-multiple flow processes and state variables.
-
-## Component Features
-1. Multiple Flow Processes:
-   - Main channel routing
-   - Overland flow
-   - Subsurface flow
-   - Each process can have its own flux function
-
-2. State Management:
-   - Multiple state variables possible
-   - Automatic derivative calculation
-   - Mass conservation enforcement
-
-3. Grid Connectivity:
-   - D8 flow direction support
-   - Multiple flow accumulation methods
-   - Efficient sparse matrix operations
-
-## Implementation Example
-```julia
-# Create grid routing with channel and overland flow
-grid_route = GridRoute(
-    rfluxes=[
-        HydroFlux([:storage] => [:qout], :(k * storage^β)),     # channel
-        HydroFlux([:surface] => [:qsurf], :(ks * surface))      # surface
-    ],
-    dfluxes=[
-        StateFlux([:qin, :qout] => [:storage], :storage),       # channel storage
-        StateFlux([:rain, :qsurf] => [:surface], :surface)      # surface storage
-    ],
-    proj_func=create_flow_matrix(flwdir)                        # D8 projection
-)
-```
-
-# Notes
-- Supports multiple routing processes simultaneously
-- Handles both fast and slow flow components
-- Maintains numerical stability through proper state management
-- Efficiently handles large grid networks
-- Compatible with various flow accumulation methods
-"""
-function GridRoute(;
-    rfluxes::Vector{<:AbstractFlux},
-    dfluxes::Vector{<:AbstractStateFlux},
-    flwdir::AbstractMatrix,
-    positions::AbstractVector,
-    aggtype::Symbol=:matrix,
-    name::Union{Symbol,Nothing}=nothing,
-)
-    if aggtype == :matrix
-        d8_codes = [1, 2, 4, 8, 16, 32, 64, 128]
-        d8_nn_pads = [(1, 1, 2, 0), (2, 0, 2, 0), (2, 0, 1, 1), (2, 0, 0, 2), (1, 1, 0, 2), (0, 2, 0, 2), (0, 2, 1, 1), (0, 2, 2, 0)]
-
-        #* input dims: node_num * ts_len
-        function grid_routing(input::AbstractVector, positions::AbstractVector, flwdir::AbstractMatrix)
-            #* Convert input to sparse matrix
-            input_arr = Array(sparse([pos[1] for pos in positions], [pos[2] for pos in positions], input, size(flwdir)[1], size(flwdir)[2]))
-            #* Calculate weighted summation
-            input_routed = sum(collect([pad_zeros(input_arr .* (flwdir .== code), arg) for (code, arg) in zip(d8_codes, d8_nn_pads)]))
-            #* Clip input matrix border
-            clip_arr = input_routed[2:size(input_arr)[1]+1, 2:size(input_arr)[2]+1]
-            #* Convert input matrix to vector
-            collect([clip_arr[pos[1], pos[2]] for pos in positions])
-        end
-        #* build the outflow projection function
-        proj_func = (outflow) -> grid_routing(outflow, positions, flwdir)
-
-    elseif aggtype == :network
-        network = build_grid_digraph(flwdir, positions)
-        #* build the outflow projection function
-        adjacency = adjacency_matrix(network)'
-        proj_func = (outflow) -> adjacency * outflow
-    else
-        @error "the $aggtype is not support"
-    end
-
-    return HydroRoute(; rfluxes, dfluxes, proj_func, name)
-end
-
-"""
-    VectorRoute(;
-        rfluxes::Vector{<:AbstractHydroFlux},
-        dfluxes::Vector{<:AbstractStateFlux},
-        network::DiGraph,
-        name::Union{Symbol,Nothing}=nothing,
-    )
-
-Create a specialized routing component for vector-based river networks using graph structures.
-
-# Arguments
-- `rfluxes::Vector{<:AbstractHydroFlux}`: Vector of routing flux functions for different flow processes
-- `dfluxes::Vector{<:AbstractStateFlux}`: Vector of state derivative flux functions
-- `network::DiGraph`: Directed graph defining river network topology
-- `name::Union{Symbol,Nothing}=nothing`: Optional identifier for the routing component
-
-# Returns
-`HydroRoute`: A configured routing component for vector-based networks
-
-# Description
-VectorRoute implements river routing on arbitrary vector networks using graph-based 
-representations and sparse matrix operations.
-
-## Component Features
-1. Network Structure:
-   - Directed graph topology
-   - Arbitrary network connections
-   - Efficient sparse matrix operations
-
-2. Flow Processes:
-   - Multiple routing components
-   - Channel and tributary routing
-   - Distributed parameter support
-
-3. Implementation Details:
-   - Automatic adjacency matrix construction
-   - Efficient flow accumulation
-   - Mass conservation enforcement
-
-## Implementation Example
-```julia
-# Create vector routing with main channel and tributary processes
-vector_route = VectorRoute(
-    rfluxes=[
-        HydroFlux([:storage] => [:qout], :(k * storage^β)),     # main channel
-        HydroFlux([:trib] => [:qtrib], :(kt * trib))           # tributaries
-    ],
-    dfluxes=[
-        StateFlux([:qin, :qout] => [:storage], :storage),      # channel storage
-        StateFlux([:qin_trib, :qtrib] => [:trib], :trib)      # tributary storage
-    ],
-    network=river_network                                       # DiGraph object
-)
-```
-
-# Notes
-- Supports arbitrary network topologies
-- Automatically handles flow connectivity
-- Uses sparse matrices for efficiency
-- Suitable for large river networks
-- Compatible with various routing schemes
-"""
-function VectorRoute(;
-    rfluxes::Vector{<:AbstractFlux},
-    dfluxes::Vector{<:AbstractStateFlux},
-    network::DiGraph,
-    name::Union{Symbol,Nothing}=nothing,
-)
-    adjacency = adjacency_matrix(network)'
-    proj_func = (outflow) -> adjacency * outflow
-    return HydroRoute(; rfluxes, dfluxes, proj_func, name)
 end
 
 """
