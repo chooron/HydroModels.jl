@@ -179,19 +179,13 @@ Creates a HydroModel with the specified name and components.
 end
 ```
 """
-macro hydromodel(name, expr)
+macro hydromodel(args...)
+    name = length(args) == 1 ? nothing : args[1]
+    expr = length(args) == 1 ? args[1] : args[2]
+
     @assert Meta.isexpr(expr, :block) "Expected a begin...end block after model name"
-
-    # Filter out LineNumberNodes and get components
     components = filter(x -> !(x isa LineNumberNode), expr.args)
-
-    # Create the model
-    return esc(quote
-        let
-            # Create the model with all components
-            HydroModel(; name=$(name), components=[$(components...)])
-        end
-    end)
+    return esc(:(HydroModel(; name=$(name), components=[$(components...)])))
 end
 
 """
