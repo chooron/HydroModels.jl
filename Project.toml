@@ -6,10 +6,10 @@ version = "0.3.0"
 [deps]
 ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
 Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
-HydroModelCore = "7efcb156-82fb-4ff2-92b5-82bb75f40fa9"
 HydroModelCheckers = "1fd97331-b0fb-49c5-b501-b29cc8959555"
-HydroModelSolvers = "4dff54ff-8dad-4534-9a0f-a1cce6faced8"
+HydroModelCore = "7efcb156-82fb-4ff2-92b5-82bb75f40fa9"
 HydroModelOptimisers = "ba5228b9-ba40-4fc8-b725-31ff0f22b938"
+HydroModelSolvers = "4dff54ff-8dad-4534-9a0f-a1cce6faced8"
 HydroModelWrappers = "ae589b45-306e-44b4-bf21-d9ef39de3338"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 LinearSolve = "7ed4a6bd-45f5-4d41-b270-4a48e9bafcae"
@@ -27,34 +27,25 @@ Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
 TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 
 [sources]
-HydroModelCore = {path = "lib/HydroModelCore"}
-HydroModelSolvers = {path = "lib/HydroModelSolvers"}
-HydroModelOptimisers = {path = "lib/HydroModelOptimisers"}
-HydroModelWrappers = {path = "lib/HydroModelWrappers"}
 HydroModelCheckers = {path = "lib/HydroModelCheckers"}
-
-[extras]
-Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
-CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
-DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
-DataInterpolations = "82cc6244-b520-54b8-b5a6-8a565e85f1d0"
-Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-
-[targets]
-test = ["Test", "Aqua", "CSV", "DataFrames", "Statistics", "DataInterpolations"]
+HydroModelCore = {path = "lib/HydroModelCore"}
+HydroModelOptimisers = {path = "lib/HydroModelOptimisers"}
+HydroModelSolvers = {path = "lib/HydroModelSolvers"}
+HydroModelWrappers = {path = "lib/HydroModelWrappers"}
 
 [compat]
 Aqua = "0.8"
 CSV = "0.10"
+CUDA = "5"
 ComponentArrays = "0.15"
 DataFrames = "1"
 DataInterpolations = "8"
+DifferentialEquations = "7"
 Graphs = "1"
-HydroModelCore = "0.1"
 HydroModelCheckers = "0.1"
-HydroModelSolvers = "0.1"
+HydroModelCore = "0.1"
 HydroModelOptimisers = "0.1"
+HydroModelSolvers = "0.1"
 HydroModelWrappers = "0.1"
 LinearAlgebra = "1"
 LinearSolve = "3"
@@ -65,6 +56,7 @@ NNlib = "0.9"
 Random = "1"
 Reexport = "1"
 RuntimeGeneratedFunctions = "0.5"
+SciMLSensitivity = "7"
 SparseArrays = "1"
 StableRNGs = "1"
 Statistics = "1"
@@ -72,4 +64,22 @@ SymbolicUtils = "3"
 Symbolics = "6"
 TOML = "1"
 Test = "1"
+cuDNN = "1"
 julia = "1"
+
+[extras]
+Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+DataInterpolations = "82cc6244-b520-54b8-b5a6-8a565e85f1d0"
+DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
+SciMLSensitivity = "1ed8b502-d754-442c-8d5d-10ac956f44a1"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
+
+[targets]
+test = ["Test", "Aqua", "CSV", "DataFrames", "Statistics",
+        "DataInterpolations", "DifferentialEquations", "SciMLSensitivity",
+        "CUDA", "cuDNN"]
