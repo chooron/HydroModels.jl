@@ -200,8 +200,8 @@ function (ele::HydroBucket{N,true})(input::AbstractArray{T,3}, params::Component
     #* get kwargs
     ptyidx = get(kwargs, :ptyidx, collect(1:num_nodes))
     styidx = get(kwargs, :styidx, collect(1:num_nodes))
-    device = get(kwargs, :device, identity)
     solver = get(kwargs, :solver, ManualSolver(mutable=true))
+    device = get(kwargs, :device, solver.dev)
     interp = get(kwargs, :interp, DirectInterpolation)
     timeidx = get(kwargs, :timeidx, collect(1:size(input, 3)))
 

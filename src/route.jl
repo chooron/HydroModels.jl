@@ -257,7 +257,7 @@ function (route::HydroRoute)(
     interp = get(kwargs, :interp, DirectInterpolation)
     solver = get(kwargs, :solver, ManualSolver(mutable=true))
     timeidx = get(kwargs, :timeidx, collect(1:time_len))
-    device = get(kwargs, :device, identity)
+    device = get(kwargs, :device, solver.dev)
 
     #* prepare initstates
     initstates = get(kwargs, :initstates, zeros(eltype(params), length(get_state_names(route)), num_nodes)) |> device
