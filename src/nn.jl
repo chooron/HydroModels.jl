@@ -1,4 +1,4 @@
-struct HydroNNLayer{N} <: AbstractNNLayer
+struct HydroNNLayer{N} <: AbstractElement
     "hydrological fluxes"
     fluxes::Vector{<:AbstractHydroFlux}
     "hydrological state derivatives"
@@ -93,8 +93,8 @@ function (layer::HydroNNLayer)(input::AbstractArray{T,2}, params::ComponentVecto
     return layer.layer_func(eachslice(input, dims=1), params, [states[nm] for nm in get_state_names(layer)])
 end
 
-struct HydroNNModel{N} <: AbstractNNModel
-    recur_layers::Vector{<:AbstractNNLayer}
+struct HydroNNModel{N} <: AbstractComponent
+    recur_layers::Vector{<:HydroNNLayer}
     "fc-layer的几种情况: (1) 接入一个dense然后整合不同节点的计算结果,(2) 接入一个UH然后求和每个节点的汇流结果"
     fc_layer::AbstractLuxLayer
     recur_op::Function
@@ -102,7 +102,7 @@ struct HydroNNModel{N} <: AbstractNNModel
     infos::NamedTuple
 
     function HydroNNModel(;
-        recur_layers::Vector{<:AbstractNNLayer},
+        recur_layers::Vector{<:HydroNNLayer},
         fc_layer::AbstractLuxLayer,
         name::Union{Symbol,Nothing}=nothing,
         fc_variables::Union{AbstractArray{<:Symbol},Nothing}=nothing,
@@ -119,7 +119,7 @@ struct HydroNNModel{N} <: AbstractNNModel
     end
 end
 
-function _build_recur_op(layers::Vector{<:AbstractNNLayer}, infos::NamedTuple)
+function _build_recur_op(layers::Vector{<:HydroNNLayer}, infos::NamedTuple)
     input_names = length(infos.inputs) == 0 ? [] : tosymbol.(infos.inputs)
     state_names = length(infos.states) == 0 ? [] : tosymbol.(infos.states)
     input_define_calls = [:($i = inputs[$idx]) for (idx, i) in enumerate(input_names)]
