@@ -40,8 +40,6 @@ node_input = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), fill(input_arr,
 config = (ptyidx=1:node_num, styidx=1:node_num, timeidx=ts)
 result = exphydro_model(node_input, node_pas, config=config)
 
-node_input[[1,2], ntuple(_ -> Colon(), 2)...]
-result[:,1,:]
 
 # tmp_input = ones(3, node_num)
 # tmp_state = ones(1, node_num)
