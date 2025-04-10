@@ -1,7 +1,7 @@
 module HydroModelCore
 
 using ModelingToolkit: Num
-using Symbolics: tosymbol
+using Symbolics: tosymbol, unwrap
 ## Abstract Component Types
 abstract type AbstractComponent end
 

@@ -220,9 +220,11 @@ function Base.show(io::IO, ele::AbstractBucket)
         print(io, "│ ")
         printstyled(io, "Fluxes:", color=:yellow)
         println(io)
-        for expr in get_exprs(ele.fluxes)
-            print(io, "│   ")
-            println(io, expr)
+        for flux in ele.fluxes
+            for ex in get_exprs(flux)
+                print(io, "│   ")
+                println(io, get_outputs(flux) ~ ex)
+            end
         end
 
         # Print dfluxes expressions if any
@@ -231,9 +233,11 @@ function Base.show(io::IO, ele::AbstractBucket)
             print(io, "│ ")
             printstyled(io, "State Fluxes:", color=:yellow)
             println(io)
-            for expr in get_exprs(ele.dfluxes)
-                print(io, "│   ")
-                println(io, expr)
+            for dflux in ele.dfluxes
+                for ex in get_exprs(dflux)
+                    print(io, "│   ")
+                    println(io, get_outputs(dflux) ~ ex)
+                end
             end
         end
         

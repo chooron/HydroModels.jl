@@ -51,7 +51,8 @@ get_nn_names(cpt::AbstractComponent) = length(get_nns(cpt)) == 0 ? Symbol[] : to
 
 Get expressions defined in component.
 """
-get_exprs(cpt::AbstractComponent) = cpt.exprs
+get_exprs(cpt::AbstractFlux) = cpt.exprs
+get_exprs(cpt::AbstractNeuralFlux) = get_outputs(cpt) ~ cpt.chain(get_inputs(cpt))
 
 """
     get_vars(comps::AbstractComponent)
@@ -71,7 +72,7 @@ Returns (input_names, output_names, state_names).
 function get_vars(funcs::Vector{<:AbstractFlux}, dfuncs::Vector{<:AbstractStateFlux})
     inputs = Vector{Num}()
     outputs = Vector{Num}()
-    states = reduce(union, get_states.(dfuncs))
+    states = length(dfuncs) == 0 ? Num[] : reduce(union, get_states.(dfuncs))
     for func in vcat(funcs, dfuncs)
         tmp_inputs = setdiff(setdiff(get_inputs(func), outputs), states)
         tmp_outputs = setdiff(get_outputs(func), inputs)
@@ -90,7 +91,7 @@ Returns (input_names, output_names, state_names).
 function get_vars(components::Vector{<:AbstractComponent})
     inputs = Vector{Num}()
     outputs = Vector{Num}()
-    states = Vector{Num}()
+    states = length(components) == 0 ? Num[] : reduce(union, get_states.(components))
     for comp in components
         tmp_inputs, tmp_outputs, tmp_states = get_vars(comp)
         tmp_inputs = setdiff(tmp_inputs, outputs)
