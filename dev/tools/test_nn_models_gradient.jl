@@ -10,11 +10,10 @@ using SciMLSensitivity
 using BenchmarkTools
 using HydroModels
 include("../models/m50.jl")
-include("../src/HydroModelTools.jl")
 
 #! load data
 df = DataFrame(CSV.File("data/m50/01013500.csv"))
-ts = collect(1:10000)
+ts = collect(1:100)
 prcp_vec = df[ts, "Prcp"]
 temp_vec = df[ts, "Temp"]
 dayl_vec = df[ts, "Lday"]
@@ -34,11 +33,21 @@ var_stds = NamedTuple{Tuple([Symbol(nm, :_std) for nm in [:prcp, :temp, :snowpac
 var_means = NamedTuple{Tuple([Symbol(nm, :_mean) for nm in [:prcp, :temp, :snowpack, :soilwater]])}(means)
 nn_params = (epnn=et_nn_p, qnn=q_nn_p)
 params = reduce(merge, [base_params, var_means, var_stds])
-initstates = (snowpack=0.0, soilwater=1303.00)
-pas = ComponentVector(initstates=initstates, params=params, nns=nn_params)
+initstates = ComponentVector(snowpack=0.0, soilwater=1303.00)
+pas = ComponentVector(params=params, nns=nn_params)
 input_ntp = (prcp=prcp_vec, lday=dayl_vec, temp=temp_vec)
 input_mat = Matrix(reduce(hcat, collect(input_ntp[HydroModels.get_input_names(m50_model)]))')
 
+output = m50_model(input_mat, pas, initstates=initstates,
+    config=(timeidx=ts, solver=HydroModelSolvers.ODESolver(sensealg=BacksolveAdjoint(autojacvec=EnzymeVJP())))
+)
+
+Zygote.gradient(pas) do p
+    output = m50_model(input_mat, p, initstates=initstates,
+        config=(timeidx=ts, solver=HydroModelSolvers.ODESolver(sensealg=BacksolveAdjoint(autojacvec=EnzymeVJP())))
+    )
+    output[end, :] |> sum
+end
 # Run the model and get results as a matrix
 # result_mat = m50_model(input_mat, pas, config=Dict(:timeidx=>ts, :solver=>DiscreteSolver()))
 # Zygote.gradient(pas) do p 
@@ -58,8 +67,3 @@ input_mat = Matrix(reduce(hcat, collect(input_ntp[HydroModels.get_input_names(m5
 # node_input = permutedims(node_input, (2, 3, 1))
 # config = (ptyidx=1:10, styidx=1:10, timeidx=ts)
 # result = m50_model(node_input, node_pas, config=config)
-
-@btime Zygote.gradient(pas) do p
-    output = m50_model(input_mat, p, config=Dict(:timeidx=>ts, :solver=>ODESolver(sensealg=BacksolveAdjoint(autojacvec=EnzymeVJP()))))
-    output[end, :] |> sum
-end

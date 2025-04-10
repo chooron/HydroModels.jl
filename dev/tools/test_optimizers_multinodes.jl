@@ -10,7 +10,6 @@ using StableRNGs
 using Pipe
 using BenchmarkTools: @btime
 include("../models/exphydro.jl")
-include("../src/HydroModelTools.jl")
 
 # define parameters and initial states
 f, Smax, Qmax, Df, Tmax, Tmin = 0.01674478, 1709.461015, 18.46996175, 2.674548848, 0.175739196, -2.092959084
@@ -41,7 +40,7 @@ input_arr = reduce(hcat, collect(input[HydroModels.get_input_names(exphydro_mode
 node_input = reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([input_arr], node_num_2))
 node_input = permutedims(node_input, (2, 3, 1))
 config = (ptyidx=[1, 2, 3, 4, 5, 2, 3, 4, 1, 5], styidx=collect(1:10), timeidx=ts,
-    solver=HydroModelTools.DiscreteSolver()
+    solver=HydroModelSolvers.DiscreteSolver()
     # solver=HydroModelTools.ODESolver(sensealg=BacksolveAdjoint(autojacvec=EnzymeVJP()))
 )
 run_kwargs = (config=config,)
@@ -51,9 +50,9 @@ tmp_input = ones(3, node_num_2)
 tmp_state = ones(1, node_num_2)
 exphydro_model.components[2].ode_funcs[2](eachslice(tmp_input, dims=1), eachslice(tmp_state, dims=1), node_pas)
 
-ntp_pre = HydroModelTools.NamedTuplePreprocessor(exphydro_model)
-ntp_post = HydroModelTools.NamedTuplePostprocessor(exphydro_model)
-select_output = HydroModelTools.SelectComponentOutlet(exphydro_model, 1)
+ntp_pre = HydroModelWrappers.NamedTuplePreprocessor(exphydro_model)
+ntp_post = HydroModelWrappers.NamedTuplePostprocessor(exphydro_model)
+select_output = HydroModelWrappers.SelectComponentOutlet(exphydro_model, 1)
 opt_func(i, p, c) = @pipe (i, p, c) |> ntp_pre(_[1], _[2], _[3]) |> exphydro_model(_[1], _[2]; _[3]...) |> select_output(_) |> ntp_post(_)
 output = (flow=flow_vec,)
 input_ntp = fill(input, node_num_2)

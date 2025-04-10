@@ -37,17 +37,17 @@ q_nn = Lux.Chain(
 
 # Snow component
 snow_bucket = @hydrobucket :m50_snow begin
-    fluxes = [
-        @hydroflux pet ~ 29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2),
+    fluxes = begin
+        @hydroflux pet ~ 29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)
         @hydroflux begin
             snowfall ~ step_func(Tmin - temp) * prcp
             rainfall ~ step_func(temp - Tmin) * prcp
-        end,
+        end
         @hydroflux melt ~ step_func(temp - Tmax) * min(snowpack, Df * (temp - Tmax))
-    ]
-    dfluxes = [
+    end
+    dfluxes = begin
         @stateflux snowpack ~ snowfall - melt
-    ]
+    end
 end
 
 # Neural network fluxes
@@ -56,17 +56,17 @@ q_nn_flux = NeuralFlux([norm_slw, norm_prcp] => [log_flow], q_nn)
 
 # Soil water component
 soil_bucket = @hydrobucket :m50_soil begin
-    fluxes = [
-        @hydroflux norm_snw ~ (snowpack - snowpack_mean) / snowpack_std,
-        @hydroflux norm_slw ~ (soilwater - soilwater_mean) / soilwater_std,
-        @hydroflux norm_prcp ~ (prcp - prcp_mean) / prcp_std,
-        @hydroflux norm_temp ~ (temp - temp_mean) / temp_std,
-        @neuralflux log_evap_div_lday ~ ep_nn([norm_snw, norm_slw, norm_temp]),
+    fluxes = begin
+        @hydroflux norm_snw ~ (snowpack - snowpack_mean) / snowpack_std
+        @hydroflux norm_slw ~ (soilwater - soilwater_mean) / soilwater_std
+        @hydroflux norm_prcp ~ (prcp - prcp_mean) / prcp_std
+        @hydroflux norm_temp ~ (temp - temp_mean) / temp_std
+        @neuralflux log_evap_div_lday ~ ep_nn([norm_snw, norm_slw, norm_temp])
         @neuralflux log_flow ~ q_nn([norm_slw, norm_prcp])
-    ],
-    dfluxes = [
+    end
+    dfluxes = begin
         @stateflux soilwater ~ rainfall + melt - step_func(soilwater) * lday * exp(log_evap_div_lday) - step_func(soilwater) * exp(log_flow)
-    ]
+    end
 end
 
 # Flow conversion
