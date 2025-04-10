@@ -60,10 +60,7 @@ struct HydroBucket{N,S} <: AbstractBucket
         name::Union{Symbol,Nothing}=nothing,
         fluxes::Vector{<:AbstractHydroFlux},
         dfluxes::Vector{<:AbstractStateFlux}=StateFlux[],
-        sort_fluxes::Bool=false,
     )
-        #* sort the fluxes if needed
-        fluxes = sort_fluxes ? sort_fluxes(fluxes) : fluxes
         #* Extract all variable names of fluxes and dfluxes
         inputs, outputs, states = get_vars(fluxes, dfluxes)
         params = reduce(union, get_params.(vcat(fluxes, dfluxes)))
@@ -101,7 +98,10 @@ Creates a HydroBucket with the specified name, fluxes, and dfluxes.
 end
 ```
 """
-macro hydrobucket(name, expr)
+macro hydrobucket(args...)
+    name = length(args) == 1 ? nothing : args[1]
+    expr = length(args) == 1 ? args[1] : args[2]
+
     @assert Meta.isexpr(expr, :block) "Expected a begin...end block after bucket name"
     fluxes_expr, dfluxes_expr = nothing, nothing
     for assign in filter(x -> !(x isa LineNumberNode), expr.args)
@@ -118,13 +118,12 @@ macro hydrobucket(name, expr)
         end
     end
     @assert !isnothing(fluxes_expr) "'fluxes' must be specified"
-    return esc(quote
-        let
-            fluxes = $fluxes_expr
-            dfluxes = isnothing($dfluxes_expr) ? [] : $dfluxes_expr
-            HydroBucket(name=$(name), fluxes=fluxes, dfluxes=dfluxes)
-        end
-    end)
+
+    if isnothing(dfluxes_expr)
+        return esc(:(HydroBucket(name=$(name), fluxes=$fluxes_expr)))
+    else
+        return esc(:(HydroBucket(name=$(name), fluxes=$fluxes_expr, dfluxes=$dfluxes_expr)))
+    end
 end
 
 """
