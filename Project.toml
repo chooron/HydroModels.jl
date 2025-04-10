@@ -41,6 +41,7 @@ ComponentArrays = "0.15"
 DataFrames = "1"
 DataInterpolations = "8"
 DifferentialEquations = "7"
+ForwardDiff = "0.10"
 Graphs = "1"
 HydroModelCheckers = "0.1"
 HydroModelCore = "0.1"
@@ -64,6 +65,7 @@ SymbolicUtils = "3"
 Symbolics = "6"
 TOML = "1"
 Test = "1"
+Zygote = "0.7"
 cuDNN = "1"
 julia = "1"
 
@@ -74,12 +76,12 @@ CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 DataInterpolations = "82cc6244-b520-54b8-b5a6-8a565e85f1d0"
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 SciMLSensitivity = "1ed8b502-d754-442c-8d5d-10ac956f44a1"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 
 [targets]
-test = ["Test", "Aqua", "CSV", "DataFrames", "Statistics",
-        "DataInterpolations", "DifferentialEquations", "SciMLSensitivity",
-        "CUDA", "cuDNN"]
+test = ["Test", "Aqua", "CSV", "DataFrames", "Statistics", "DataInterpolations", "DifferentialEquations", "SciMLSensitivity", "CUDA", "cuDNN", "Zygote", "ForwardDiff"]
