@@ -34,7 +34,7 @@ using Pkg
 Pkg.add("HydroModels")
 ```
 
-## Important Notations
+## Special Attention
 
 - I am not a professional full-time software developer, so the code may have imperfections. If you find any issues, please post them in the [issues](https://github.com/chooron/HydroModels.jl/issues) section, and I will respond promptly.
 - The documentation is still being improved. If you want to quickly understand how to use the software, you can refer to the [dev](https://github.com/chooron/HydroModels.jl/tree/main/dev) folder on GitHub. I will integrate this into a notebook as soon as possible.
