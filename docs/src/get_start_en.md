@@ -195,7 +195,6 @@ end
 The bucket consists of two main sections:
 
 - **fluxes**: Defines the hydrological processes that move water in and out of the bucket. Each flux is created with the `@hydroflux` macro and represents a specific hydrological process (e.g., snowfall, rainfall, melt).
-
 - **dfluxes**: Specifies how state variables change over time using the `@stateflux` macro. In this example, the snowpack state variable changes according to the equation `snowpack ~ snowfall - melt`, meaning the change in snowpack equals snowfall minus snowmelt.
 
 The first argument (`:snow`) provides a name for the bucket, which helps with identification and debugging. When the model runs, these equations are automatically converted into a system of differential equations that will be solved by the selected numerical solver.
@@ -270,7 +269,10 @@ input_data = (
     prcp = df[ts, "prcp(mm/day)"] # Precipitation
 )
 
+q_data = df[ts, "flow(mm)"]
+
 # Convert to matrix format required by HydroModels.jl
+# We need to make the input matrix in the sort of the input names of the model
 input_matrix = Matrix(reduce(hcat, collect(input_data[HydroModels.get_input_names(exphydro_model)])'))
 ```
 
@@ -378,7 +380,7 @@ p3 = plot(ts, output_data.flow, label="Simulated Flow", ylabel="Flow (mm/day)")
 
 # Add observed flow if available
 if "flow(mm)" in names(df)
-    plot!(p3, ts, df[ts, "flow(mm)"], label="Observed Flow")
+    plot!(p3, ts, q_data, label="Observed Flow")
 end
 
 # Combine plots
