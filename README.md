@@ -34,6 +34,13 @@ using Pkg
 Pkg.add("HydroModels")
 ```
 
+## Important Notations
+
+- I am not a professional full-time software developer, so the code may have imperfections. If you find any issues, please post them in the [issues](https://github.com/chooron/HydroModels.jl/issues) section, and I will respond promptly.
+- The documentation is still being improved. If you want to quickly understand how to use the software, you can refer to the [dev](https://github.com/chooron/HydroModels.jl/tree/main/dev) folder on GitHub. I will integrate this into a notebook as soon as possible.
+- The software has some issues. When solving ODE files, using EnzymeVJP from SciMLSensitivity.jl generally provides more efficient gradient calculations, but there are problems with multi-node ODE solving. I will fix this as soon as possible and begin trying to calculate gradients using [Enzyme.jl](https://github.com/EnzymeAD/Enzyme.jl) and compile code using [Reactant.jl](https://github.com/EnzymeAD/Reactant.jl).
+- To be responsible, if you only want to build a hydrological model or a neural network-embedded hydrological model, I would recommend building it manually. My main purpose in writing this package is to reduce the difficulty of model development and to serve future large model generation tasks.
+
 ## Contributing
 
 HydroModels.jl is an open-source project available on Github. We welcome contributions from the community to help advance deep learning applications in hydrology.
