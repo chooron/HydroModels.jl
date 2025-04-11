@@ -1,395 +1,430 @@
-# Getting Started With HydroModels.jl
+# First Steps with HydroModels.jl
 
-`HydroModels.jl` is a modern hydrological modeling framework based on the Julia language. Built upon and extending the SUPERFLEX design philosophy, it offers flexible model construction capabilities, efficient computational performance, and support for deep learning model integration. This tutorial will demonstrate how to build and run hydrological models using `HydroModels.jl`.
+This guide provides a comprehensive introduction to HydroModels.jl, a Julia package for hydrological modeling. We'll walk through the installation process, build a complete ExpHydro model, and demonstrate how to run simulations with real-world data.
 
-## Installation
+## Install HydroModels.jl
+
+HydroModels.jl can be installed directly from the Julia package manager. Open a Julia REPL and enter the following command:
 
 ```julia
 ] add HydroModels
+```
+
+For the latest development version, you can install directly from the GitHub repository:
+
+```julia
+] add https://github.com/chooron/HydroModels.jl
+```
+
+After installation, load the package with:
+
+```julia
+using HydroModels
+using ComponentArrays  # For parameter handling
+using CSV, DataFrames  # For data input/output
 ```
 
 ## Build a ExpHydro Model
 
 ### Introduction to ExpHydro Model
 
-`ExpHydro` is a simple hydrological model consisting of a snow module and a soil module. Its mathematical expressions are as follows.
+The ExpHydro model is a conceptual rainfall-runoff model that simulates watershed hydrology through a series of interconnected processes. It consists of two main components:
 
-Snowpack Bucket:
+1. **Snowpack Bucket**: Handles snow accumulation and melt processes
+
 ```math
 \begin{aligned}
-& pet = 29.8 \cdot lday \cdot 24 \cdot 0.611 \cdot \frac{\exp(17.3 \cdot temp)}{temp + 237.3} \cdot \frac{1}{temp + 273.2} && (1) \\
-& snowfall = H(T_{min} - temp) \cdot prcp && (2) \\
-& rainfall = H(temp - T_{m,n}) \cdot prcp,&& (3) \\
-& melt = H(temp - T_{max}) \cdot H(snowpack) \cdot \min(snowpack, D_f \cdot (temp - T_{max})) && (4) \\
-& \frac{d(snowpack)}{dt} = snowfall - melt && (5) \\
+& pet = 29.8 \cdot lday \cdot 24 \cdot 0.611 \cdot \frac{\exp(17.3 \cdot temp)}{temp + 237.3} \cdot \frac{1}{temp + 273.2} & \quad & (1) \\
+& snowfall = H(T_{min} - temp) \cdot prcp & \quad & (2) \\
+& rainfall = H(temp - T_{min}) \cdot prcp & \quad & (3) \\
+& melt = H(temp - T_{max}) \cdot H(snowpack) \cdot \min(snowpack, D_f \cdot (temp - T_{max})) & \quad & (4) \\
+& \frac{d(snowpack)}{dt} = snowfall - melt & \quad & (5) \\
 \end{aligned}
 ```
 
-Soilwater Bucket:
+2. **Soil Water Bucket**: Manages soil moisture, evapotranspiration, and runoff generation
+
 ```math
 \begin{aligned}
-& evap = H(soilwater) \cdot pet \cdot \min(1.0, \frac{soilwater}{S_{max}}) && (6) \\
-& baseflow = H(soilwater) \cdot Q_{max} \cdot \exp(-f \cdot \max(0.0, S_{max} - soilwater)) && (7) \\
-& surfaceflow = \max(0.0, soilwater - S_{max}) && (8) \\
-& flow = baseflow + ,urfaceflow && (9) \\
-& \frac{d(soilwater)}{dt} = rainfall + melt - evap - flow && (10)
+& evap = H(soilwater) \cdot pet \cdot \min\left(1.0, \frac{soilwater}{S_{max}}\right) & \quad & (6) \\
+& baseflow = H(soilwater) \cdot Q_{max} \cdot \exp\left(-f \cdot \max(0.0, S_{max} - soilwater)\right) & \quad & (7) \\
+& surfaceflow = \max(0.0, soilwater - S_{max}) & \quad & (8) \\
+& flow = baseflow + surfaceflow & \quad & (9) \\
+& \frac{d(soilwater)}{dt} = rainfall + melt - evap - flow & \quad & (10) \\
 \end{aligned}
 ```
 
 where $H(x)$ represents the Heaviside step function that equals 1 when $x > 0$ and 0 otherwise; $T_{min}$, $T_{max}$, $D_f$, $S_{max}$, $Q_{max}$, and $f$ are model parameters; $temp$, $lday$, and $prcp$ are input variables; $snowpack$ and $soilwater$ are state variables; and the remaining variables are intermediate calculation variables.
 
+The model uses temperature thresholds to partition precipitation into rainfall and snowfall, and employs exponential functions to represent soil moisture dynamics. Its relative simplicity combined with physical process representation makes it an excellent starting point for hydrological modeling.
+
+Key parameters in the ExpHydro model include:
+
+- `Tmin`: Minimum temperature threshold for snow/rain partitioning
+- `Tmax`: Temperature threshold for snowmelt initiation
+- `Df`: Degree-day factor for snowmelt calculation
+- `Smax`: Maximum soil water storage capacity
+- `f`: Parameter controlling baseflow recession
+- `Qmax`: Maximum baseflow rate
+
 ### Build an ExpHydro Model in HydroModels.jl
 
-After understanding the basic principles of the `ExpHydro` model, we can use `HydroModels.jl` to build this model.
+HydroModels.jl provides a flexible framework for constructing hydrological models using a component-based approach. Let's build the ExpHydro model step by step.
 
-#### Import Packages
+#### 1. Define the Variables and Parameters based on ModelingToolkit.jl
 
-First, import the HydroModels.jl package:
+First, we need to define the variables and parameters that will be used in our model. HydroModels.jl leverages ModelingToolkit.jl for symbolic representation of model components.
 
 ```julia
+# Import necessary functions
 using HydroModels
-```
 
-#### Define Variables and Parameters
+# Define the step function used in hydrological processes
+step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
 
-Define the model parameters, state variables, and other variables (including precipitation, evaporation, snowmelt, surface flow, etc.):
-
-```julia
-@variables temp lday pet prcp 
-@variables snowfall rainfall melt evap baseflow surfaceflow flow
-@variables snowpack soilwater
+# Define variables and parameters (the macro @variables and @parameters are from ModelingToolkit.jl)
+@variables temp lday prcp pet snowfall rainfall snowpack melt
+@variables soilwater evap baseflow surfaceflow flow
 @parameters Tmin Tmax Df Smax Qmax f
 ```
 
-#### Build Flux Formulas by HydroFlux
+Here, we define:
 
-Next, we need to construct the various computational formulas of the model, including state equations and intermediate variable calculations. Let's use the snowmelt formula as an example to demonstrate how to use `HydroFlux`:
+- Input variables: `temp` (temperature), `lday` (day length), `prcp` (precipitation)
+- State variables: `snowpack` (snow water equivalent), `soilwater` (soil moisture)
+- Intermediate flux variables: `snowfall`, `rainfall`, `melt`, `pet` (potential evapotranspiration), etc.
+- Output variables: `flow` (total streamflow)
+- Model parameters: `Tmin`, `Tmax`, `Df`, `Smax`, `Qmax`, `f`
 
-```julia
-# define the step function
-step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
+#### 2. Build the ExpHydro Model
 
-melt_flux = HydroFlux([snowpack, temp] => [melt], [Tmax, Df], exprs=[step_func(temp - Tmax) * step_func(snowpack) * min(snowpack, Df * (temp - Tmax))])
-```
-
-When constructing `HydroFlux`, several points need attention:
-
-1. Ensure all variables and parameters used in the expression are declared in the inputs
-2. Input and output variables are connected through the `Pair` type (=>)
-3. Parameters are passed as vectors
-4. Expressions are passed as vectors to the `exprs` parameter
-
-`HydroFlux` first accepts a `Pair` type consisting of input and output variables, then takes a `Vector` of parameters, and finally accepts the snowmelt formula expression through `exprs` to complete the construction of the snowmelt formula.
-
-It's important to note that when building `HydroFlux`, you must ensure that all variables and parameters in `expr` are included in the input variables and parameters. If there are variables or parameters in `exprs` that haven't been provided to `HydroFlux`, errors may occur during subsequent calculations due to undefined variables. In such cases, you'll need to check if the `HydroFlux` construction is correct.
-
-Of course, when building HydroFlux, parameter variables are not always necessary. If parameters are not needed, they can be omitted, as shown in the potential evapotranspiration calculation formula:
+With variables and parameters defined, we can now construct the complete ExpHydro model using HydroModels.jl's macro-based syntax:
 
 ```julia
-pet_flux = HydroFlux([temp, lday] => [pet], exprs=[29.8 * lday * 24 * 0.611 * exp(17.3 * temp) / (temp + 237.3) * 1 / (temp + 273.2)])
+# Define the snow component
+snow_bucket = @hydrobucket :snow begin
+    fluxes = begin
+        @hydroflux pet ~ 29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)
+        @hydroflux snowfall ~ step_func(Tmin - temp) * prcp
+        @hydroflux rainfall ~ step_func(temp - Tmin) * prcp
+        @hydroflux melt ~ step_func(temp - Tmax) * step_func(snowpack) * min(snowpack, Df * (temp - Tmax))
+    end
+    dfluxes = begin
+        @stateflux snowpack ~ snowfall - melt
+    end
+end
+
+# Define the soil water component
+soil_bucket = @hydrobucket :soil begin
+    fluxes = begin
+        @hydroflux evap ~ step_func(soilwater) * pet * min(1.0, soilwater / Smax)
+        @hydroflux baseflow ~ step_func(soilwater) * Qmax * exp(-f * (max(0.0, Smax - soilwater)))
+        @hydroflux surfaceflow ~ max(0.0, soilwater - Smax)
+        @hydroflux flow ~ baseflow + surfaceflow
+    end
+    dfluxes = begin
+        @stateflux soilwater ~ (rainfall + melt) - (evap + flow)
+    end
+end
+
+# Combine components into the complete ExpHydro model
+exphydro_model = @hydromodel :exphydro begin
+    snow_bucket
+    soil_bucket
+end
 ```
 
-This formula uses `temp` and `lday` as input variables and calculates `pet` as the output variable. Since this formula doesn't involve parameters, there's no need to pass parameter variables.
+### Step by Step Analysis of the Build Process
 
-It's worth noting that `HydroFlux`'s `exprs` parameter can only accept a `Vector` of expressions. This is because `HydroFlux` sometimes needs to support multiple output variables, thus requiring multiple expressions, and the number of expressions must match the number of outputs. Here's an example using the rain-snow separation formula:
+Let's break down the model construction process to understand each component in detail.
+
+#### 1. First Build one Hydrological Flux
+
+A hydrological flux represents a specific process in the water cycle. For example, the snowfall flux is defined as:
 
 ```julia
-HydroFlux([prcp, temp] => [snowfall, rainfall], [Tmin], exprs=[step_func(Tmin - temp) * prcp, step_func(temp - Tmin) * prcp])
+snowfall_flux = @hydroflux snowfall ~ step_func(Tmin - temp) * prcp
 ```
 
-This formula uses `prcp` and `temp` as input variables and calculates `snowfall` and `rainfall` as output variables, while using `Tmin` as a parameter. Since this formula outputs two variables (`snowfall` and `rainfall`), two expressions must be provided to represent the calculation formulas for each output variable.
+This equation partitions precipitation into snowfall based on temperature. When temperature is below `Tmin`, the step function approaches 1, and precipitation is treated as snowfall. The `~` operator establishes the mathematical relationship between variables.
 
-#### Build State Formulas by StateFlux
+Each flux has:
 
-Generally, state equations are constructed as the sum of input fluxes minus the sum of output fluxes. Therefore, we can use a `Pair` to represent this input-output relationship and include the state variable to build a `StateFlux`. Here's an example with the snowpack state equation:
+- Input variables (right side of `~`): Variables used to calculate the flux
+- Output variable (left side of `~`): The resulting flux value
+- Parameters: Model coefficients used in the calculation
+
+#### 2. Build All Fluxes inner the Snowpack Bucket
+
+The snowpack bucket contains multiple fluxes that work together to simulate snow processes:
 
 ```julia
-snowpack_flux = StateFlux([snowfall] => [melt], snowpack)
+fluxes = begin
+    @hydroflux pet ~ 29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)
+    @hydroflux snowfall ~ step_func(Tmin - temp) * prcp
+    @hydroflux rainfall ~ step_func(temp - Tmin) * prcp
+    @hydroflux melt ~ step_func(temp - Tmax) * step_func(snowpack) * min(snowpack, Df * (temp - Tmax))
+end
 ```
 
-This formula uses `snowfall` as the input variable and calculates `snowpack` as the output variable, while incorporating the state variable `snowpack` to construct the snowpack state equation.
+These fluxes represent:
 
-Typically, before constructing state equations, it's preferable to build all involved fluxes using `HydroFlux` first, then combine them using `StateFlux` with input-output flux `Pair`s and state variables to get an intuitive `StateFlux`. However, to avoid introducing unnecessary variables, you can also directly construct more complex `StateFlux` equations. In fact, this construction method is highly consistent with `HydroFlux` - it similarly takes input and output variables as `StateFlux` inputs, names the state variables and required parameters, and finally constructs the state equation. Let's rebuild the snowpack state equation:
+- `pet`: Potential evapotranspiration calculated using a temperature-based formula
+- `snowfall`: Precipitation that falls as snow when temperature is below `Tmin`
+- `rainfall`: Precipitation that falls as rain when temperature is above `Tmin`
+- `melt`: Snowmelt that occurs when temperature exceeds `Tmax`, limited by available snowpack
+
+#### 3. Build the Snowpack Bucket Based on these Flux
+
+A bucket in HydroModels.jl represents a storage component with state variables that change over time. The `@hydrobucket` macro creates a complete hydrological storage unit that encapsulates both water movement processes and state evolution equations.
 
 ```julia
-snowpack_flux = StateFlux([prcp, temp, melt], snowpack, [Tmin], expr=step_func(Tmin - temp) * prcp-melt)
+snow_bucket = @hydrobucket :snow begin
+    fluxes = begin
+        @hydroflux pet ~ 29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)
+        @hydroflux snowfall ~ step_func(Tmin - temp) * prcp
+        @hydroflux rainfall ~ step_func(temp - Tmin) * prcp
+        @hydroflux melt ~ step_func(temp - Tmax) * step_func(snowpack) * min(snowpack, Df * (temp - Tmax))
+    end
+    dfluxes = begin
+        @stateflux snowpack ~ snowfall - melt
+    end
+end
 ```
 
-In this state equation, instead of directly calculating `snowfall`, we perform the calculation using `prcp` and `temp`, combining with the state equation `dsnowpack/dt=snowfall-melt` to construct a complex state equation that omits the `snowfall` intermediate variable.
+The bucket consists of two main sections:
 
-#### Build Snowfall Bucket
+- **fluxes**: Defines the hydrological processes that move water in and out of the bucket. Each flux is created with the `@hydroflux` macro and represents a specific hydrological process (e.g., snowfall, rainfall, melt).
 
-After completing the necessary `HydroFlux` and `StateFlux` constructions, we can build a `HydroBucket`. Using the snowpack `Bucket` as an example, we need to pass the constructed `HydroFlux` and `StateFlux` to `HydroBucket`.
+- **dfluxes**: Specifies how state variables change over time using the `@stateflux` macro. In this example, the snowpack state variable changes according to the equation `snowpack ~ snowfall - melt`, meaning the change in snowpack equals snowfall minus snowmelt.
 
-First, store the relevant `HydroFlux` and `StateFlux` in a `Vector`:
+The first argument (`:snow`) provides a name for the bucket, which helps with identification and debugging. When the model runs, these equations are automatically converted into a system of differential equations that will be solved by the selected numerical solver.
+
+#### 4. Build ExpHydro Model Based on the Snowpack Bucket and Soilwater Bucket
+
+After creating the snow bucket, we need to define the soil water bucket that handles soil moisture dynamics, evapotranspiration, and runoff generation:
 
 ```julia
-fluxes_1 = [
-    HydroFlux([temp, lday] => [pet], exprs=[29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)]),
-    HydroFlux([prcp, temp] => [snowfall, rainfall], [Tmin], exprs=[step_func(Tmin - temp) * prcp, step_func(temp - Tmin) * prcp]),
-    HydroFlux([snowpack, temp] => [melt], [Tmax, Df], exprs=[step_func(temp - Tmax) * step_func(snowpack) * min(snowpack, Df * (temp - Tmax))]),
-]
-dfluxes_1 = [StateFlux([snowfall] => [melt], snowpack),]
-snowpack_bucket = HydroBucket(name=:surface, fluxes=fluxes_1, dfluxes=dfluxes_1)
+soil_bucket = @hydrobucket :soil begin
+    fluxes = begin
+        @hydroflux evap ~ step_func(soilwater) * pet * min(1.0, soilwater / Smax)
+        @hydroflux baseflow ~ step_func(soilwater) * Qmax * exp(-f * (max(0.0, Smax - soilwater)))
+        @hydroflux surfaceflow ~ max(0.0, soilwater - Smax)
+        @hydroflux flow ~ baseflow + surfaceflow
+    end
+    dfluxes = begin
+        @stateflux soilwater ~ (rainfall + melt) - (evap + flow)
+    end
+end
 ```
 
-Then use these `Vector` variables as input to build a hydrological computation module, i.e., `HydroBucket`:
+The soil bucket includes several important hydrological processes:
+
+- **Evapotranspiration** (`evap`): Water loss from soil to atmosphere, dependent on potential evapotranspiration (`pet`) and available soil moisture
+- **Baseflow** (`baseflow`): Subsurface flow that follows an exponential relationship with soil moisture deficit
+- **Surface runoff** (`surfaceflow`): Excess water when soil moisture exceeds maximum capacity (`Smax`)
+- **Total streamflow** (`flow`): Combined baseflow and surface runoff
+
+The state equation for soil moisture (`soilwater`) accounts for all inputs (rainfall and snowmelt) and outputs (evapotranspiration and streamflow).
+
+Finally, we combine the snow and soil components into a complete model using the `@hydromodel` macro:
 
 ```julia
-snowpack_bucket = HydroBucket(name=:surface, fluxes=fluxes_1, dfluxes=dfluxes_1)
+exphydro_model = @hydromodel :exphydro begin
+    snow_bucket
+    soil_bucket
+end
 ```
 
-Through `HydroBucket`, we can complete the construction of a hydrological computation module. During the construction of `HydroBucket`, the program executes some automatic construction methods to express the ordinary differential equations and other variable calculation functions in the computation module. For implementation details, please refer to the implementation section.
+This creates a model named "exphydro" with two interconnected components. HydroModels.jl automatically handles the connections between components based on variable names. For example, the `rainfall` and `melt` outputs from the snow bucket are used as inputs to the soil bucket, and the `pet` calculation from the snow bucket is used in the evapotranspiration calculation in the soil bucket.
 
-#### Build Exphydro Model
+The `@hydromodel` macro performs several important tasks:
 
-Following the same logic, we can build the soil computation module, then concatenate the two modules into a `Vector` type and input it to `HydroModel` to complete the construction of the `ExpHydro` model. The complete construction code is as follows:
+1. Analyzes dependencies between components to determine the correct execution order
+2. Creates a computational graph that efficiently routes information between components
+3. Manages state variables across the entire model
+4. Prepares the model for simulation with various solver options
+
+## Run the ExpHydro Model With Real Data
+
+### Preparation
+
+Before running the model, we need to prepare input data, parameters, and initial states.
+
+#### 1. Load 01013500 forcing data from the CAMELS Dataset
+
+The CAMELS (Catchment Attributes and Meteorology for Large-sample Studies) dataset provides hydrometeorological time series for many watersheds. We'll use data from basin 01013500 as an example:
 
 ```julia
-#* import packages
-using HydroModels
+# Load forcing data
+file_path = "data/exphydro/01013500.csv"
+df = DataFrame(CSV.File(file_path))
 
-#* define variables and parameters
-@variables temp lday pet prcp 
-@variables snowfall rainfall melt evap baseflow surfaceflow flow
-@variables snowpack soilwater
-@parameters Tmin Tmax Df Smax Qmax f
+# Select a time period for simulation
+ts = collect(1:365)  # One year of daily data
 
-step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
-
-#* define snowpack bucket
-fluxes_1 = [
-    HydroFlux([temp, lday] => [pet], exprs=[29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)]),
-    HydroFlux([prcp, temp] => [snowfall, rainfall], [Tmin], exprs=[step_func(Tmin - temp) * prcp, step_func(temp - Tmin) * prcp]),
-    HydroFlux([snowpack, temp] => [melt], [Tmax, Df], exprs=[step_func(temp - Tmax) * step_func(snowpack) * min(snowpack, Df * (temp - Tmax))]),
-]
-dfluxes_1 = [StateFlux([snowfall] => [melt], snowpack),]
-snowpack_bucket = HydroBucket(name=:surface, fluxes=fluxes_1, dfluxes=dfluxes_1)
-
-#* define soilwater bucket
-fluxes_2 = [
-    HydroFlux([soilwater, pet] => [evap], [Smax], exprs=[step_func(soilwater) * pet * min(1.0, soilwater / Smax)]),
-    HydroFlux([soilwater] => [baseflow], [Smax, Qmax, f], exprs=[step_func(soilwater) * Qmax * exp(-f * (max(0.0, Smax - soilwater)))]),
-    HydroFlux([soilwater] => [surfaceflow], [Smax], exprs=[max(0.0, soilwater - Smax)]),
-    HydroFlux([baseflow, surfaceflow] => [flow], exprs=[baseflow + surfaceflow]),
-]
-dfluxes_2 = [StateFlux([rainfall, melt] => [evap, flow], soilwater)]
-soilwater_bucket = HydroBucket(name=:soil, fluxes=fluxes_2, dfluxes=dfluxes_2)
-
-#* define the Exp-Hydro model
-exphydro_model = HydroModel(name=:exphydro, components=[snowpack_bucket, soilwater_bucket])
-```
-
-This completes the construction of an `ExpHydro` model. When we print this type, we can see the basic information contained in the model:
-
-```txt
-HydroModel: exphydro
-   Components: surface, soil
-   Inputs: [temp, lday, prcp]
-   States: [snowpack, soilwater]
-   Outputs: [pet, snowfall, rainfall, melt, evap, baseflow, surfaceflow, flow]
-   Parameters: [Tmin, Tmax, Df, Smax, Qmax, f]
-   Components:
-       Fluxes: 0 fluxes
-       Buckets: 2 buckets
-       Routes: 0 routes
-```
-
-This information shows the model's name, component names, input variables, state variables, output variables, parameter variables, and the number of `Flux`es, `Bucket`s, and `Route`s contained in the model.
-
-#### Define Neural Network by Lux.jl
-
-`HydroModels.jl` supports neural network definition through `Lux.jl`. Here's an example using a simple fully connected neural network:
-
-```julia
-using Lux
-
-# define the ET NN and Q NN
-ep_nn = Lux.Chain(
-    Lux.Dense(3 => 16, tanh),
-    Lux.Dense(16 => 16, leakyrelu),
-    Lux.Dense(16 => 1, leakyrelu),
-    name=:epnn
+# Extract required input variables
+input_data = (
+    lday = df[ts, "dayl(day)"],   # Day length
+    temp = df[ts, "tmean(C)"],    # Mean temperature
+    prcp = df[ts, "prcp(mm/day)"] # Precipitation
 )
 
-q_nn = Lux.Chain(
-    Lux.Dense(2 => 16, tanh),
-    Lux.Dense(16 => 16, leakyrelu),
-    Lux.Dense(16 => 1, leakyrelu),
-    name=:qnn
+# Convert to matrix format required by HydroModels.jl
+input_matrix = Matrix(reduce(hcat, collect(input_data[HydroModels.get_input_names(exphydro_model)])'))
+```
+
+#### 2. Prepare Parameters and Initial States
+
+Next, we set up the model parameters and initial states:
+
+```julia
+# Define parameter values (calibrated for basin 01013500)
+# Create parameter ComponentVector
+params = ComponentVector(
+    f = 0.0167 , # Baseflow recession parameter
+    Smax = 1709.46 , # Maximum soil water storage (mm)
+    Qmax = 18.47 , # Maximum baseflow rate (mm/day)
+    Df = 2.674 , # Degree-day factor for snowmelt (mm/°C/day)
+    Tmax = 0.17 , # Temperature threshold for snowmelt (°C)
+    Tmin = -2.09 # Temperature threshold for snow/rain partitioning (°C)
+)
+
+# Set initial states
+init_states = ComponentVector(
+    snowpack = 0.0,       # Initial snow water equivalent (mm)
+    soilwater = 1303.00   # Initial soil moisture (mm)
+)
+
+# Combine into parameter array structure
+pas = ComponentVector(params = params)
+```
+
+#### 3. Prepare the Running Config
+
+Finally, we configure the simulation settings:
+
+```julia
+# Define simulation configuration
+config = (
+    # Time indices for simulation
+    timeidx = ts,
+    # Solver settings
+    solver = HydroModels.ManualSolver(mutable = true),
+    # Interpolation method for inputs
+    interp = LinearInterpolation
 )
 ```
 
-After constructing two fully connected neural networks `ep_nn` and `q_nn` using `Lux.jl`, we can build neural network formulas using `NeuralFlux` provided by `HydroModel.jl`:
+The configuration includes:
+
+- `timeidx`: Time indices for the simulation period
+- `solver`: Numerical solver for state equations (ManualSolver uses explicit Euler method)
+- `interp`: Method for interpolating input data between time steps
+
+### Run Model
+
+#### 1. Run the Model
+
+With everything prepared, we can now run the ExpHydro model:
 
 ```julia
-@variables norm_snw norm_slw norm_temp norm_prcp
-@variables log_evap_div_lday log_flow
+# Execute the model simulation
+results = exphydro_model(
+    input_matrix,   # Input data matrix
+    pas,            # Parameters
+    initstates = init_states,  # Initial states
+    config = config  # Configuration
+)
 
-ep_nn_flux = NeuralFlux([norm_snw, norm_slw, norm_temp] => [log_evap_div_lday], ep_nn)
-q_nn_flux = NeuralFlux([norm_slw, norm_prcp] => [log_flow], q_nn)
+# Extract results into named variables
+output_names = vcat(
+    HydroModels.get_state_names(exphydro_model),
+    HydroModels.get_output_names(exphydro_model)
+)
+output_data = NamedTuple{Tuple(output_names)}(eachslice(results, dims=1))
 ```
 
-`NeuralFlux` is a derivative type of `HydroFlux`. It similarly accepts a `Pair` of input and output variables, but unlike `HydroFlux`, it doesn't require model parameters and calculation formulas. Instead, it needs the neural network to be passed as a parameter to `NeuralFlux` to construct the neural network formula.
-It's important to note that the input and output variable dimensions must match those of the `NeuralFlux`.
+#### 2. Check the Run Cost
 
-After completing the construction of `NeuralFlux`, we can pass it along with other `HydroFlux`es to `HydroBucket` to build a neural network-coupled hydrological model:
+We can benchmark the model performance to assess computational efficiency:
 
 ```julia
-soil_fluxes = [
-    #* normalize
-    HydroFlux([snowpack, soilwater, prcp, temp] => [norm_snw, norm_slw, norm_prcp, norm_temp],
-        [snowpack_mean, soilwater_mean, prcp_mean, temp_mean, snowpack_std, soilwater_std, prcp_std, temp_std],
-        exprs=[(var - mean) / std for (var, mean, std) in zip([snowpack, soilwater, prcp, temp],
-            [snowpack_mean, soilwater_mean, prcp_mean, temp_mean],
-            [snowpack_std, soilwater_std, prcp_std, temp_std]
-        )]),
-    ep_nn_flux,
-    q_nn_flux
-]
+using BenchmarkTools
+
+# Benchmark model execution
+@btime exphydro_model(
+    $input_matrix,
+    $pas,
+    initstates = $init_states,
+    config = $config
+)
 ```
 
-This soil module includes normalization formulas, evaporation formulas, and runoff formulas. Next, we can pass these formulas to `HydroBucket` and combine them with state equations to complete the construction of the soil module:
+Typical execution times for the ExpHydro model with one year of daily data are in the range of microseconds to milliseconds, demonstrating the efficiency of HydroModels.jl's implementation.
+
+#### 3. Explain the Results
+
+The simulation results contain time series for all state variables and output fluxes:
 
 ```julia
-state_expr = rainfall + melt - step_func(soilwater) * lday * exp(log_evap_div_lday) - step_func(soilwater) * exp(log_flow)
-soil_dfluxes = [StateFlux([soilwater, rainfall, melt, lday, log_evap_div_lday, log_flow], soilwater, expr=state_expr)]
-soilwater_bucket = HydroBucket(name=:soil, fluxes=soil_fluxes, dfluxes=soil_dfluxes)
-m50_model = HydroModel(name=:m50, components=[snowpack_bucket, soilwater_bucket])
+# Plot the results
+using Plots
+
+# Create a multi-panel plot
+p1 = plot(ts, output_data.snowpack, label="Snowpack (mm)", ylabel="SWE (mm)")
+p2 = plot(ts, output_data.soilwater, label="Soil Moisture (mm)", ylabel="SM (mm)")
+p3 = plot(ts, output_data.flow, label="Simulated Flow", ylabel="Flow (mm/day)")
+
+# Add observed flow if available
+if "flow(mm)" in names(df)
+    plot!(p3, ts, df[ts, "flow(mm)"], label="Observed Flow")
+end
+
+# Combine plots
+plot(p1, p2, p3, layout=(3,1), size=(800, 600))
 ```
 
-## Run a ExpHydro Model
+The key outputs include:
 
-After completing the model construction, since the model is `callable`, we can input the data and parameters into the model to obtain output results.
+- **Snowpack**: Shows snow accumulation during winter months and melting during spring
+- **Soil Moisture**: Reflects the balance between water inputs (rainfall, snowmelt) and outputs (evaporation, runoff)
+- **Flow**: The total streamflow, which can be compared with observations to assess model performance
 
-### Prepare Input Data
-
-The model accepts input observation data of type `AbstractMatrix`, with dimensions being the number of input variables multiplied by the number of time steps. For example, if there are 3 input variables and 1000 time steps, the input observation data dimensions would be (3, 1000). It's important to note that the index of input variables in the dimension will affect the model calculation results, as the model cannot automatically identify which row in the Matrix corresponds to which input variable. Therefore, users can first prepare a `Dict` or `NamedTuple` type, then use `HydroModels.get_input_names(model)` to get the names of the model's input variables, and combine these names with the `Dict` or `NamedTuple` to construct the `Matrix` type input data:
+Additional analysis can include:
 
 ```julia
-input = (lday=df[ts, "dayl(day)"], temp=df[ts, "tmean(C)"], prcp=df[ts, "prcp(mm/day)"])
-input_arr = Matrix(reduce(hcat, collect(input[HydroModels.get_input_names(exphydro_model)]))')
-```
+# Calculate performance metrics if observed data is available
+if "flow(mm)" in names(df)
+    observed_flow = df[ts, "flow(mm)"]
+    simulated_flow = output_data.flow
 
-### Prepare Parameters and Initial States
+    # Nash-Sutcliffe Efficiency
+    nse = 1 - sum((observed_flow - simulated_flow).^2) / sum((observed_flow .- mean(observed_flow)).^2)
 
-For parameter preparation, `HydroModels.jl` accepts parameters of type `ComponentVector` (`using ComponentArrays`), storing parameter names and values in the `ComponentVector`, for example:
+    # Percent Bias
+    pbias = 100 * (sum(simulated_flow) - sum(observed_flow)) / sum(observed_flow)
 
-```julia
-f, Smax, Qmax, Df, Tmax, Tmin = 0.01674478, 1709.461015, 18.46996175, 2.674548848, 0.175739196, -2.092959084
-params = ComponentVector(f=f, Smax=Smax, Qmax=Qmax, Df=Df, Tmax=Tmax, Tmin=Tmin)
-```
-
-For initial state preparation, `HydroModels.jl` similarly accepts initial states of type `ComponentVector`, storing state names and values in the `ComponentVector`, for example:
-
-```julia
-init_states = ComponentVector(snowpack=0.0, soilwater=1303.004248)
-```
-
-### Run the ExpHydro Model
-
-Finally, we can input the data and parameters into the model to obtain the output results:
-
-```julia
-result = exphydro_model(input_arr, ComponentVector(params=params), initstates=init_states)
-```
-
-The model output is also of type `AbstractMatrix`, with dimensions being the number of output variables (including state variables) multiplied by the number of time steps. For example, if there are 8 output variables and 1000 time steps, the output dimensions would be (8, 1000). If you want to export the results as a `DataFrame` type, you can use `HydroModels.get_output_names(model)` to get the names of the output variables, then combine them with a `Dict` or `NamedTuple` to construct a `DataFrame`:
-
-```julia
-states_and_output_names = vcat(HydroModels.get_state_names(exphydro_model), HydroModels.get_output_names(exphydro_model))
-output = NamedTuple{Tuple(states_and_output_names)}(eachslice(result, dims=1))
-df = DataFrame(output)
-```
-
-The calculation results look like this:
-
-```txt
-10000×10 DataFrame
-   Row │ snowpack  soilwater  pet      snowfall  rainfall  melt      evap      baseflow   surfaceflow  flow      
-       │ Float64   Float64    Float64  Float64   Float64   Float64   Float64   Float64    Float64      Float64   
-───────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────
-     1 │    0.0         0.0      3.1        0.0   1305.22  1.13779   0.868735  0.0212194          0.0  0.0212194
-     2 │    0.0         0.0      4.24       0.0   1308.28  1.51019   1.15578   0.0223371          0.0  0.0223371
-     3 │    0.0         0.0      8.02       0.0   1315.03  1.63204   1.25547   0.0250095          0.0  0.0250095
-     4 │    0.0         0.0     15.27       0.0   1329.34  1.21771   0.946937  0.0317802          0.0  0.0317802
-     5 │    0.0         0.0      8.48       0.0   1336.99  1.02779   0.803845  0.0361228          0.0  0.0361228
-   ⋮   │    ⋮          ⋮         ⋮        ⋮         ⋮         ⋮         ⋮          ⋮           ⋮           ⋮
-  9996 │  254.264       0.0      0.0       -0.0   1521.37  0.221762  0.197362  0.791897           0.0  0.791897
-  9997 │  266.324      12.06     0.0       -0.0   1520.37  0.238907  0.21248   0.778688           0.0  0.778688
-  9998 │  277.874      11.55     0.0       -0.0   1519.33  0.288362  0.256291  0.765307           0.0  0.765307
-  9999 │  279.714       1.84     0.0       -0.0   1518.29  0.311022  0.27624   0.752073           0.0  0.752073
- 10000 │  279.854       0.14     0.0       -0.0   1517.38  0.176836  0.156967  0.740711           0.0  0.740711
-```
-
-### Plot the Results
-
-The model results are compared with the actual values ​​and plotted into a line graph as follows.
-
-![exphydro model predict](assets/exphydro_predict.png)
-
-### Running with Config
-
-The model computation is not limited to these basic features. To support necessary settings during the computation process, `HydroModel` can accept a `config` parameter (Dict).
-
-For example, by default, the model uses only the Euler method to solve ordinary differential equations. However, sometimes a more accurate solving method is needed, which can be set using the `config` parameter.
-
-To demonstrate this functionality, we need to additionally import `OrdinaryDiffEq.jl` and `HydroModelTools.jl`, then set the solving method:
-
-```julia
-using OrdinaryDiffEq
-using HydroModelTools
-using DataInterpolations
-
-config = Dict(:solver=>ODESolver(alg=Tsit5(), abstol=1e-3, reltol=1e-3), :interp=>LinearInterpolation)
-output = exphydro_model(input_arr, ComponentVector(params=params), initstates=init_states, config=config)
-```
-
-The `config` parameter is set as a `NamedTuple` type, where the `solver` parameter is used to set the solving method, and the `interp` parameter is used to set the interpolation method. `ODESolver` is a solver wrapper class provided by `HydroModelTools.jl` that performs some data conversion on the solution results. It accepts solving methods from `OrdinaryDiffEq.jl` as parameters and sets the solving method parameters.
-
-[Would you like me to continue with the neural network implementation section?]
-
-### Run the Neural Network Enhanced Model
-
-Earlier we built an `ExpHydro` model coupled with neural networks, and now we can use this model to calculate results.
-
-First, we need to prepare the model parameters. In addition to the `ExpHydro` model parameters, we also need to prepare neural network parameters:
-
-```julia
-using StableRNGs
-
-ep_nn_params = Vector(ComponentVector(LuxCore.initialparameters(ep_nn)))
-q_nn_params = Vector(ComponentVector(LuxCore.initialparameters(q_nn)))
-```
-
-Models based on `Lux.jl` can decouple parameters from model structure, which is the primary reason we chose to use `Lux.jl` to build neural networks. After using `LuxCore.initialparameters`, we convert the parameters (`NamedTuple`) to `Vector` type, then combine them with the model parameters and initial states to build the complete model parameters:
-
-```julia
-nn_pas = ComponentVector(epnn=ep_nn_params, qnn=q_nn_params)
-```
-
-It's important to note that we need to use the key name `nns` to store the neural network parameters, keeping them independent from model parameters and initial states. Additionally, the neural network parameters `nn_pas` need to use model names and parameters as key-value pairs.
-
-Finally, we can input the model parameters into the model to obtain the output results:
-
-```julia
-output = m50_model(input_arr, ComponentVector(params=params, nns=nn_pas), initstates=init_states)
+    println("Nash-Sutcliffe Efficiency: ", nse)
+    println("Percent Bias: ", pbias, "%")
+end
 ```
 
 ## Conclusion
 
-This tutorial has provided a detailed introduction to the basic usage of `HydroModels.jl`, including:
-- Model building process
-- Parameter and initial state configuration
-- Model execution and computation
+In this guide, we've walked through the process of building and running a hydrological model using HydroModels.jl. The ExpHydro model demonstrates the core capabilities of the framework, including:
 
-Through this tutorial, users can quickly master the core functionality of `HydroModels.jl` and begin building their own hydrological models.
+1. **Component-Based Modeling**: Building complex models from simpler components
+2. **Symbolic Model Definition**: Using mathematical expressions to define hydrological processes
+3. **Efficient Simulation**: Running models with real-world data
+4. **Result Analysis**: Extracting and visualizing simulation outputs
 
-`HydroModels.jl` also offers more advanced features, including:
-- Semi-distributed and distributed hydrological model construction and computation
-- Neural network-coupled parameter-adaptive models
-- `GR4J` model with unit hydrograph routing
-- Model parameter optimization
-- Model extension functionality based on `Wrapper`
+HydroModels.jl provides a flexible and powerful platform for hydrological modeling, suitable for both research and operational applications. The framework's modular design allows for easy extension and customization, enabling users to implement a wide range of hydrological models.
 
-These advanced features will be covered in subsequent tutorials.
+Next steps include:
+
+- Embedding neural networks in hydrological models
+- Adding unit hydrograph calculation modules to hydrological models
+- Building and computing multi-node models (distributed and semi-distributed)
+- Using solvers from DifferentialEquations.jl
+- Optimizing model parameters based on Optimization.jl
