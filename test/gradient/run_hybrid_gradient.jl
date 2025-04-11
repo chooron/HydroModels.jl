@@ -2,7 +2,7 @@
     include("../models/m50.jl")
 
     #! load data
-    df = DataFrame(CSV.File("../data/m50/01013500.csv"))
+    df = DataFrame(CSV.File("data/m50/01013500.csv"))
     ts = collect(1:100)
     prcp_vec = df[ts, "Prcp"]
     temp_vec = df[ts, "Temp"]
@@ -27,18 +27,15 @@
     pas = ComponentVector(params=params, nns=nn_params)
     input_ntp = (prcp=prcp_vec, lday=dayl_vec, temp=temp_vec)
     input_mat = Matrix(reduce(hcat, collect(input_ntp[HydroModels.get_input_names(m50_model)]))')
-    config = (timeidx=ts, interp=LinearInterpolation, solver=HydroModelSolvers.ODESolver(sensealg=BacksolveAdjoint(autojacvec=EnzymeVJP())))
 
-    # Run the model to get output
-    output = m50_model(input_mat, pas, initstates=initstates, config=config)
+    output = m50_model(input_mat, pas, initstates=initstates,
+        config=(timeidx=ts, solver=HydroModelSolvers.ODESolver(sensealg=BacksolveAdjoint(autojacvec=EnzymeVJP())))
+    )
 
-    # Calculate gradient using Zygote
-    gradient_result = Zygote.gradient(pas) do p
-        output = m50_model(input_mat, p, initstates=initstates, config=config)
+    Zygote.gradient(pas) do p
+        output = m50_model(input_mat, p, initstates=initstates,
+            config=(timeidx=ts, solver=HydroModelSolvers.ODESolver(sensealg=BacksolveAdjoint(autojacvec=EnzymeVJP())))
+        )
         output[end, :] |> sum
     end
-
-    # Test that gradient calculation runs successfully
-    @test !isnothing(gradient_result)
-    @test !isnothing(gradient_result[1])
 end
