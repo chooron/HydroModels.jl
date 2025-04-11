@@ -2,7 +2,6 @@
 
 [![version](https://docs.juliahub.com/HydroModels/version.svg)](https://juliahub.com/ui/Packages/General/HydroModels)
 [![英文文档](https://img.shields.io/badge/docs-dev-blue.svg)](https://chooron.github.io/HydroModels.jl/dev/)
-[![中文文档](https://img.shields.io/badge/docs-zh-red.svg)](https://chooron.github.io/HydroModels.jl/dev-zh/)
 [![Aqua](https://raw.githubusercontent.com/JuliaTesting/Aqua.jl/master/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
 
 ## Overview

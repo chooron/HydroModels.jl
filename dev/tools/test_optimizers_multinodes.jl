@@ -62,11 +62,11 @@ test_input = rand(3, node_num_2)
 test_state = rand(1, node_num_2)
 
 
-@btime exphydro_model(node_input, node_pas; initstates=node_states, config=config)
+exphydro_model(node_input, node_pas; initstates=node_states, config=config)
 
-# @btime Zygote.gradient(node_pas) do p
-#     exphydro_model(node_input, p; initstates=node_states, config=config)[end, end, :] |> sum
-# end
+Zygote.gradient(node_pas) do p
+    exphydro_model(node_input, p; initstates=node_states, config=config)[end, end, :] |> sum
+end
 
 # Zygote.gradient(p -> opt_func(input_ntp, p, run_kwargs)[:flow] |> sum, node_pas)
 # solve_alg = Adam()
