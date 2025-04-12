@@ -58,7 +58,7 @@ export HydroBucket
 include("route.jl")
 export HydroRoute, RapidRoute
 include("uh.jl")
-export UHFunction, UnitHydrograph
+export UHFunction, UnitHydrograph, @unithydro
 include("model.jl")
 export HydroModel
 include("nn.jl")
