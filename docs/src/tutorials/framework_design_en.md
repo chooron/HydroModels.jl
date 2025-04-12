@@ -29,6 +29,7 @@ In the ExpHydro model, several HydroFlux components are used to calculate proces
 ```
 
 These expressions define:
+
 - How precipitation is partitioned into snowfall and rainfall based on temperature
 - How potential evapotranspiration is calculated from temperature and day length
 
@@ -46,6 +47,7 @@ In the ExpHydro model, StateFlux components define how the snowpack and soil wat
 ```
 
 These expressions define:
+
 - The snowpack increases with snowfall and decreases with snowmelt
 - The soil water increases with rainfall and snowmelt, and decreases with evapotranspiration and streamflow
 
@@ -75,6 +77,7 @@ A `HydroBucket` represents a storage component with state variables that change 
 In the ExpHydro model, two buckets are defined:
 
 1. **Snow Bucket**: Handles snow accumulation and melt processes
+
 ```julia
 snow_bucket = @hydrobucket :snow begin
     fluxes = begin
@@ -90,6 +93,7 @@ end
 ```
 
 2. **Soil Water Bucket**: Manages soil moisture, evapotranspiration, and runoff generation
+
 ```julia
 soil_bucket = @hydrobucket :soil begin
     fluxes = begin
@@ -105,10 +109,11 @@ end
 ```
 
 Each bucket:
+
 - Integrates multiple flux components
 - Manages state variables and their dynamics
 - Handles ODE solving for time evolution
-- Supports both single-node and distributed simulations
+- Supports both single-node and multi-nodes simulations
 
 The bucket structure allows for modular model construction, where each bucket represents a distinct hydrological process or storage component.
 
@@ -131,6 +136,30 @@ end
 
 Routing components manage flow calculations and inter-node water transfer in network-based models.
 
+## Specialized Structures
+
+Hydrological models incorporate several specialized structures, with the unit hydrograph being the most typical example. The unit hydrograph is a module used to describe hillslope routing, simulating the process of runoff concentration after runoff generation through convolution calculations.
+
+```math
+Q(t) = \sum_{i=1}^{t} P(t-i+1) \cdot UH(i)
+```
+
+To represent this concept, HydroModels.jl has designed two types: `UHFunction` and `UnitHydrograph`. These represent the unit hydrograph function and the unit hydrograph model, respectively.
+
+The unit hydrograph function calculates the distribution weights for different time periods in the runoff process, while the unit hydrograph model describes which flux is used for unit hydrograph routing calculations. Here, we use the unit hydrographs for slow flow and fast flow routing calculations in the GR4J model as implementation examples.
+
+```julia
+# Unit hydrograph components for GR4J model
+uh = @unithydro :maxbas_uh begin
+    uh_func = begin
+        2lag => (1 - 0.5 * (2 - t / lag)^2.5)
+        lag => (0.5 * (t / lag)^2.5)
+    end
+    uh_vars = [q]
+    configs = (solvetype=:DISCRETE, suffix=:_lag)
+end
+```
+
 ## Model: The Integration Framework
 
 The `HydroModel` is the top-level structure that integrates multiple components into a complete simulation system.
@@ -145,6 +174,7 @@ end
 ```
 
 The model automatically:
+
 - Analyzes dependencies between components
 - Creates a computational graph for efficient execution
 - Manages state variables across the entire model
@@ -171,6 +201,7 @@ The power of DeepFlex.jl comes from how these components work together:
 3. **Models** combine multiple elements into a complete simulation system
 
 In the ExpHydro model:
+
 - HydroFlux components define processes like snowfall, rainfall, and potential evapotranspiration
 - StateFlux components define how snowpack and soil water storage change over time
 - HydroBucket components integrate these fluxes into snow and soil water components
@@ -183,39 +214,39 @@ The framework automatically handles the connections between components. For exam
 When running a model in DeepFlex.jl, the following steps occur:
 
 1. **Data Preparation**:
+
    - Input data is organized as a matrix (features × time)
    - Parameters are provided as a ComponentVector
    - Initial states are specified
-
 2. **Configuration**:
+
    - Solver selection (e.g., ManualSolver for explicit Euler method)
    - Interpolation method (e.g., LinearInterpolation)
    - Time indices for output
-
 3. **Execution**:
+
    - Components are executed in dependency order
    - State variables are integrated over time
    - Fluxes are calculated at each time step
    - Results are collected and organized
-
 4. **Output**:
+
    - Time series of state variables (e.g., snowpack, soil moisture)
    - Time series of output fluxes (e.g., streamflow)
-   - Additional diagnostic information
 
 ## Conclusion
 
-Understanding the relationships between Flux, Element/Bucket, and Model components is essential for effectively using the DeepFlex.jl framework. These components provide a flexible and powerful system for building hydrological models of varying complexity.
+Understanding the relationships between Flux, Element/Bucket, and Model components is essential for effectively using the HydroModels.jl framework. These components provide a flexible and powerful system for building hydrological models of varying complexity.
 
 The ExpHydro model demonstrates how these components work together to create a complete hydrological model:
+
 - Flux components define the mathematical relationships
 - Bucket components integrate these fluxes and manage state variables
 - The Model combines these components into a complete simulation system
 
 By leveraging this modular architecture, you can:
+
 - Build models from reusable components
 - Combine process-based and data-driven approaches
-- Create efficient and type-stable implementations
-- Support both single-node and distributed simulations
 
 This framework design enables a wide range of hydrological modeling applications while maintaining computational efficiency and scientific rigor.
