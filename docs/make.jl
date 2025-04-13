@@ -29,6 +29,11 @@ makedocs(
     pages = [
         "Home" => "index.md",
         "Get Started with HydroModels.jl" => "get_start_en.md",
+        "tutorials" => [
+            "Framework Design" => "tutorials/framework_design.md",
+            "Neural Network Embedding" => "tutorials/neural_network.md",
+            "Distribute Modeling" => "tutorials/distribute_modeling.md",
+        ],
         "Basic Concepts" => "concepts_en.md",
         "Model Implementations" => [
             "construct the ExpHydro Model" => "implements/build_exphydro_model_en.md",

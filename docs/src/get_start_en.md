@@ -1,4 +1,4 @@
-# First Steps with HydroModels.jl
+# Getting start with HydroModels.jl
 
 This guide provides a comprehensive introduction to HydroModels.jl, a Julia package for hydrological modeling. We'll walk through the installation process, build a complete ExpHydro model, and demonstrate how to run simulations with real-world data.
 
@@ -260,7 +260,7 @@ file_path = "data/exphydro/01013500.csv"
 df = DataFrame(CSV.File(file_path))
 
 # Select a time period for simulation
-ts = collect(1:365)  # One year of daily data
+ts = collect(1:10000)  # One year of daily data
 
 # Extract required input variables
 input_data = (
@@ -273,8 +273,10 @@ q_data = df[ts, "flow(mm)"]
 
 # Convert to matrix format required by HydroModels.jl
 # We need to make the input matrix in the sort of the input names of the model
-input_matrix = Matrix(reduce(hcat, collect(input_data[HydroModels.get_input_names(exphydro_model)])'))
+input_matrix = reduce(hcat, input_data[HydroModels.get_input_names(exphydro_model)]) |> permutedims
 ```
+
+It is worth noting that in the line `input_matrix = reduce(hcat, input_data[HydroModels.get_input_names(exphydro_model)]) |> permutedims` we need to get the input variable names of the model according to `get_input_names(exphydro_model)` so that the input matrix has the correct order.
 
 #### 2. Prepare Parameters and Initial States
 
@@ -302,11 +304,15 @@ init_states = ComponentVector(
 pas = ComponentVector(params = params)
 ```
 
+The input parameters and initial states are stored in the type provided by [ComponentArrays.jl](https://github.com/SciML/ComponentArrays.jl). Each parameter name corresponds to a parameter value, and finally they are unified into `pas`. Params represents the hydrological model parameters, and nns represents the neural network parameters (see neuralnetwork_embeding.md)
+
 #### 3. Prepare the Running Config
 
 Finally, we configure the simulation settings:
 
 ```julia
+using DataInterpolations
+
 # Define simulation configuration
 config = (
     # Time indices for simulation
@@ -322,7 +328,7 @@ The configuration includes:
 
 - `timeidx`: Time indices for the simulation period
 - `solver`: Numerical solver for state equations (ManualSolver uses explicit Euler method)
-- `interp`: Method for interpolating input data between time steps
+- `interp`: Method for interpolating input data between time steps, the `LinearInterpolation` is provided by [DataInterpolations.jl](https://github.com/SciML/DataInterpolations.jl).
 
 ### Run Model
 
@@ -332,7 +338,7 @@ With everything prepared, we can now run the ExpHydro model:
 
 ```julia
 # Execute the model simulation
-results = exphydro_model(
+output_matrix = exphydro_model(
     input_matrix,   # Input data matrix
     pas,            # Parameters
     initstates = init_states,  # Initial states
@@ -344,7 +350,23 @@ output_names = vcat(
     HydroModels.get_state_names(exphydro_model),
     HydroModels.get_output_names(exphydro_model)
 )
-output_data = NamedTuple{Tuple(output_names)}(eachslice(results, dims=1))
+output_df = NamedTuple{Tuple(output_names)}(eachslice(results, dims=1)) |> DataFrame
+```
+
+The types defined in `HydroModels.jl` all have the `callable` capability. The `exphydro_model` of the `HydroModel` type obtains the calculation result `output_matrix` through input data, parameters, initial state and operation settings. Its format is consistent with the input data format. The first dimension stores the variable name, and the second dimension stores the time series. The order of the variable name is the state name and output name of `exphydro_model`. Here we convert it to the `DataFrame` type and get the result as follows:
+
+```text
+10000×10 DataFrame
+   Row │ snowpack  soilwater  pet       snowfall  rainfall  melt     evap      baseflow   surfaceflow  flow    
+       │ Float64   Float64    Float64   Float64   Float64   Float64  Float64   Float64    Float64      Float64
+───────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────
+     1 │    0.0      1305.21  1.13779       0.0       3.1       0.0  0.868733  0.0216058          0.0  0.0216058
+     2 │    0.0      1308.28  1.51019       0.0       4.24      0.0  1.15577   0.0227406          0.0  0.0227406
+     3 │    0.0      1315.03  1.63204       0.0       8.02      0.0  1.25547   0.0254533          0.0  0.0254533
+   ⋮   │    ⋮          ⋮         ⋮         ⋮         ⋮         ⋮        ⋮          ⋮           ⋮           ⋮
+  9999 │  279.712    1517.91  0.311022      1.84      0.0      -0.0  0.276171  0.753699           0.0  0.753699
+ 10000 │  279.852    1517.0   0.176836      0.14      0.0      -0.0  0.156927  0.742322           0.0  0.742322
+                                                                                                9995 rows omitted
 ```
 
 #### 2. Check the Run Cost
@@ -363,7 +385,17 @@ using BenchmarkTools
 )
 ```
 
-Typical execution times for the ExpHydro model with one year of daily data are in the range of microseconds to milliseconds, demonstrating the efficiency of HydroModels.jl's implementation.
+```text
+992.800 μs (56349 allocations: 2.90 MiB) # 1,000 data points, using HydroModels.ManualSolver(mutable = true)
+10.348 ms (596349 allocations: 29.40 MiB) # 10,000 data points, using HydroModels.ManualSolver(mutable = true)
+```
+
+These benchmark results demonstrate the impressive computational efficiency of HydroModels.jl:
+
+- For 1,000 data points (approximately 3 years of daily data), the model completes execution in less than 1 millisecond (992.8 microseconds), allocating only 2.90 MiB of memory.
+- For 10,000 data points (approximately 27 years of daily data), execution time scales linearly to about 10.3 milliseconds with 29.40 MiB of memory allocation.
+
+We will discuss more about computational performance and gradient solving performance in the benchmark.
 
 #### 3. Explain the Results
 
@@ -387,6 +419,8 @@ end
 plot(p1, p2, p3, layout=(3,1), size=(800, 600))
 ```
 
+![exphydro_results](image/get_start_en/exphydro_results.png)
+
 The key outputs include:
 
 - **Snowpack**: Shows snow accumulation during winter months and melting during spring
@@ -397,19 +431,22 @@ Additional analysis can include:
 
 ```julia
 # Calculate performance metrics if observed data is available
-if "flow(mm)" in names(df)
-    observed_flow = df[ts, "flow(mm)"]
-    simulated_flow = output_data.flow
+observed_flow = df[ts, "flow(mm)"]
+simulated_flow = output_data.flow
 
-    # Nash-Sutcliffe Efficiency
-    nse = 1 - sum((observed_flow - simulated_flow).^2) / sum((observed_flow .- mean(observed_flow)).^2)
+# Nash-Sutcliffe Efficiency
+nse = 1 - sum((observed_flow - simulated_flow).^2) / sum((observed_flow .- mean(observed_flow)).^2)
 
-    # Percent Bias
-    pbias = 100 * (sum(simulated_flow) - sum(observed_flow)) / sum(observed_flow)
+# Percent Bias
+pbias = 100 * (sum(simulated_flow) - sum(observed_flow)) / sum(observed_flow)
 
-    println("Nash-Sutcliffe Efficiency: ", nse)
-    println("Percent Bias: ", pbias, "%")
-end
+println("Nash-Sutcliffe Efficiency: ", nse)
+println("Percent Bias: ", pbias, "%")
+```
+
+```text
+Nash-Sutcliffe Efficiency: 0.7323810502829138
+Percent Bias: 4.127942033470476%
 ```
 
 ## Conclusion
@@ -428,5 +465,5 @@ Next steps include:
 - Embedding neural networks in hydrological models
 - Adding unit hydrograph calculation modules to hydrological models
 - Building and computing multi-node models (distributed and semi-distributed)
-- Using solvers from DifferentialEquations.jl
-- Optimizing model parameters based on Optimization.jl
+- Using solvers from [DifferentialEquations.jl](https://github.com/SciML/DifferentialEquations.jl)
+- Optimizing model parameters based on [Optimization.jl](https://github.com/SciML/Optimization.jl)

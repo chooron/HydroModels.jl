@@ -23,10 +23,66 @@ A `HydroFlux` defines a mathematical relationship between input and output varia
 In the ExpHydro model, several HydroFlux components are used to calculate processes like snowfall, rainfall, and potential evapotranspiration:
 
 ```julia
-@hydroflux snowfall ~ step_func(Tmin - temp) * prcp
-@hydroflux rainfall ~ step_func(temp - Tmin) * prcp
+@hydroflux begin
+    snowfall ~ step_func(Tmin - temp) * prcp
+    rainfall ~ step_func(temp - Tmin) * prcp
+end
 @hydroflux pet ~ 29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)
 ```
+
+```text
+┌ HydroFlux{##hydro_flux#7684448861079742687}
+│ Inputs:  [prcp, temp]
+│ Outputs: [snowfall, rainfall]
+│ Params:  [Tmin]
+│ Expressions:
+│   snowfall = 0.5prcp*(1.0 + tanh(5.0(Tmin - temp)))
+│   rainfall = 0.5prcp*(1.0 + tanh(5.0(-Tmin + temp)))
+└─
+```
+
+```text
+┌ HydroFlux{##hydro_flux#3326951609664340984}
+│ Inputs:  [temp, lday]
+│ Outputs: [pet]
+│ Params:  []
+│ Expressions:
+│   pet = (436.98720000000003lday*exp((17.3temp) / (237.3 + temp))) / (273.2 + temp)
+└─
+```
+
+### Structure of HydroFlux Components
+
+As shown in the printed output above, each HydroFlux has a well-defined internal structure that includes several key elements:
+
+1. **Unique Identifier**: Each flux component has a unique hash identifier (e.g., `##hydro_flux#7684448861079742687`), which allows the system to track and reference specific flux components within the model.
+
+2. **Input Variables**: Listed under `Inputs:`, these are the variables required to calculate the flux. In the first example, the precipitation partitioning component requires precipitation (`prcp`) and temperature (`temp`).
+
+3. **Output Variables**: Listed under `Outputs:`, these are the variables produced by the flux calculations. The first component outputs both `snowfall` and `rainfall`.
+
+4. **Parameters**: Listed under `Params:`, these are the model parameters used in the calculations. The temperature threshold `Tmin` is a parameter in the precipitation partitioning component.
+
+5. **Mathematical Expressions**: The actual equations that define how outputs are calculated from inputs and parameters. In the first component, the `step_func(Tmin - temp)` from the original code is expanded to `0.5*(1.0 + tanh(5.0(Tmin - temp)))`, which creates a smooth step function around the threshold temperature `Tmin`.
+
+### Transformation from Code to Internal Representation
+
+When you define a flux using the `@hydroflux` macro, the system:
+
+1. Parses the expressions and identifies inputs, outputs, and parameters
+2. Converts the expressions into a symbolic representation using ModelingToolkit.jl
+3. Optimizes and simplifies the expressions where possible
+4. Creates a structured HydroFlux object with all necessary metadata
+
+### Advantages of This Representation
+
+This structured representation offers several benefits:
+
+1. **Modularity**: Each flux component is self-contained with clear inputs, outputs, and parameters
+2. **Transparency**: The mathematical relationships are explicitly defined and easily inspectable
+3. **Automatic Differentiation**: The symbolic expressions can be automatically differentiated, enabling gradient-based optimization
+4. **Computational Efficiency**: The expressions can be compiled into efficient computational code
+5. **Connectivity**: The system can automatically determine how components connect based on matching variable names
 
 These expressions define:
 
@@ -46,25 +102,31 @@ In the ExpHydro model, StateFlux components define how the snowpack and soil wat
 @stateflux soilwater ~ (rainfall + melt) - (evap + flow)
 ```
 
+```text
+┌ StateFlux{##state_flux#7140258851200262205}
+│ Inputs:  [melt, snowfall]
+│ States:  [snowpack]
+│ Params:  []
+│ Expressions:
+│   snowpack = -melt + snowfall
+└─
+
+julia> @stateflux soilwater ~ (rainfall + melt) - (evap + flow)
+┌ StateFlux{##state_flux#7046604567730147152}
+│ Inputs:  [melt, rainfall, evap, flow]
+│ States:  [soilwater]
+│ Params:  []
+│ Expressions:
+│   soilwater = -evap - flow + melt + rainfall
+└─
+```
+
 These expressions define:
 
 - The snowpack increases with snowfall and decreases with snowmelt
 - The soil water increases with rainfall and snowmelt, and decreases with evapotranspiration and streamflow
 
 StateFlux components are essential for water balance calculations and form the basis of the ordinary differential equations (ODEs) that are solved during simulation.
-
-### NeuralFlux
-
-A `NeuralFlux` integrates neural networks into the hydrological modeling framework. This allows for data-driven components to be seamlessly combined with process-based equations.
-
-While the basic ExpHydro model doesn't use neural networks, more advanced models in DeepFlex.jl can incorporate neural networks for processes that are difficult to model with explicit equations:
-
-```julia
-# Example from M100 model
-@neuralflux [log_evap_div_lday, log_flow, asinh_melt, asinh_ps, asinh_pr] ~ m100_nn([norm_snw, norm_slw, norm_prcp, norm_temp])
-```
-
-NeuralFlux components maintain the same interface as traditional fluxes, allowing for seamless integration of data-driven and process-based approaches.
 
 ## Element/Bucket Components
 
@@ -92,6 +154,25 @@ snow_bucket = @hydrobucket :snow begin
 end
 ```
 
+```text
+┌ HydroBucket{snow}
+│ Inputs:  [temp, lday, prcp]
+│ States:  [snowpack]
+│ Outputs: [pet, snowfall, rainfall, melt]
+│ Params:  []
+│ NNs:     []
+│
+│ Fluxes:
+│   Num[pet] ~ (436.98720000000003lday*exp((17.3temp) / (237.3 + temp))) / (273.2 + temp)
+│   Num[snowfall] ~ 0.5prcp*(1.0 + tanh(5.0(-2.092959084 - temp)))
+│   Num[rainfall] ~ 0.5prcp*(1.0 + tanh(5.0(2.092959084 + temp)))
+│   Num[melt] ~ 0.25(1.0 + tanh(5.0snowpack))*min(snowpack, 2.674548848(-0.175739196 + temp))*(1.0 + tanh(5.0(-0.175739196 + temp)))
+│
+│ State Fluxes:
+│   snowpack ~ -melt + snowfall
+└─
+```
+
 2. **Soil Water Bucket**: Manages soil moisture, evapotranspiration, and runoff generation
 
 ```julia
@@ -106,6 +187,25 @@ soil_bucket = @hydrobucket :soil begin
         @stateflux soilwater ~ (rainfall + melt) - (evap + flow)
     end
 end
+```
+
+```text
+┌ HydroBucket{soil}
+│ Inputs:  [pet, melt, rainfall]
+│ States:  [soilwater]
+│ Outputs: [evap, baseflow, surfaceflow, flow]
+│ Params:  [Smax, f, Qmax]
+│ NNs:     []
+│
+│ Fluxes:
+│   Num[evap] ~ 0.5pet*min(1.0, 0.0005849797048457405soilwater)*(1.0 + tanh(5.0soilwater))
+│   Num[baseflow] ~ 9.234980875exp(-0.01674478max(0.0, 1709.461015 - soilwater))*(1.0 + tanh(5.0soilwater)) 
+│   Num[surfaceflow] ~ max(0.0, -1709.461015 + soilwater)
+│   Num[flow] ~ baseflow + surfaceflow
+│
+│ State Fluxes:
+│   soilwater ~ -evap - flow + melt + rainfall
+└─
 ```
 
 Each bucket:
@@ -171,6 +271,20 @@ exphydro_model = @hydromodel :exphydro begin
     snow_bucket
     soil_bucket
 end
+```
+
+```text
+┌ HydroModel: exphydro
+│ Components: snow, soil
+│ Inputs:     [temp, lday, prcp]
+│ States:     [snowpack, soilwater]
+│ Outputs:    [pet, snowfall, rainfall, melt, evap, baseflow, surfaceflow, flow]
+│ Parameters: [Tmin, Df, Tmax, Smax, f, Qmax]
+│ Summary:
+│   Fluxes:  0 fluxes
+│   Buckets: 2 buckets
+│   Routes:  0 routes
+└─
 ```
 
 The model automatically:
