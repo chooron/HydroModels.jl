@@ -191,7 +191,7 @@ function build_uh_func(uh_pairs::AbstractVector{<:Pair}, params::AbstractVector,
 
     max_lag_expr = :(function (pas)
         $(params_assign_calls...)
-        $(toexpr(max_lag))
+        ceil($(toexpr(max_lag)))
     end)
     
     return @RuntimeGeneratedFunction(uh_func_expr), @RuntimeGeneratedFunction(max_lag_expr)
