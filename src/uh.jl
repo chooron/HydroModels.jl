@@ -30,8 +30,8 @@ custom_uh = UHFunction((t, lag) -> t < lag ? (t/lag)^2 : 1.0, 1.0)
 
 """
 struct UHFunction{uhtype}
-    func::Union{Nothing, Function}
-    max_lag::Union{Nothing, Any}
+    func::Union{Nothing,Function}
+    max_lag::Union{Nothing,Any}
 
     function UHFunction(uhtype::Symbol)
         return new{uhtype}(nothing, nothing)
@@ -62,28 +62,6 @@ function (uh::UHFunction{:UH_2_FULL})(t, lag)
     end
 end
 
-get_uh_tmax(::UHFunction{:UH_2_FULL}, lag) = 2 * ceil(lag)
-
-function (uh::UHFunction{:CUSTOM})(t, lag)
-    return uh.func(t, lag)
-end
-
-get_uh_tmax(uh::UHFunction{:CUSTOM}, lag) = ceil(uh.max_lag)
-
-# """
-# ```
-# @uhfunc begin
-#     2*lag => 1.0
-#     lag => (1 - 0.5 * abs(2 - t / lag)^2.5)
-#     0 => 0.5 * abs(t / lag)^2.5
-# end
-# ```
-# 使用多组键值对记录每个时段的公式
-# """
-# macro uhfunc(expr)
-
-
-# end
 
 """
     UnitHydrograph{solvetype} <: AbstractRouteFlux
@@ -132,34 +110,32 @@ to represent various routing processes in different parts of a water system.
 """
 struct UnitHydrograph{N,ST} <: AbstractHydrograph
     "The unit hydrograph function"
-    uhfunc::UHFunction
+    uh_func::Function
+    "calculate max lag"
+    max_lag_func::Function
     "A named tuple containing information about inputs, outputs, parameters, and states"
     infos::NamedTuple
 
     function UnitHydrograph(
-        input::T,
-        output::T,
-        params::Vector{T};
-        uhfunc::UF,
+        inputs::AbstractVector{T},
+        params::AbstractVector{T};
+        uh_pairs::AbstractVector{<:Pair},
+        max_lag::Number=uh_func[1][1],
+        outputs::AbstractVector{T}=T[],
+        configs::NamedTuple=(solvetype=:DISCRETE, suffix=:_lag),
         name::Union{Symbol,Nothing}=nothing,
-        solvetype::Symbol=:SPARSE,
-    ) where {T<:Num,UF<:UHFunction}
-        @assert solvetype in [:DISCRETE, :SPARSE] "solvetype must be one of [:DISCRETE, :SPARSE]"
+    ) where {T<:Num}
         #* Setup the name information of the hydroroutement
-        infos = (; inputs=[input], outputs=[output], params=params)
-        uh_name = isnothing(name) ? Symbol("##uh#", hash(infos)) : name
-        return new{uh_name,solvetype}(uhfunc, infos)
-    end
+        input_names = tosymbol.(inputs)
+        output_names = length(outputs) == 0 ? Symbol.(input_names, configs.suffix) : tosymbol.(outputs)
+        outputs = map(name -> only(@variables $name), output_names)
+        infos = (; inputs=inputs, outputs=outputs, params=params)
 
-    function UnitHydrograph(
-        fluxes::Pair{Vector{T},Vector{T}},
-        params::Vector{T};
-        uhfunc::UF,
-        solvetype::Symbol=:SPARSE,
-    ) where {T<:Num,UF<:UHFunction}
-        input = fluxes[1][1]
-        output = fluxes[2][1]
-        return UnitHydrograph(input, output, params, uhfunc=uhfunc, solvetype=solvetype)
+        uh_func, max_lag_func = build_uh_func(uh_pairs, params, max_lag)
+        uh_name = isnothing(name) ? Symbol("##uh#", hash(infos)) : name
+
+        @assert configs.solvetype in [:DISCRETE, :SPARSE] "solvetype must be one of [:DISCRETE, :SPARSE]"
+        return new{uh_name,configs.solvetype}(uh_func, max_lag_func, infos)
     end
 end
 
@@ -206,14 +182,9 @@ The unit hydrograph function has two segments:
 macro unithydro(args...)
     name = length(args) == 1 ? nothing : args[1]
     expr = length(args) == 1 ? args[1] : args[2]
-
     @assert Meta.isexpr(expr, :block) "Expected a begin...end block after unit hydrograph name"
 
-    # Extract components from the block
-    uh_func_expr = nothing
-    uh_vars_expr = nothing
-    configs_expr = nothing
-
+    uh_func_expr, uh_vars_expr, configs_expr = nothing, nothing, nothing
     for arg in expr.args
         if arg isa LineNumberNode
             continue
@@ -226,80 +197,35 @@ macro unithydro(args...)
         end
     end
 
-    # Validate required components
     @assert uh_func_expr !== nothing "Missing uh_func in unit hydrograph definition"
     @assert uh_vars_expr !== nothing "Missing uh_vars in unit hydrograph definition"
-
-    # Process uh_func to build the unit hydrograph function
     @assert Meta.isexpr(uh_func_expr, :block) "Expected a begin...end block for uh_func"
 
-    # Extract key-value pairs from uh_func
-    pairs = []
-    for arg in uh_func_expr.args
-        if arg isa LineNumberNode
+    uh_pairs, cond_values = Pair[], []
+    for expr in uh_func_expr.args
+        if expr isa LineNumberNode
             continue
-        elseif Meta.isexpr(arg, :(=>))
-            push!(pairs, (arg.args[1], arg.args[2]))
+        elseif expr.args[1] == :(=>)
+            push!(uh_pairs, expr.args[2] => expr.args[3])
+            push!(cond_values, expr.args[3])
         end
     end
 
-    # Build the unit hydrograph function
-    uh_func_code = quote
-        function(t, lag)
-            if false
-                # This will be replaced with the actual conditions
-            end
-        end
-    end
+    configs = configs_expr !== nothing ? configs_expr : default_configs
+    params_expr = Expr(:call, :reduce, :union, Expr(:call, :map,
+        Expr(:->, :val, quote
+            Num.(filter(x -> isparameter(x), get_variables(val)))
+        end),
+        Expr(:vect, cond_values...)
+    ))
 
-    # Replace the placeholder condition with actual conditions
-    conditions = uh_func_code.args[2].args[2].args[2].args
-    conditions[1] = :() # Remove the `if false`
-
-    for i in 1:length(pairs)
-        key, value = pairs[i]
-
-        # For the first interval (largest key), the condition is t <= key
-        if i == 1
-            push!(conditions, :(t <= $key ? $value : 0.0))
-        else
-            # For other intervals, the condition is prev_key > t > key
-            prev_key = pairs[i-1][1]
-            push!(conditions, :(t > $key && t <= $prev_key ? $value : 0.0))
-        end
-    end
-
-    # Process configs
-    default_configs = :(solvetype=:DISCRETE, suffix=:_lag)
-    if configs_expr !== nothing
-        configs = configs_expr
-    else
-        configs = default_configs
-    end
-
-    # Build the UnitHydrograph constructor call
-    result = quote
-        let
-            # Create the UH function
-            uh_func = $uh_func_code
-
-            # Get the maximum lag multiplier from the keys
-            max_lag = $(pairs[1][1])
-
-            # Create the UHFunction
-            uhf = UHFunction(uh_func, max_lag)
-
-            # Create the UnitHydrograph
-            UnitHydrograph(
-                $uh_vars_expr,
-                uhf;
-                name=$(name),
-                $configs
-            )
-        end
-    end
-
-    return esc(result)
+    return esc(quote
+        UnitHydrograph(
+            $uh_vars_expr, $params_expr;
+            uh_pairs=$(uh_pairs), max_lag=$(uh_pairs[1][1]),
+            name=$(name), configs=$configs
+        )
+    end)
 end
 
 """
@@ -329,41 +255,41 @@ Apply the unit hydrograph flux model to input data of various dimensions.
 
 (::UnitHydrograph)(::AbstractVector, ::ComponentVector; kwargs...) = @error "UnitHydrograph is not support for single timepoint"
 
-function (flux::UnitHydrograph{N,:DISCRETE})(input::AbstractArray{T,2}, params::AbstractVector; kwargs...) where {T,N}
+function (flux::UnitHydrograph{N,:DISCRETE})(input::AbstractArray{T,2}, pas::ComponentVector; kwargs...) where {T,N}
     solver = get(kwargs, :solver, ManualSolver(mutable=true))
     timeidx = get(kwargs, :timeidx, collect(1:size(input, 2)))
-    input_vec = input[1, :]
-    #* convert the lagflux to a discrete problem
-    lag_du_func(u, p, t) = input_vec[Int(t)] .* p[:weight] .+ [diff(u); -u[end]]
+    interp = get(kwargs, :interp, DirectInterpolation)
+    interp_func = interp(input, timeidx)
     #* prepare the initial states
-    lag = Vector(params)[1]
-    uh_weight = map(t -> flux.uhfunc(t, lag), 1:get_uh_tmax(flux.uhfunc, lag))[1:end-1]
+    uh_weight = map(t -> flux.uh_func(t, pas), 1:flux.max_lag_func(pas))[1:end-1]
     if length(uh_weight) == 0
         @warn "The unit hydrograph weight is empty, please check the unit hydrograph function"
         return input
     else
+        update_func(i, u, p) = i .* p .+ [diff(u, dims=1); -u[end]]
         #* solve the problem
-        sol = solver(lag_du_func, ComponentVector(weight=uh_weight ./ sum(uh_weight)), zeros(length(uh_weight)), timeidx)
-        reshape(sol[1, :], 1, length(input_vec))
+        sol = solver((u, p, t) -> stack(update_func.(interp_func(t), eachslice(u, dims=1), Ref(p)), dims=1),
+            uh_weight ./ sum(uh_weight),
+            zeros(size(input, 1), length(uh_weight)), timeidx
+        )
+        return sol[:, 1, :]
     end
 end
 
-function (flux::UnitHydrograph{N,:SPARSE})(input::AbstractArray{T,2}, params::AbstractVector; kwargs...) where {T,N}
-    input_vec = input[1, :]
-    lag = Vector(params)[1]
-    uh_weight = map(t -> flux.uhfunc(t, lag), 1:get_uh_tmax(flux.uhfunc, lag))[1:end-1]
+function (flux::UnitHydrograph{N,:SPARSE})(input::AbstractArray{T,2}, pas::ComponentVector; kwargs...) where {T,N}
+    uh_weight = map(t -> flux.uh_func(t, pas), 1:flux.max_lag_func(pas))[1:end-1]
 
     if length(uh_weight) == 0
         @warn "The unit hydrograph weight is empty, please check the unit hydrograph function"
         return input
     else
-        #* the weight of the unit hydrograph is normalized by the sum of the weights
-        uh_result = [-(i - 1) => uh_wi .* input_vec ./ sum(uh_weight) for (i, uh_wi) in enumerate(uh_weight)]
-        #* construct the sparse matrix
-        uh_sparse_matrix = spdiagm(uh_result...)
-        #* sum the matrix
-        sum_route = sum(uh_sparse_matrix, dims=2)[1:end-length(uh_weight)+1]
-        reshape(sum_route, 1, length(input_vec))
+        function sparse_compute(input_vec)
+            #* the weight of the unit hydrograph is normalized by the sum of the weights
+            uh_result = [-(i - 1) => uh_wi .* input_vec ./ sum(uh_weight) for (i, uh_wi) in enumerate(uh_weight)]
+            #* sum the matrix
+            sum(spdiagm(uh_result...), dims=2)[1:end-length(uh_weight)+1]
+        end
+        return stack(sparse_compute.(eachslice(input, dims=1)), dims=1)
     end
 end
 
