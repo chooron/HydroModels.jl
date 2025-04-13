@@ -262,6 +262,7 @@ function (flux::UnitHydrograph{N,:DISCRETE})(input::AbstractArray{T,2}, pas::Com
     interp_func = interp(input, timeidx)
     #* prepare the initial states
     uh_weight = map(t -> flux.uh_func(t, pas), 1:flux.max_lag_func(pas))[1:end-1]
+    println(uh_weight)
     if length(uh_weight) == 0
         @warn "The unit hydrograph weight is empty, please check the unit hydrograph function"
         return input
@@ -278,7 +279,7 @@ end
 
 function (flux::UnitHydrograph{N,:SPARSE})(input::AbstractArray{T,2}, pas::ComponentVector; kwargs...) where {T,N}
     uh_weight = map(t -> flux.uh_func(t, pas), 1:flux.max_lag_func(pas))[1:end-1]
-
+    println(uh_weight)
     if length(uh_weight) == 0
         @warn "The unit hydrograph weight is empty, please check the unit hydrograph function"
         return input
