@@ -169,6 +169,35 @@ function build_ele_func(
     end
 end
 
+function build_uh_func(uh_pairs::AbstractVector{<:Pair}, params::AbstractVector, max_lag::Number)
+    conditions_rev = vcat([0], reverse(first.(uh_pairs))) # 改为由小到大
+    values_rev = reverse(last.(uh_pairs)) # 改为由小到大
+    param_names = tosymbol.(params)
+    params_assign_calls = [:($p = pas.params.$p) for p in param_names]
+    values_exprs = map(eachindex(values_rev)) do i
+        :(
+            if $(toexpr(conditions_rev[i])) < t < $(toexpr(conditions_rev[i+1]))
+                return $(toexpr(values_rev[i]))
+            end
+        )
+    end
+    default_return = :(return 0.0)
+
+    uh_func_expr = :(function (t, pas)
+        $(params_assign_calls...)
+        $(values_exprs...)
+        $(default_return)
+    end)
+
+    max_lag_expr = :(function (pas)
+        $(params_assign_calls...)
+        $(toexpr(max_lag))
+    end)
+    
+    return @RuntimeGeneratedFunction(uh_func_expr), @RuntimeGeneratedFunction(max_lag_expr)
+end
+
+
 """
     build_route_func(fluxes::AbstractVector{<:AbstractFlux}, dfluxes::AbstractVector{<:AbstractStateFlux}, meta::ComponentVector)
 
