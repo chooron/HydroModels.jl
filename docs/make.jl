@@ -31,7 +31,7 @@ makedocs(
         "Get Started with HydroModels.jl" => "get_start_en.md",
         "tutorials" => [
             "Framework Design" => "tutorials/framework_design.md",
-            "Neural Network Embedding" => "tutorials/neural_network.md",
+            "Neural Network Embedding" => "tutorials/neuralnetwork_embeding.md",
             "Distribute Modeling" => "tutorials/distribute_modeling.md",
         ],
         "Basic Concepts" => "concepts_en.md",
