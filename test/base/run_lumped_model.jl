@@ -68,7 +68,7 @@ step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
 end
 
 @testset "test lumped hydro model (gr4j with unit hydrograph)" begin
-    @variables prcp ep soilwater new_soilwater pn en ps es perc pr slowflow fastflow
+    @variables prcp ep soilwater new_soilwater pn en ps es perc pr slowflow fastflow t
     @variables slowflow_routed fastflow_routed routingstore new_routingstore exch routedflow flow
     @parameters x1 x2 x3 x4
 
@@ -109,8 +109,23 @@ end
         end
     end
 
-    uh_1 = HydroModels.UnitHydrograph([slowflow] => [slowflow_routed], [x4], uhfunc=HydroModels.UHFunction(:UH_1_HALF), solvetype=:SPARSE)
-    uh_2 = HydroModels.UnitHydrograph([fastflow] => [fastflow_routed], [x4], uhfunc=HydroModels.UHFunction(:UH_2_FULL), solvetype=:SPARSE)
+
+    uh_1 =  @unithydro :maxbas_uh begin
+        uh_func = begin
+            x4 => (t / x4)^2.5
+        end
+        uh_vars = [slowflow]
+        configs = (solvetype=:SPARSE, suffix=:_routed)
+    end
+
+    uh_2 = @unithydro begin
+        uh_func = begin
+            2x4 => (1 - 0.5 * (2 - t / x4)^2.5)
+            x4 => (0.5 * (t / x4)^2.5)
+        end
+        uh_vars = [fastflow]
+        configs = (solvetype=:SPARSE, suffix=:_routed)
+    end
 
     rst_ele = @hydrobucket begin
         fluxes = begin

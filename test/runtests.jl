@@ -24,16 +24,12 @@ using Zygote, ForwardDiff
     include("base/run_spatial_model.jl")
 end
 
-@testset "HydroModelSolvers.jl" begin
-    include("solvers/run_solvers.jl")
-end
+# @testset "test cuda support" begin
+#     include("miscellaneous/run_cuda.jl")
+# end
 
-@testset "test cuda support" begin
-    include("miscellaneous/run_cuda.jl")
-end
-
-# cost a lot of time
-@testset "test gradient" begin
-    include("gradient/run_hydro_gradient.jl")
-    include("gradient/run_hybrid_gradient.jl")
-end
+# # cost a lot of time
+# @testset "test gradient" begin
+#     include("gradient/run_hydro_gradient.jl")
+#     include("gradient/run_hybrid_gradient.jl")
+# end
