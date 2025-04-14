@@ -262,7 +262,6 @@ function (flux::UnitHydrograph{N,:DISCRETE})(input::AbstractArray{T,2}, pas::Com
     interp_func = interp(input, timeidx)
     #* prepare the initial states
     uh_weight = map(t -> flux.uh_func(t, pas), 1:flux.max_lag_func(pas))[1:end-1]
-    println(uh_weight)
     if length(uh_weight) == 0
         @warn "The unit hydrograph weight is empty, please check the unit hydrograph function"
         return input
@@ -279,7 +278,7 @@ end
 
 function (flux::UnitHydrograph{N,:SPARSE})(input::AbstractArray{T,2}, pas::ComponentVector; kwargs...) where {T,N}
     uh_weight = map(t -> flux.uh_func(t, pas), 1:flux.max_lag_func(pas))[1:end-1]
-    println(uh_weight)
+
     if length(uh_weight) == 0
         @warn "The unit hydrograph weight is empty, please check the unit hydrograph function"
         return input
@@ -294,12 +293,15 @@ function (flux::UnitHydrograph{N,:SPARSE})(input::AbstractArray{T,2}, pas::Compo
     end
 end
 
-function (uh::UnitHydrograph)(input::AbstractArray{T,3}, params::AbstractArray; kwargs...) where {T}
+function (uh::UnitHydrograph)(input::AbstractArray{T,3}, pas::AbstractArray; kwargs...) where {T}
     #* Extract the initial state of the parameters and routement in the pas variable
     ptyidx = get(kwargs, :ptyidx, 1:size(input, 2))
-    params = Vector(params)
-    extract_params = reshape(view(params, ptyidx), 1, :)
-    node_sols = uh.(eachslice(input, dims=2), eachslice(extract_params, dims=2))
+    uh_param_names = get_param_names(uh)
+    extract_params = stack(pas[:params][uh_param_names], dims=1)[ptyidx, :]
+    extract_params_cv = map(eachindex(ptyidx)) do idx
+        ComponentVector(params=NamedTuple{Tuple(uh_param_names)}(extract_params[idx, :]))
+    end
+    node_sols = uh.(eachslice(input, dims=2), extract_params_cv)
     sol_mat = reduce((m1, m2) -> cat(m1, m2, dims=1), node_sols)
     return reshape(sol_mat, 1, size(input)[2], size(input)[3])
 end
