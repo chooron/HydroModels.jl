@@ -9,8 +9,8 @@ using Lux
 using StableRNGs
 using Pipe
 using BenchmarkTools: @btime
+using HydroModelTools
 include("../models/m50.jl")
-include("../src/HydroModelTools.jl")
 
 # define parameters and initial states
 f, Smax, Qmax, Df, Tmax, Tmin = 0.01674478, 1709.461015, 18.46996175, 2.674548848, 0.175739196, -2.092959084
@@ -44,15 +44,11 @@ input_mat = Matrix(reduce(hcat, collect(input_ntp[HydroModels.get_input_names(m5
 
 # parameters optimization
 output = (flow=flow_vec,)
-config = (solver=HydroModelTools.ODESolver(), interp=DirectInterpolation)
+config = (solver=HydroModelTools.ODESolver(sensealg=BacksolveAdjoint(autojacvec=EnzymeVJP())), interp=LinearInterpolation)
 initstates = ComponentVector(snowpack=0.0, soilwater=1300.0)
 run_kwargs = (config=config, initstates=initstates)
-ntp_pre, ntp_post = HydroModelTools.NamedTuplePreprocessor(m50_model), HydroModelTools.NamedTuplePostprocessor(m50_model)
-opt_func(i, p, c) = @pipe (i, p, c) |> ntp_pre(_[1], _[2], _[3]) |> m50_model(_[1], _[2]; _[3]...) |> ntp_post(_)
-opt_func(input_ntp, tunable_pas, run_kwargs)
+# ntp_pre, ntp_post = HydroModelTools.NamedTuplePreprocessor(m50_model), HydroModelTools.NamedTuplePostprocessor(m50_model)
+# opt_func(i, p, c) = @pipe (i, p, c) |> ntp_pre(_[1], _[2], _[3]) |> m50_model(_[1], _[2]; _[3]...) |> ntp_post(_)
 # opt_func(input_ntp, tunable_pas, run_kwargs)
-@btime Zygote.gradient(p -> m50_model(input_mat, p; run_kwargs...)[end,:] |> sum, tunable_pas)
-# solve_alg = Adam()
-# adtype = AutoZygote()
-# grad_opt = HydroModelTools.HydroOptimizer(component=opt_func, maxiters=100, solve_alg=solve_alg, adtype=adtype)
-# opt_params, loss_df = grad_opt([input_ntp], [output], run_kwargs=[run_kwargs], tunable_pas=tunable_pas, const_pas=const_pas, return_loss_df=true)
+# # opt_func(input_ntp, tunable_pas, run_kwargs)
+Zygote.gradient(p -> m50_model(input_mat, p; run_kwargs...)[end,:] |> sum, tunable_pas)

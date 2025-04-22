@@ -24,7 +24,7 @@ input_arr = Matrix(reduce(hcat, collect(input[HydroModels.get_input_names(exphyd
 config = (timeidx=ts, interp=LinearInterpolation, solver=HydroModels.ManualSolver(mutable=true))
 # run model with single node input
 single_result = exphydro_model(input_arr, pas, initstates=init_states, config=config)
-
+exphydro_model.infos
 # # run model with multi node input
 # node_num = 10
 # node_params = ComponentVector(

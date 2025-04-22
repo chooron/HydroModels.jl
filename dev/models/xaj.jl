@@ -4,7 +4,7 @@ step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
 
 # Model variables
 ## Precipitation variables
-@variables prcp [description = "Observed precipitation intensity"]
+@variables prcp [description = "Observed precipitation intensity", unit="mm/d"]
 @variables pn [description = "Net precipitation intensity"]
 @variables iu [description = "Upper to lower soil layer percolation intensity"]
 @variables il [description = "Lower to deep soil layer percolation intensity"]
@@ -67,6 +67,12 @@ step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
 @variables F1 [description = "Linear reservoir 1"]
 @variables F2 [description = "Linear reservoir 2"]
 @variables F3 [description = "Linear reservoir 3"]
+
+
+eu ~ step_func(wu) * en
+
+
+e_us_ei ~ alpha_ei * p
 
 # Soil water component
 soil_bucket = @hydrobucket :soil begin
