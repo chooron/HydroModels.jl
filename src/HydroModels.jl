@@ -52,18 +52,17 @@ export ManualSolver, DirectInterpolation
 
 # framework build
 include("flux.jl")
-export HydroFlux, StateFlux, NeuralFlux
+export HydroFlux, StateFlux, @hydroflux, @stateflux
 include("bucket.jl")
-export HydroBucket
-include("route.jl")
-export HydroRoute, RapidRoute
-include("uh.jl")
-export UHFunction, UnitHydrograph, @unithydro
-include("model.jl")
-export HydroModel
+export HydroBucket, @hydrobucket
 include("nn.jl")
-export HydroNNLayer, HydroNNModel
-export @hydroflux, @stateflux, @neuralflux, @hydrobucket, @hydroroute, @hydromodel
+export NeuralFlux, NeuralBucket, @neuralflux, @neuralbucket
+include("route.jl")
+export HydroRoute, RapidRoute, @hydroroute
+include("uh.jl")
+export UnitHydrograph, @unithydro
+include("model.jl")
+export HydroModel, @hydromodel
 
 ## package version
 const version = VersionNumber(TOML.parsefile(joinpath(@__DIR__, "..", "Project.toml"))["version"])
