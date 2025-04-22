@@ -1,71 +1,28 @@
 """
-	HydroRoute(; rfunc::AbstractHydroFlux, rstate::Num, aggr_func::AbstractHydroFlux, name::Union{Symbol,Nothing}=nothing)
+    HydroRoute{N} <: AbstractHydroRoute
 
-Represents a routing component for simulating water movement through a hydrological network.
-
-# Arguments
-- `rfunc::AbstractHydroFlux`: Flow calculation function that determines outflow from each node
-- `rstate::Num`: State variable representing water storage in routing system
-- `aggr_func::AbstractHydroFlux`: Flow projection function that distributes water to downstream nodes
-- `name::Union{Symbol,Nothing}=nothing`: Optional identifier for the routing component
+Represents a hydrological routing component using customizable flux equations.
 
 # Fields
-- `rfunc::AbstractHydroFlux`: Flow calculation function
-- `aggr_func::AbstractHydroFlux`: Flow projection function
-- `meta::HydroMeta`: Component metadata including:
-  - `inputs`: Required input variables
-  - `outputs`: Generated output variables
-  - `states`: State variables (from `rstate`)
-  - `params`: Required parameters
-  - `nns`: Neural network components (if any)
+- `rfluxes::Vector{<:AbstractFlux}`: Flux functions defining routing processes (e.g., outflow calculation).
+- `multi_flux_func::Function`: Compiled function to evaluate all non-state-derivative fluxes.
+- `multi_ode_func::Function`: Compiled function for state derivatives used by ODE solvers.
+- `aggr_func::Function`: Function to aggregate or distribute flows between connected elements (often identity or matrix multiplication).
+- `infos::NamedTuple`: Metadata (inputs, outputs, states, params, nns).
 
-# Description
-HydroRoute implements water routing through a network of connected nodes, managing both 
-local flow calculations and inter-node water transfer.
+# Constructor
+```julia
+HydroRoute(; rfluxes, dfluxes, aggr_func, name=nothing)
+```
+- `rfluxes`: Vector of routing fluxes (e.g., `HydroFlux`, `NeuralFlux`).
+- `dfluxes`: Vector of state derivative fluxes (`StateFlux`).
+- `aggr_func`: Aggregation/distribution function.
+- `name`: Optional symbol identifier.
 
-## Component Structure
-1. Flow Calculation (`rfunc`):
-   - Computes outflow from each node
-   - Uses local state and input variables
-   - Can be parameter-based or neural network-based
-
-2. Flow Projection (`aggr_func`):
-   - Determines water distribution between nodes
-   - Handles network connectivity
-   - Maintains mass conservation
-
-3. State Management:
-   - Tracks water storage in each node
-   - Updates based on inflow/outflow balance
-   - Handles temporal evolution
-
-## Implementation Types
-1. Parameter-Based:
-   ```julia
-   # Using traditional routing equations
-   route = HydroRoute(
-       rfunc=HydroFlux([:storage] => [:outflow], :(k * storage)),
-       rstate=:storage,
-       aggr_func=HydroFlux([:outflow] => [:inflow], :outflow)
-   )
-   ```
-
-2. Neural Network-Based:
-   ```julia
-   # Using learned flow relationships
-   route = HydroRoute(
-       rfunc=NeuralFlux([:storage] => [:outflow]),
-       rstate=:storage,
-       aggr_func=HydroFlux([:outflow] => [:inflow], :outflow)
-   )
-   ```
-
-## Usage Notes
-- State variables are automatically managed
-- Mass conservation is enforced
-- Supports both lumped and distributed modeling
-- Compatible with various network topologies
-- Can be combined with other hydrological components
+# Notes
+- Builds specialized functions (`multi_flux_func`, `multi_ode_func`) for efficient computation.
+- Designed for use within a larger model (e.g., `HydroModel`).
+- Handles variable management and metadata tracking internally.
 """
 struct HydroRoute{N} <: AbstractHydroRoute
     "Routing function"
@@ -90,7 +47,7 @@ struct HydroRoute{N} <: AbstractHydroRoute
         params = reduce(union, get_params.(rfluxes))
         nns = reduce(union, get_nns.(rfluxes))
         #* Setup the name information of the hydrobucket
-        infos = (;inputs, outputs, states, params, nns)
+        infos = (; inputs, outputs, states, params, nns)
         #* define the route name
         route_name = isnothing(name) ? Symbol("##route#", hash(infos)) : name
         #* build the route function
@@ -100,38 +57,30 @@ struct HydroRoute{N} <: AbstractHydroRoute
 end
 
 """
-    @hydroroute name begin
-        fluxes = begin
-            ...
-        end
-        dfluxes = begin
-            ...
-        end
-        aggr_func = f(x)
-    end
+    @hydroroute name begin ... end
 
-A macro to construct a HydroRoute object.
+Macro to simplify the construction of a `HydroRoute` object.
 
-# Arguments
-- `name: The name of the route, a Symbol
-- `expr`: A code block containing the following component definitions:
-- `fluxes`: An array of HydroFlux or NeuralFlux objects, defining the flow calculations for the route
-- `dfluxes`: An array of StateFlux objects, defining the changes in state variables
-- `aggr_func`: A projection function of type Function, used to ensure state variables remain within valid ranges
-
-# Example
+# Usage
 ```julia
-route = @hydroroute :route1 begin
+@hydroroute :my_route begin
     fluxes = [
-        @hydroflux a ~ k1 * b - k2 * c
-        @hydroflux d ~ k1 * b - k2 * c
+        @hydroflux outflow ~ k * storage
     ]
     dfluxes = [
-        @stateflux c ~ b - a - d
+        @stateflux storage ~ inflow - outflow
     ]
-    aggr_func = x -> max(0, x)
+    aggr_func = identity # or other function
 end
 ```
+Defines a `HydroRoute` with the specified name (`:my_route`), fluxes, state derivatives (`dfluxes`), and aggregation function (`aggr_func`) within the `begin...end` block.
+
+# Arguments
+- `name`: (Optional) Symbol for the route name.
+- `block`: A `begin...end` block containing assignments for `fluxes`, `dfluxes`, and `aggr_func`.
+
+# Returns
+- A `HydroRoute` instance.
 """
 macro hydroroute(args...)
     name = length(args) == 1 ? nothing : args[1]
@@ -171,81 +120,39 @@ macro hydroroute(args...)
 end
 
 """
-    (route::HydroRoute)(
-        input::AbstractArray{T,3}, 
-        params::ComponentVector;
-        initstates::ComponentVector=ComponentVector(),
-        config::Dict=Dict()
-    ) where {T<:Number}
+    (route::HydroRoute)(input::AbstractArray{T,3}, params::ComponentVector; kwargs...)
 
-Execute routing simulation for a river network.
+Runs the simulation for the `HydroRoute` component.
 
 # Arguments
-- `input::AbstractArray{T,3}`: Input data with dimensions (variables, nodes, timesteps)
-- `params::ComponentVector`: Model parameters organized by component
-- `initstates::ComponentVector=ComponentVector()`: Initial states for all nodes
-- `config::Dict=Dict()`: Configuration options including:
-  - `solver::AbstractHydroSolver`: ODE solver (e.g., `ManualSolver`, `Tsit5`)
-  - `interp::Function`: Input interpolation method (e.g., `DirectInterpolation`)
-  - `ptyidx::AbstractVector{Int}`: Parameter type indices for nodes
-  - `styidx::AbstractVector{Int}`: State type indices for nodes
+- `input::AbstractArray{T,3}`: Input data array with shape (variables, nodes, timesteps).
+- `params::ComponentVector`: Parameters for the routing fluxes.
+
+# Keyword Arguments
+- `initstates`: Initial states for the component. Defaults to zeros.
+- `ptyidx`: Indices mapping parameters to nodes. Defaults to `1:num_nodes`.
+- `styidx`: Indices mapping states to nodes. Defaults to `1:num_nodes`.
+- `interp`: Interpolation method for time-varying inputs (e.g., `DirectInterpolation`).
+- `solver`: ODE solver instance (e.g., `ManualSolver`).
+- `timeidx`: Time indices for the simulation. Defaults to `1:time_len`.
+- `device`: Computing device (e.g., `identity` for CPU).
 
 # Returns
-- `AbstractArray{T,3}`: Output array with dimensions (variables, nodes, timesteps) containing:
-  - State variables (e.g., storage)
-  - Flow variables (e.g., outflow)
-  - Additional derived variables
+- `AbstractArray`: Output array containing state evolution and calculated fluxes, shape (output_variables, nodes, timesteps).
 
-# Description
-Executes a complete routing simulation by:
-1. Processing inputs and parameters
-2. Solving flow equations
-3. Managing state evolution
-4. Computing derived variables
-
-## Simulation Steps
-1. Input Processing:
-   - Validate dimensions and data types
-   - Apply interpolation if needed
-   - Organize parameters by node
-
-2. State Evolution:
-   - Initialize state variables
-   - Apply routing equations
-   - Update states through time
-
-3. Flow Computation:
-   - Calculate node outflows
-   - Project flows downstream
-   - Maintain mass balance
-
-## Example Usage
+# Example
 ```julia
-# Setup and run routing simulation
-output = route(
-    input,                          # (vars, nodes, time)
-    params;                         # component parameters
-    initstates=init_states,        # initial conditions
-    config=Dict(
-        :solver => ManualSolver{true}(),
-        :interp => DirectInterpolation,
-        :ptyidx => 1:n_nodes
-    )
-)
-
-# Access results
-storage = output[1:n_states, :, :]         # state variables
-outflow = output[n_states+1:end, :, :]     # flow variables
+# Assuming 'route' is a HydroRoute instance
+output = route(input_data, parameters; solver=Tsit5())
 ```
 
 # Notes
-- Input dimensions must match network configuration
-- Parameters must be properly structured
-- States are automatically managed
-- Mass conservation is enforced
+- Expects 3D input (variables, nodes, timesteps).
+- Integrates state variables over time using the specified solver.
+- Applies the `multi_flux_func` to calculate outputs based on inputs and states.
 """
 function (route::HydroRoute)(
-    input::AbstractArray{T,3}, 
+    input::AbstractArray{T,3},
     params::ComponentVector;
     kwargs...
 ) where {T<:Number}
@@ -269,12 +176,14 @@ function (route::HydroRoute)(
     params_vec, params_axes = Vector(new_pas) |> device, getaxes(new_pas)
 
     #* prepare input function
-    input_reshape = reshape(input, input_dims * num_nodes, time_len)
-    itpfuncs = interp(input_reshape, timeidx)
+    itpfuncs = interp.(eachslice(input, dims=1), Ref(timeidx))
     solved_states = solver(
         (u, p, t) -> begin
-            tmp_input = reshape(itpfuncs(t), input_dims, num_nodes)
-            tmp_states, tmp_outflow = route.multi_ode_func(eachslice(tmp_input, dims=1), eachslice(u, dims=1), ComponentVector(p, params_axes))
+            tmp_states, tmp_outflow = route.multi_ode_func(
+                ntuple(i -> itpfuncs[i](t), input_dims),
+                eachslice(u, dims=1),
+                ComponentVector(p, params_axes)
+            )
             tmp_states_arr = reduce(hcat, tmp_states)
             tmp_inflow_arr = reduce(hcat, route.aggr_func.(tmp_outflow))
             # todo 这里元编程表达一直存在问题
@@ -290,70 +199,23 @@ end
 """
     RapidRoute{N} <: AbstractRoute
 
-Implements the RAPID (Routing Application for Parallel computatIon of Discharge) routing scheme 
-for large-scale river networks.
+Implements the RAPID (Routing Application for Parallel computatIon of Discharge) routing model.
 
 # Fields
-- `adjacency::SparseMatrixCSC`: Network connectivity matrix
-- `meta::HydroMeta`: Component metadata including:
-  - `inputs`: Required input variables (e.g., runoff)
-  - `outputs`: Generated output variables (e.g., discharge)
-  - `params`: Required parameters (k, x)
-  - `states`: State variables (storage)
+- `adjacency::AbstractMatrix`: Sparse matrix representing the river network connectivity (upstream to downstream).
+- `infos::NamedTuple`: Metadata including standard variable names (`inputs`, `outputs`, `states`, `params`). States are typically `[:discharge]`. Params are `[:rapid_k, :rapid_x]`.
 
 # Constructor
-    RapidRoute(;
-        network::DiGraph,
-        name::Union{Symbol,Nothing}=nothing
-    )
-
-# Arguments
-- `network::DiGraph`: Directed graph representing river network topology
-- `name::Union{Symbol,Nothing}=nothing`: Optional identifier for the routing component
-
-# Description
-RapidRoute implements the Muskingum-Cunge routing method using a state-space formulation,
-designed for efficient parallel computation in large river networks.
-
-## Mathematical Formulation
-The routing scheme uses a state-space approach:
-```math
-Q(t+Δt) = C₁Q(t) + C₂Q(t-Δt) + C₃q(t)
-```
-where:
-- Q: Channel discharge
-- q: Lateral inflow
-- C₁, C₂, C₃: Muskingum coefficients
-- Δt: Time step
-
-## Parameters
-- `k`: Wave celerity parameter [T]
-- `x`: Diffusion parameter [0-0.5]
-
-## Implementation Example
 ```julia
-# Create RAPID routing component
-rapid = RapidRoute(
-    network=river_network,    # DiGraph object
-    name=:rapid_routing      # Optional name
-)
-
-# Run routing simulation
-output = rapid(
-    input,                   # Lateral inflows (vars, nodes, time)
-    params;                  # Parameters (k, x for each node)
-    kwargs=Dict(
-        :delta_t => 3600.0,  # Time step in seconds
-        :device => identity  # Computing device (CPU/GPU)
-    )
-)
+RapidRoute(; network::AbstractGraph, name::Union{Symbol, Nothing}=nothing)
 ```
+- `network`: A `Graphs.jl` compatible directed graph representing the river network.
+- `name`: Optional symbol identifier.
 
 # Notes
-- Efficient for large-scale applications
-- Parallel computation ready
-- Mass conservation guaranteed
-- Numerically stable formulation
+- Uses the Muskingum-Cunge method formulated for efficient matrix operations.
+- Suitable for large-scale river networks.
+- Parameters `k` (wave celerity) and `x` (diffusion) are expected per node via the `params` argument during simulation call.
 """
 struct RapidRoute{N} <: AbstractRoute
     "Routing adjacency matrix"
@@ -372,7 +234,7 @@ struct RapidRoute{N} <: AbstractRoute
         @assert length(inputs) == length(outputs) == 1 "The length of inputs and outputs must be the 1, but got inputs: $(length(inputs)) and outputs: $(length(outputs))"
         #* Setup the name information of the hydrobucket
         @parameters rapid_k rapid_x
-        infos = (;inputs=inputs, outputs=outputs, states=Num[], params=[rapid_k, rapid_x])
+        infos = (; inputs=inputs, outputs=outputs, states=Num[], params=[rapid_k, rapid_x])
         route_name = isnothing(name) ? Symbol("##route#", hash(infos)) : name
         #* generate adjacency matrix from network
         adjacency = adjacency_matrix(network)'
@@ -381,78 +243,36 @@ struct RapidRoute{N} <: AbstractRoute
 end
 
 """
-    (route::RapidRoute)(
-        input::AbstractArray{T,3}, 
-        params::ComponentVector; 
-        kwargs...
-    ) where {T<:Number}
+    (route::RapidRoute)(input::Array, params::ComponentVector; kwargs...)
 
-Execute RAPID routing simulation for a river network.
+Executes the RAPID routing simulation.
 
 # Arguments
-- `input::AbstractArray{T,3}`: Lateral inflow data with dimensions (variables, nodes, timesteps)
-- `params::ComponentVector`: Model parameters with required fields:
-  - `rapid_k`: Wave celerity parameter for each node
-  - `rapid_x`: Diffusion parameter for each node
-- `kwargs`: Configuration options including:
-  - `delta_t::Float64=1.0`: Time step in seconds
-  - `device::Function=identity`: Computing device (e.g., `identity` for CPU, `cu` for GPU)
-  - `interp::Function=DirectInterpolation`: Input interpolation method
-  - `solver::AbstractHydroSolver=ManualSolver{true}()`: ODE solver
-  - `ptyidx::AbstractVector{Int}`: Parameter type indices for nodes
-  - `timeidx::AbstractVector{Int}`: Time indices for simulation
+- `input::Array`: Lateral inflow data, typically shape (1, nodes, timesteps) where the variable is inflow.
+- `params::ComponentVector`: Parameters containing `:rapid_k` and `:rapid_x` for each node.
+
+# Keyword Arguments
+- `delta_t::Float64`: Simulation time step in seconds (default: 1.0).
+- `device`: Computing device (e.g., `identity` for CPU, `gpu` function). Default `identity`.
+- `ptyidx`: Indices mapping parameters to nodes. Default `1:num_nodes`.
+- `interp`: Interpolation method for time-varying inputs. Default `DirectInterpolation`.
+- `solver`: ODE solver instance. Default `ManualSolver(mutable=true)`.
+- `timeidx`: Time indices for the simulation. Default `1:time_len`.
+- `initstates`: Initial discharge values. Default zeros.
 
 # Returns
-- `AbstractArray{T,3}`: Output array with dimensions (variables, nodes, timesteps) containing:
-  - Channel discharge for each node
-  - Additional derived variables if specified
+- `AbstractArray{T,3}`: Output array of discharge, shape (1, nodes, timesteps).
 
-# Description
-Executes a RAPID routing simulation using the Muskingum-Cunge method:
-
-1. Parameter Processing:
-   - Computes Muskingum coefficients (C₀, C₁, C₂)
-   - Handles parameter distribution across nodes
-   - Prepares sparse matrix operations
-
-2. State Evolution:
-   - Updates discharge states using state-space formulation
-   - Maintains numerical stability
-   - Ensures mass conservation
-
-3. Device Management:
-   - Supports CPU and GPU computation
-   - Efficient memory handling
-   - Automatic device placement
-
-## Example Usage
+# Example
 ```julia
-# Basic simulation
-output = route(
-    input,                # Lateral inflows
-    params;              # k and x parameters
-    delta_t=3600.0,     # 1-hour timestep
-    device=identity     # Run on CPU
-)
-
-# Advanced configuration
-output = route(
-    input,
-    params;
-    delta_t=1800.0,                    # 30-min timestep
-    device=gpu_device(),                         # Run on GPU
-    interp=DirectInterpolation,        # Linear interpolation
-    solver=ManualSolver{true}(),       # Manual timestepping
-    ptyidx=1:n_nodes,                 # All nodes
-    timeidx=1:n_timesteps             # Full simulation
-)
+# Assuming 'rapid_route' is a RapidRoute instance
+discharge = rapid_route(lateral_inflow, parameters; delta_t=3600.0)
 ```
 
 # Notes
-- Input dimensions must match network size
-- Parameters must be properly structured
-- Mass conservation is guaranteed
-- GPU acceleration supported
+- Solves the Muskingum-Cunge equations using a matrix-based approach.
+- Calculates Muskingum coefficients (c0, c1, c2) internally based on `k`, `x`, and `delta_t`.
+- Requires `input` to be 3D (variables, nodes, time).
 """
 function (route::RapidRoute)(input::Array, params::ComponentVector; kwargs...)
     #* get the parameter types and state types
