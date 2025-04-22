@@ -175,6 +175,17 @@ function expand_component_initstates(initstates::AbstractMatrix, styidx::Abstrac
     initstates[:, styidx]
 end
 
+function expand_component_params_and_initstates(pas::ComponentVector, initstates::ComponentVector, ptyidx::AbstractVector, styidx::AbstractVector)
+    params = view(pas, :params)
+    expand_params = NamedTuple{Tuple(keys(params))}([params[p][ptyidx] for p in keys(params)])
+    expand_states = expand_component_initstates(initstates, styidx)
+    return if haskey(pas, :nns)
+        ComponentVector(params=expand_params, nns=pas[:nns], initstates=expand_states)
+    else
+        ComponentVector(params=expand_params, initstates=expand_states)
+    end
+end
+
 function get_default_states(component::AbstractComponent, input::AbstractArray{T,2}) where {T}
     state_names = get_state_names(component)
     return ComponentVector(NamedTuple{Tuple(state_names)}(fill(zero(T), length(state_names))))

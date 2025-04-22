@@ -87,7 +87,7 @@ function (solver::ManualSolver{true})(
     for (i, t) in enumerate(timeidx)
         tmp_du = du_func(tmp_initstates, pas, t)
         tmp_initstates = tmp_initstates .+ tmp_du
-        states_results[ntuple(_ -> Colon(), N)..., i] .= tmp_initstates
+        states_results[ntuple(Returns(Colon()), N)..., i] .= tmp_initstates
     end
     states_results
 end
