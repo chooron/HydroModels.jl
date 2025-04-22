@@ -78,7 +78,7 @@ For neural network fluxes (`AbstractNeuralFlux`), the function handles:
 For regular fluxes, it directly computes using provided expressions.
 ```
 """
-function build_ele_func(
+function build_bucket_func(
     fluxes::Vector{<:AbstractFlux},
     dfluxes::Vector{<:AbstractStateFlux},
     infos::NamedTuple,
@@ -169,6 +169,78 @@ function build_ele_func(
     end
 end
 
+"""
+    build_nnlayer_func(fluxes::Vector{<:AbstractHydroFlux}, dfluxes::Vector{<:AbstractStateFlux}, infos::NamedTuple)
+
+Builds a neural network layer function for a hydrological model element.
+
+# Arguments
+- `fluxes::Vector{<:AbstractHydroFlux}`: Vector of flux components that define the element's behavior
+- `dfluxes::Vector{<:AbstractStateFlux}`: Vector of state differential components that define state changes
+- `infos::NamedTuple`: Metadata containing:
+  - `inputs`: Input variable names
+  - `outputs`: Output variable names
+  - `states`: State variable names
+  - `params`: Parameter names
+  - `nns`: neural network names
+
+# Returns
+A function that takes:
+- `inputs`: Input data array with the following possible dimensions:
+  - `Matrix`: Time series data with shape (variables, timesteps)
+  - `Array`: Batched time series data with shape (variables, timesteps, batch_size)
+- `pas`: A parameter struct containing fields matching the parameter names
+- `states`: Initial state values for the element
+
+The function returns:
+- `outputs`: Output values computed from the fluxes
+- `dstates`: State changes computed from the state differentials
+"""
+function build_nnlayer_func(
+    fluxes::Vector{<:AbstractHydroFlux},
+    dfluxes::Vector{<:AbstractStateFlux},
+    infos::NamedTuple
+)
+    input_names = length(infos.inputs) == 0 ? [] : tosymbol.(infos.inputs)
+    output_names = length(infos.outputs) == 0 ? [] : tosymbol.(infos.outputs)
+    state_names = length(infos.states) == 0 ? [] : tosymbol.(infos.states)
+    param_names = length(infos.params) == 0 ? [] : tosymbol.(infos.params)
+
+    input_define_calls = [:($i = inputs[$idx, :]) for (idx, i) in enumerate(input_names)]
+    state_define_calls = [:($s = states[$idx]) for (idx, s) in enumerate(state_names)]
+    params_assign_calls = [:($p = pas.params.$p) for p in param_names]
+    nn_params_assign_calls = [:($(nflux.infos[:nns][1]) = pas.nns.$(nflux.infos[:nns][1])) for nflux in filter(f -> f isa AbstractNeuralFlux, fluxes)]
+    define_calls = reduce(vcat, [input_define_calls, state_define_calls, params_assign_calls, nn_params_assign_calls])
+
+    # varibles definitions expressions
+    compute_calls = []
+    for f in fluxes
+        if f isa AbstractNeuralFlux
+            push!(compute_calls, :($(f.infos[:nn_inputs]) = stack([$(get_input_names(f)...)], dims=1)))
+            push!(compute_calls, :($(f.infos[:nn_outputs]) = $(f.func)($(f.infos[:nn_inputs]), $(f.infos[:nns][1]))))
+            append!(compute_calls, [:($(nm) = $(f.infos[:nn_outputs])[$i, :]) for (i, nm) in enumerate(get_output_names(f))])
+        else
+            append!(compute_calls, [:($nm = $(toexprv2(unwrap(expr)))) for (nm, expr) in zip(get_output_names(f), f.exprs)])
+        end
+    end
+
+    # Create return expressions with concrete values
+    dfluxes_exprs = reduce(vcat, get_exprs.(dfluxes))
+    return_flux = :(return [$(output_names...)], [$(map(expr -> :($(toexprv2(unwrap(expr)))), dfluxes_exprs)...)])
+
+    # Create fcuntion expression
+    meta_exprs = [:(Base.@_inline_meta)]
+
+    func_expr = :(function (inputs, pas, states)
+        $(meta_exprs...)
+        $(define_calls...)
+        $(compute_calls...)
+        $(return_flux)
+    end)
+
+    return @RuntimeGeneratedFunction(func_expr)
+end
+
 function build_uh_func(uh_pairs::AbstractVector{<:Pair}, params::AbstractVector, max_lag::Number)
     conditions_rev = vcat([0], reverse(first.(uh_pairs))) # 改为由小到大
     values_rev = reverse(last.(uh_pairs)) # 改为由小到大
@@ -193,7 +265,7 @@ function build_uh_func(uh_pairs::AbstractVector{<:Pair}, params::AbstractVector,
         $(params_assign_calls...)
         ceil($(toexpr(max_lag)))
     end)
-    
+
     return @RuntimeGeneratedFunction(uh_func_expr), @RuntimeGeneratedFunction(max_lag_expr)
 end
 
