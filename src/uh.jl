@@ -32,25 +32,34 @@ struct UnitHydrograph{N,ST} <: AbstractHydrograph
     infos::NamedTuple
 
     function UnitHydrograph(
-        inputs::AbstractVector{T},
-        params::AbstractVector{T};
-        uh_pairs::AbstractVector{<:Pair},
-        max_lag::Number=uh_func[1][1],
-        outputs::AbstractVector{T}=T[],
-        configs::NamedTuple=(solvetype=:DISCRETE, suffix=:_lag),
+        inputs::AbstractVector{T}, params::AbstractVector{T};
+        uh_func::Function, max_lag_func::Function,
+        configs::NamedTuple=(solvetype=:DISCRETE, suffix=:_lag, outputs=Num[]),
         name::Union{Symbol,Nothing}=nothing,
     ) where {T<:Num}
         #* Setup the name information of the hydroroutement
         input_names = tosymbol.(inputs)
-        output_names = length(outputs) == 0 ? Symbol.(input_names, configs.suffix) : tosymbol.(outputs)
+        output_names = if length(get(configs, :outputs, Num[])) == 0
+            Symbol.(input_names, get(configs, :suffix, :_lag))
+        else
+            tosymbol.(get(configs, :outputs, Num[]))
+        end
         outputs = map(name -> only(@variables $name), output_names)
         infos = (; inputs=inputs, outputs=outputs, params=params)
-
-        uh_func, max_lag_func = build_uh_func(uh_pairs, params, max_lag)
         uh_name = isnothing(name) ? Symbol("##uh#", hash(infos)) : name
+        solvetype = get(configs, :solvetype, :DISCRETE)
+        @assert solvetype in [:DISCRETE, :SPARSE] "solvetype must be one of [:DISCRETE, :SPARSE]"
+        return new{uh_name,solvetype}(uh_func, max_lag_func, infos)
+    end
 
-        @assert configs.solvetype in [:DISCRETE, :SPARSE] "solvetype must be one of [:DISCRETE, :SPARSE]"
-        return new{uh_name,configs.solvetype}(uh_func, max_lag_func, infos)
+    function UnitHydrograph(
+        inputs::AbstractVector{T}, params::AbstractVector{T},
+        uh_pairs::AbstractVector{<:Pair}, max_lag=uh_pairs[1][1],
+        configs::NamedTuple=(solvetype=:DISCRETE, suffix=:_lag, outputs=Num[]),
+        name::Union{Symbol,Nothing}=nothing,
+    ) where {T<:Num}
+        uh_func, max_lag_func = build_uh_func(uh_pairs, params, max_lag)
+        return UnitHydrograph(inputs, params, uh_func=uh_func, max_lag_func=max_lag_func, configs=configs, name=name)
     end
 end
 
@@ -122,9 +131,9 @@ macro unithydro(args...)
 
     return esc(quote
         UnitHydrograph(
-            $uh_vars_expr, $params_expr;
-            uh_pairs=$(uh_pairs), max_lag=$(uh_pairs[1][1]),
-            name=$(name), configs=$configs
+            $uh_vars_expr, $params_expr,
+            $uh_pairs, $(uh_pairs[1][1]),
+            $configs, $(name)
         )
     end)
 end

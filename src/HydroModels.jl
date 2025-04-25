@@ -6,7 +6,6 @@ using Reexport
 @reexport using ComponentArrays
 using LinearAlgebra
 using SparseArrays
-using StableRNGs
 using Random
 using TOML
 
@@ -27,28 +26,45 @@ using Graphs
 using Lux
 using Lux: foldl_init
 using NNlib
-using MLUtils
 
-@reexport using HydroModelCore:
-    AbstractComponent, AbstractFlux, AbstractHydroFlux, AbstractNeuralFlux, AbstractStateFlux,
-    AbstractElement, AbstractBucket, AbstractHydrograph, AbstractRoute, AbstractHydroRoute, AbstractModel
+# SciML ecosystem
+@reexport using DataInterpolations
+using OrdinaryDiffEq
+using SciMLSensitivity
 
-@reexport using HydroModelCore:
-    get_name, get_input_names, get_output_names, get_param_names,
-    get_state_names, get_nn_names, get_var_names,
-    get_exprs, get_inputs, get_outputs, get_params, get_nns, get_vars
+abstract type AbstractComponent end
+
+abstract type AbstractFlux <: AbstractComponent end
+abstract type AbstractHydroFlux <: AbstractFlux end
+abstract type AbstractNeuralFlux <: AbstractHydroFlux end
+abstract type AbstractStateFlux <: AbstractFlux end
+
+abstract type AbstractElement <: AbstractComponent end
+abstract type AbstractBucket <: AbstractElement end
+abstract type AbstractHydrograph <: AbstractElement end
+abstract type AbstractRoute <: AbstractElement end
+abstract type AbstractHydroRoute <: AbstractRoute end
+abstract type AbstractModel <: AbstractComponent end
+
+export AbstractComponent, AbstractHydroFlux, AbstractNeuralFlux, AbstractStateFlux,
+    AbstractElement, AbstractBucket, AbstractHydrograph,
+    AbstractRoute, AbstractHydroRoute, AbstractModel
+
+export get_name, get_input_names, get_output_names, get_param_names, get_state_names, get_nn_names
+export get_exprs, get_inputs, get_outputs, get_params, get_nns, get_vars
 
 # utils
+include("utils/attribute.jl")
+include("utils/display.jl")
 include("utils/check.jl")
 include("utils/aggregation.jl")
 include("utils/expression.jl")
-include("utils/tools.jl")
 include("utils/miscellaneous.jl")
 include("utils/build.jl")
 
-#! A discrete ODE solver, if want to use more efficient solver, please import HydroModelTools.jl
 #! When constructing an ODE problem to solve, use DataInterpolations.jl
-export ManualSolver, DirectInterpolation
+include("tools.jl")
+export ManualSolver, ODESolver, DiscreteSolver, DirectInterpolation
 
 # framework build
 include("flux.jl")

@@ -38,10 +38,6 @@ ts = collect(1:100)
 input = (lday=df[ts, "dayl(day)"], temp=df[ts, "tmean(C)"], prcp=df[ts, "prcp(mm/day)"])
 input_arr = reduce(hcat, input[bucket_input_names]) |> permutedims
 result = bucket_1(input_arr, pas; solver=HydroModelTools.ODESolver(sensealg=BacksolveAdjoint(autojacvec=EnzymeVJP())), interp=LinearInterpolation)
-
-
-
-
 # gradient(pas) do p
 #     bucket_1(input_arr, p; solver=HydroModelTools.ODESolver(sensealg=BacksolveAdjoint(autojacvec=ZygoteVJP())), interp=LinearInterpolation) |> sum
 #     # bucket_1(input_arr, p; solver=HydroModelTools.ODESolver(sensealg=GaussAdjoint(autojacvec=EnzymeVJP()))) |> sum

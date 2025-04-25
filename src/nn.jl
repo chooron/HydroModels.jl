@@ -44,12 +44,12 @@ struct NeuralFlux{N} <: AbstractNeuralFlux
         outputs::Vector{T},
         chain::LuxCore.AbstractLuxLayer;
         name::Union{Symbol,Nothing}=nothing,
-        st=LuxCore.initialstates(StableRNG(42), chain),
+        st=LuxCore.initialstates(Random.default_rng(), chain),
         chain_name::Union{Symbol,Nothing}=nothing,
     ) where {T<:Num}
         #* Check chain name
         chain_name = chain_name === nothing ? chain.name : chain_name
-        ps = LuxCore.initialparameters(StableRNG(42), chain)
+        ps = LuxCore.initialparameters(Random.default_rng(), chain)
         ps_axes = getaxes(ComponentVector(ps))
         nn_func = (x, p) -> LuxCore.apply(chain, x, ComponentVector(p, ps_axes), st)[1]
         nn_ps = @parameters $chain_name[1:length(ComponentVector(ps))]

@@ -33,6 +33,7 @@ makedocs(
             "Framework Design" => "tutorials/framework_design.md",
             "Neural Network Embedding" => "tutorials/neuralnetwork_embeding.md",
             "Distribute Modeling" => "tutorials/distribute_modeling.md",
+            "Optimal Parameters" => "tutorials/optimimal_parameters.md"
         ],
         "Basic Concepts" => "concepts_en.md",
         "Model Implementations" => [
