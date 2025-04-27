@@ -293,7 +293,8 @@ macro neuralbucket(args...)
     return esc(:(NeuralBucket(name=$(name), fluxes=$fluxes_expr, dfluxes=$dfluxes_expr)))
 end
 
-"""    (bucket::NeuralBucket)(input::AbstractArray{T,3}, pas::ComponentVector; kwargs...) where {T,N}
+"""    
+    (bucket::NeuralBucket)(input::AbstractArray{T,3}, pas::ComponentVector; kwargs...) where {T,N}
 
 Apply a neural bucket model to input data for calculating water fluxes and state updates over time.
 

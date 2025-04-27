@@ -80,6 +80,17 @@ export UnitHydrograph, @unithydro
 include("model.jl")
 export HydroModel, @hydromodel
 
+# 定义一个函数来按需加载模型
+function load_model(model_name::Symbol)
+    # 检查模块是否已经加载，如果没有则加载
+    if !isdefined(HydroModelLibrary, model_name)
+        model_path = joinpath(@__DIR__, "models", "$(model_name).jl")
+        include(model_path)
+    end
+    # 返回模块
+    return getfield(getfield(HydroModelLibrary, model_name), :model)
+end
+
 ## package version
 const version = VersionNumber(TOML.parsefile(joinpath(@__DIR__, "..", "Project.toml"))["version"])
 
