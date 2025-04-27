@@ -61,7 +61,7 @@ include("utils/aggregation.jl")
 include("utils/expression.jl")
 include("utils/miscellaneous.jl")
 include("utils/build.jl")
-
+include("utils/smooth.jl")
 #! When constructing an ODE problem to solve, use DataInterpolations.jl
 include("tools.jl")
 export ManualSolver, ODESolver, DiscreteSolver, DirectInterpolation
@@ -80,15 +80,48 @@ export UnitHydrograph, @unithydro
 include("model.jl")
 export HydroModel, @hydromodel
 
+AVAILABLE_MODELS = [
+    :alpine1,
+    :alpine2,
+    :australia,
+    :collie1,
+    :collie2,
+    :collie3,
+    :exphydro,
+    :gr4j,
+    :gsfb,
+    :hbv_edu,
+    :hbv,
+    :ihacres,
+    :lascam,
+    :mcrm,
+    :mopex1,
+    :mopex3,
+    :mopex5,
+    :newzealand1,
+    :newzealand2,
+    :plateau,
+    :susannah1,
+    :susannah2,
+    :tank,
+    :unitedstates,
+    :wetland,
+]
+export AVAILABLE_MODELS
+
 # 定义一个函数来按需加载模型
 function load_model(model_name::Symbol)
-    # 检查模块是否已经加载，如果没有则加载
-    if !isdefined(HydroModelLibrary, model_name)
-        model_path = joinpath(@__DIR__, "models", "$(model_name).jl")
-        include(model_path)
+    if model_name in AVAILABLE_MODELS
+        # 检查模块是否已经加载，如果没有则加载
+        if !isdefined(HydroModels, model_name)
+            model_path = joinpath(@__DIR__, "models", "$(model_name).jl")
+            include(model_path)
+        end
+        # 返回模块
+        return getfield(getfield(HydroModels, model_name), :model)
+    else
+        throw(ArgumentError("Model $model_name is not available"))
     end
-    # 返回模块
-    return getfield(getfield(HydroModelLibrary, model_name), :model)
 end
 
 ## package version
