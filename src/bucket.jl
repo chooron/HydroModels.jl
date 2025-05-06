@@ -163,7 +163,7 @@ function (ele::HydroBucket{N,true})(input::AbstractArray{T,2}, params::Component
         (u, p, t) -> ele.ode_funcs[1](itpfuncs(t), u, ComponentVector(p, params_axes)),
         param_vec, initstates_, timeidx
     )
-    #* concatenate states and fluxes 
+    #* concatenate states and fluxes
     flux_output = ele.flux_funcs[1](eachslice(input, dims=1), eachslice(solved_states, dims=1), params)
     vcat(solved_states, stack(flux_output, dims=1))
 end

@@ -84,6 +84,32 @@ macro hydroflux(args...)
     eqs_expr = length(args) == 1 ? args[1] : args[2]
     vect_eqs_expr = if Meta.isexpr(eqs_expr, :block)
         Expr(:vect, filter(arg -> !(arg isa LineNumberNode) && !Meta.isexpr(arg, :line), eqs_expr.args)...)
+    elseif Meta.isexpr(eqs_expr, :for)
+        loop_var = eqs_expr.args[1].args[1]
+        range_expr = eqs_expr.args[1].args[2]
+        loop_body = eqs_expr.args[2]
+        range_val = if Meta.isexpr(range_expr, :call) && range_expr.args[1] == :(:)
+            if length(range_expr.args) == 3
+                range_expr.args[2]:range_expr.args[3]
+            elseif length(range_expr.args) == 4
+                range_expr.args[2]:range_expr.args[3]:range_expr.args[4]
+            end
+        else
+            eval(range_expr)
+        end
+        all_equations = []
+        if !Meta.isexpr(loop_body, :block)
+            loop_body = Expr(:block, loop_body)
+        end
+        equations = filter(x -> !(x isa LineNumberNode) && !Meta.isexpr(x, :line), loop_body.args)
+        for i_val in range_val
+            for eq in equations
+                new_eq = deepcopy(eq)
+                replace_loop_var!(new_eq, loop_var, i_val)
+                push!(all_equations, new_eq)
+            end
+        end
+        Expr(:vect, all_equations...)
     else
         Expr(:vect, eqs_expr)
     end
@@ -301,3 +327,15 @@ macro stateflux(args...)
 end
 
 (::StateFlux)(::AbstractArray, ::ComponentVector; kwargs...) = @error "State Flux cannot run directly, please using HydroFlux to run"
+# 辅助函数：替换循环变量
+function replace_loop_var!(expr, var_name, value)
+    if expr isa Expr
+        for i in 1:length(expr.args)
+            if expr.args[i] == var_name
+                expr.args[i] = value
+            else
+                replace_loop_var!(expr.args[i], var_name, value)
+            end
+        end
+    end
+end
