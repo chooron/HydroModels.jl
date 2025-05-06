@@ -80,7 +80,11 @@ function _prepare_indices(components::Vector{<:AbstractComponent}, inputs::Vecto
     for component in components
         #* extract input index
         tmp_input_idx = map((nm) -> findfirst(varnm -> varnm == nm, input_names), get_input_names(component))
-        push!(input_idx, tmp_input_idx)
+        if nothing in tmp_input_idx
+            @warn "input variable $(get_input_names(component)) not found in input_names"
+        else
+            push!(input_idx, tmp_input_idx)
+        end
         #* extract output index
         tmp_cpt_vcat_names = vcat(get_state_names(component), get_output_names(component))
         input_names = vcat(input_names, tmp_cpt_vcat_names)
