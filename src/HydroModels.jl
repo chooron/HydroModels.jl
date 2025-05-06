@@ -87,6 +87,7 @@ AVAILABLE_MODELS = [
     :collie1,
     :collie2,
     :collie3,
+    :echo,
     :exphydro,
     :gr4j,
     :gsfb,
@@ -97,17 +98,21 @@ AVAILABLE_MODELS = [
     :ihm19,
     :lascam,
     :mcrm,
+    :modhydrolog,
     :mopex1,
     :mopex3,
+    :mopex4,
     :mopex5,
     :newzealand1,
     :newzealand2,
     :plateau,
+    :smar,
     :susannah1,
     :susannah2,
     :tank,
     :unitedstates,
     :wetland,
+    :xinanjiang
 ]
 export AVAILABLE_MODELS
 

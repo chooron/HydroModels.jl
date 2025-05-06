@@ -4,12 +4,14 @@ using Distributions
 using ModelingToolkit
 using DataInterpolations
 using Plots
+using SymbolicUtils:Code
 include("../../src/HydroModels.jl")
 
 df = CSV.read("data/marrmot/3604000.csv", DataFrame)
+tidx = rem.(0:length(df[!, "prec"])-1, 365) .+ 1
 
-input = (P=df[!, "prec"], Ep=df[!, "pet"], T=df[!, "temp"])
-model = HydroModels.load_model(:ihm19) 
+input = (P=df[!, "prec"], Ep=df[!, "pet"], T=df[!, "temp"], Tidx=tidx)
+model = HydroModels.load_model(:echo) 
 param_bounds = getbounds.(HydroModels.get_params(model))
 random_param_values = map(param_bounds) do param_bound
     rand(Uniform(param_bound[1], param_bound[2]))
