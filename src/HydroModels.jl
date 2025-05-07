@@ -62,6 +62,7 @@ include("utils/expression.jl")
 include("utils/miscellaneous.jl")
 include("utils/build.jl")
 include("utils/smooth.jl")
+export step_func, smoothlogistic_func
 #! When constructing an ODE problem to solve, use DataInterpolations.jl
 include("tools.jl")
 export ManualSolver, ODESolver, DiscreteSolver, DirectInterpolation
@@ -139,6 +140,8 @@ function load_model(model_name::Symbol)
         throw(ArgumentError("Model $model_name is not available"))
     end
 end
+
+export load_model
 
 ## package version
 const version = VersionNumber(TOML.parsefile(joinpath(@__DIR__, "..", "Project.toml"))["version"])
