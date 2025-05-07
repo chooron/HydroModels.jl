@@ -1,11 +1,5 @@
-module HydroModelsBMIExt
-
-using HydroModels
-using Dates
-using ComponentArrays
-import BasicModelInterface as BMI
-
-@kwdef mutable struct HydroModelsBMI{C}
+@kwdef mutable struct LumpedModelBMI{C}
+    # Component
     component::C
 
     # BMI required
@@ -14,8 +8,6 @@ import BasicModelInterface as BMI
     dt::Number
     time_unit::String = "days"
     time::Int = 1
-    lat::Vector{Float} = []
-    lon::Vector{Float} = []
 
     # Internal state
     state::ComponentVector # current state
@@ -29,20 +21,14 @@ import BasicModelInterface as BMI
 end
 
 function BMI.initialize(
-    component::C,
-    forcing::AbstractArray,
-    pas::ComponentVector,
-    initstates::ComponentVector,
-    timeidx::AbstractVector{<:Date},
-    config::NamedTuple,
-    lat::Vector{Number},
-    lon::Vector{Number}
+    component::C, forcing::AbstractArray, pas::ComponentVector,
+    initstates::ComponentVector, timeidx::AbstractVector{<:Date}, config::NamedTuple
 ) where {C<:AbstractComponent}
     check(component=component, input=forcing, pas=pas, initstates=initstates, timeidx=timeidx)
-    return HydroModelsBMI{C}(component, forcing, pas, initstates, config, initstates, timeidx[1])
+    return LumpedModelBMI{C}(component, forcing, pas, initstates, config, initstates, timeidx[1])
 end
 
-function BMI.update(model::HydroModelsBMI)
+function BMI.update(model::LumpedModelBMI)
     output = model.component(
         model.forcing, model.pas,
         initstates=ComponentVector(model.state),
@@ -54,7 +40,7 @@ function BMI.update(model::HydroModelsBMI)
     model.index += 1
 end
 
-function BMI.update_until(model::HydroModelsBMI, time::Date)
+function BMI.update_until(model::LumpedModelBMI, time::Date)
     end_time = ceil(Int, (time - model.start_time) / model.dt)
     @assert end_time >= model.time
     output = model.component(
@@ -71,27 +57,27 @@ function BMI.update_until(model::HydroModelsBMI, time::Date)
     return NamedTuple{Tuple(vcat(model_output_names, model_state_names))}(eachslice(output, dims=1))
 end
 
-function BMI.finalize(model::HydroModelsBMI)
+function BMI.finalize(model::LumpedModelBMI)
     output = BMI.update_until(model, model.end_time)
     # todo clear memory
     return output
 end
 
-get_component_name(model::HydroModelsBMI) = get_name(model.component)
+get_component_name(model::LumpedModelBMI) = get_name(model.component)
 
-get_input_item_count(model::HydroModelsBMI) = length(get_input_names(model.component))
+get_input_item_count(model::LumpedModelBMI) = length(get_input_names(model.component))
 
-get_output_item_count(model::HydroModelsBMI) = length(get_output_names(model.component))
+get_output_item_count(model::LumpedModelBMI) = length(get_output_names(model.component))
 
-get_input_var_names(model::HydroModelsBMI) = string.(get_input_names(model.component))
+get_input_var_names(model::LumpedModelBMI) = string.(get_input_names(model.component))
 
-get_output_var_names(model::HydroModelsBMI) = string.(vcat(get_state_names(model.component), get_output_names(model.component)))
+get_output_var_names(model::LumpedModelBMI) = string.(vcat(get_state_names(model.component), get_output_names(model.component)))
 
-get_var_grid(::HydroModelsBMI, ::String) = 0
+get_var_grid(::LumpedModelBMI, ::String) = 0
 
-get_var_type(model::HydroModelsBMI, ::String) = repr(eltype(model.forcing))
+get_var_type(model::LumpedModelBMI, ::String) = repr(eltype(model.forcing))
 
-function get_var_units(model::HydroModelsBMI, name::String)
+function get_var_units(model::LumpedModelBMI, name::String)
     if name in get_output_names(model.component)
         return get_unit(model.component.infos.outputs[name])
     elseif name in get_input_names(model.component)
@@ -103,28 +89,28 @@ function get_var_units(model::HydroModelsBMI, name::String)
     end
 end
 
-get_var_itemsize(model::HydroModelsBMI, ::String) = sizeof(eltype(model.forcing))
+get_var_itemsize(model::LumpedModelBMI, ::String) = sizeof(eltype(model.forcing))
 
-get_var_nbytes(model::HydroModelsBMI, name::String) = get_var_itemsize(model, name) * 10000 # todo add get total timesteps
+get_var_nbytes(model::LumpedModelBMI, name::String) = get_var_itemsize(model, name) * 10000 # todo add get total timesteps
 
-get_var_location(model::HydroModelsBMI, name::String) = "node"
+get_var_location(model::LumpedModelBMI, name::String) = "node"
 
-get_current_time(model::HydroModelsBMI) = model.time
+get_current_time(model::LumpedModelBMI) = model.time
 
-get_start_time(model::HydroModelsBMI) = model.start_time
+get_start_time(model::LumpedModelBMI) = model.start_time
 
-get_end_time(model::HydroModelsBMI) = model.end_time
+get_end_time(model::LumpedModelBMI) = model.end_time
 
-get_time_units(model::HydroModelsBMI) = model.time_unit
+get_time_units(model::LumpedModelBMI) = model.time_unit
 
-get_time_step(model::HydroModelsBMI) = model.dt
+get_time_step(model::LumpedModelBMI) = model.dt
 
-function get_value(model::HydroModelsBMI, name::String, dest::AbstractArray)
+function get_value(model::LumpedModelBMI, name::String, dest::AbstractArray)
     dest .= copy(get_value_ptr(model, name))
     return dest
 end
 
-function get_value_ptr(model::HydroModelsBMI, name::String)
+function get_value_ptr(model::LumpedModelBMI, name::String)
     if name in get_output_names(model.component)
         var_index = findfirst(x -> string(x) == name, get_output_names(model.component))
         return model.component.outputs[var_index, ntuple((_) -> Colon(), size(model.component.outputs) - 1)]
@@ -139,14 +125,14 @@ function get_value_ptr(model::HydroModelsBMI, name::String)
     end
 end
 
-function get_value_at_indices(model::HydroModelsBMI, name::String, dest::AbstractArray, indices::AbstractArray{Int})
+function get_value_at_indices(model::LumpedModelBMI, name::String, dest::AbstractArray, indices::AbstractArray{Int})
     # 获取指定索引处的变量值
     values = get_value_ptr(model, name)
     dest .= values[ntuple((_) -> Colon(), size(values) - 1), indices]
     return dest
 end
 
-function set_value(model::HydroModelsBMI, name::String, src::AbstractArray)
+function set_value(model::LumpedModelBMI, name::String, src::AbstractArray)
     if name in get_output_names(model.component)
         var_index = findfirst(x -> string(x) == name, get_output_names(model.component))
         model.component.outputs[var_index, ntuple((_) -> Colon(), size(model.component.outputs) - 1)] .= src
@@ -161,7 +147,7 @@ function set_value(model::HydroModelsBMI, name::String, src::AbstractArray)
     end
 end
 
-function set_value_at_indices(model::HydroModelsBMI, name::String, indices::AbstractArray{Int}, src::AbstractArray)
+function set_value_at_indices(model::LumpedModelBMI, name::String, indices::AbstractArray{Int}, src::AbstractArray)
     if name in get_output_names(model.component)
         var_index = findfirst(x -> string(x) == name, get_output_names(model.component))
         model.component.outputs[var_index, ntuple((_) -> Colon(), size(model.component.outputs) - 2), indices] .= src
@@ -177,31 +163,31 @@ function set_value_at_indices(model::HydroModelsBMI, name::String, indices::Abst
 end
 
 # Grid information
-get_grid_rank(::HydroModelsBMI, ::Int) = 2 # fixed in HydroModelsBMI
+get_grid_rank(::LumpedModelBMI, ::Int) = 2 # fixed in LumpedModelBMI
 
-get_grid_size(::HydroModelsBMI, ::Int) = 1 # fixed in HydroModelsBMI
+get_grid_size(::LumpedModelBMI, ::Int) = 1 # fixed in LumpedModelBMI
 
-get_grid_type(::HydroModelsBMI, ::Int) = "uniform_rectilinear"
+get_grid_type(::LumpedModelBMI, ::Int) = "uniform_rectilinear"
 
-get_grid_shape(::HydroModelsBMI, ::Int, ::AbstractVector{Int}) = (1, 1) # fixed in HydroModelsBMI
+get_grid_shape(::LumpedModelBMI, ::Int, ::AbstractVector{Int}) = (1, 1) # fixed in LumpedModelBMI
 
-get_grid_spacing(::HydroModelsBMI, ::Int, ::AbstractVector{Float64}) = (0, 0)
+get_grid_spacing(::LumpedModelBMI, ::Int, ::AbstractVector{Float64}) = (0, 0)
 
-get_grid_origin(model::HydroModelsBMI, ::Int, ::AbstractVector{Float64}) = (model.lat, model.lon)
+get_grid_origin(model::LumpedModelBMI, ::Int, ::AbstractVector{Float64}) = (model.lat, model.lon)
 
-get_grid_x(::HydroModelsBMI, ::Int, ::AbstractVector{Float64}) = 1
+get_grid_x(::LumpedModelBMI, ::Int, ::AbstractVector{Float64}) = 1
 
-get_grid_y(::HydroModelsBMI, ::Int, ::AbstractVector{Float64}) = 1
+get_grid_y(::LumpedModelBMI, ::Int, ::AbstractVector{Float64}) = 1
 
-get_grid_z(::HydroModelsBMI, ::Int, ::AbstractVector{Float64}) = 1
+get_grid_z(::LumpedModelBMI, ::Int, ::AbstractVector{Float64}) = 1
 
-get_grid_node_count(model::HydroModelsBMI, grid::Int) = 1 # fixed in HydroModelsBMI
+get_grid_node_count(model::LumpedModelBMI, grid::Int) = 1 # fixed in LumpedModelBMI
 
-get_grid_edge_count(model::HydroModelsBMI, grid::Int) = 1 # fixed in HydroModelsBMI
+get_grid_edge_count(model::LumpedModelBMI, grid::Int) = 1 # fixed in LumpedModelBMI
 
-get_grid_face_count(::HydroModelsBMI, ::Int) = 1 # fixed in HydroModelsBMI
+get_grid_face_count(::LumpedModelBMI, ::Int) = 1 # fixed in LumpedModelBMI
 
-function get_grid_edge_nodes(model::HydroModelsBMI, grid::Int, edge_nodes::AbstractVector{Int})
+function get_grid_edge_nodes(model::LumpedModelBMI, grid::Int, edge_nodes::AbstractVector{Int})
     # 对于一维时间序列，每条边连接相邻的两个时间点
     n_edges = get_grid_edge_count(model, grid)
     for i in 1:n_edges
@@ -211,9 +197,8 @@ function get_grid_edge_nodes(model::HydroModelsBMI, grid::Int, edge_nodes::Abstr
     return edge_nodes
 end
 
-get_grid_face_edges(::HydroModelsBMI, ::Int, ::AbstractVector{Int}) = 1
+get_grid_face_edges(::LumpedModelBMI, ::Int, ::AbstractVector{Int}) = 1
 
-get_grid_face_nodes(::HydroModelsBMI, ::Int, ::AbstractVector{Int}) = 1
+get_grid_face_nodes(::LumpedModelBMI, ::Int, ::AbstractVector{Int}) = 1
 
-get_grid_nodes_per_face(::HydroModelsBMI, ::Int, ::AbstractVector{Int}) = 1
-end
+get_grid_nodes_per_face(::LumpedModelBMI, ::Int, ::AbstractVector{Int}) = 1
