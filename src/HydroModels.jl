@@ -126,15 +126,12 @@ AVAILABLE_MODELS = [
 ]
 export AVAILABLE_MODELS
 
-# 定义一个函数来按需加载模型
 function load_model(model_name::Symbol)
     if model_name in AVAILABLE_MODELS
-        # 检查模块是否已经加载，如果没有则加载
         if !isdefined(HydroModels, model_name)
             model_path = joinpath(@__DIR__, "models", "$(model_name).jl")
             include(model_path)
         end
-        # 返回模块
         return getfield(getfield(HydroModels, model_name), :model)
     else
         throw(ArgumentError("Model $model_name is not available"))
