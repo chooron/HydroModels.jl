@@ -119,7 +119,7 @@ A custom ODEProblem solver
     alg = Tsit5()
     sensealg = GaussAdjoint(autojacvec=EnzymeVJP())
     dev = identity
-    kwargs = (:reltol=>1e-3, :abstol=>1e-3)
+    kwargs::Dict = Dict(:reltol=>1e-3, :abstol=>1e-3) # must be a Dict
 end
 
 function (solver::ODESolver)(
@@ -128,7 +128,10 @@ function (solver::ODESolver)(
     initstates::AbstractArray,
     timeidx::AbstractVector;
 )
-    ode_func! = (du, u, p, t) -> (du[:] = du_func(u, p, t))
+    ode_func!(du, u, p, t) = begin
+        du[:] = du_func(u, p, t)
+        nothing
+    end
 
     #* build problem
     prob = ODEProblem{true}(ode_func!, initstates, (timeidx[1], timeidx[end]), params)
@@ -162,11 +165,14 @@ function (solver::DiscreteSolver)(
     initstates::AbstractArray,
     timeidx::AbstractVector;
 )
-    ode_func! = (du, u, p, t) -> (du[:] = du_func(u, p, t))
+    ode_func!(du, u, p, t) = begin
+        du[:] = du_func(u, p, t)
+        nothing
+    end
     #* build problem
     prob = DiscreteProblem(ode_func!, initstates, (timeidx[1], timeidx[end]), params)
     #* solve problem
-    sol = solve(prob, solver.alg, saveat=timeidx) # , sensealg=solver.sensealg
+    sol = solve(prob, solver.alg, saveat=timeidx)
     if SciMLBase.successful_retcode(sol)
         sol_arr = Array(sol)
     else
