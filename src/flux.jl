@@ -128,6 +128,18 @@ macro hydroflux(args...)
     end)
 end
 
+function replace_loop_var!(expr, var_name, value)
+    if expr isa Expr
+        for i in 1:length(expr.args)
+            if expr.args[i] == var_name
+                expr.args[i] = value
+            else
+                replace_loop_var!(expr.args[i], var_name, value)
+            end
+        end
+    end
+end
+
 """
     (flux::AbstractHydroFlux)(input::AbstractArray, params::ComponentVector; kwargs...)
 
@@ -176,7 +188,7 @@ end
 
 function (flux::HydroFlux{N})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T,N}
     ptyidx = get(kwargs, :ptyidx, collect(1:size(input, 2)))
-    expand_params = expand_component_params(params, ptyidx)
+    expand_params = expand_component_params(params, get_param_names(flux), ptyidx)
     output = flux.func(eachslice(input, dims=1), expand_params)
     stack(output, dims=1)
 end
@@ -327,15 +339,4 @@ macro stateflux(args...)
 end
 
 (::StateFlux)(::AbstractArray, ::ComponentVector; kwargs...) = @error "State Flux cannot run directly, please using HydroFlux to run"
-# 辅助函数：替换循环变量
-function replace_loop_var!(expr, var_name, value)
-    if expr isa Expr
-        for i in 1:length(expr.args)
-            if expr.args[i] == var_name
-                expr.args[i] = value
-            else
-                replace_loop_var!(expr.args[i], var_name, value)
-            end
-        end
-    end
-end
+

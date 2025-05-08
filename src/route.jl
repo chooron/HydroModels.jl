@@ -172,7 +172,7 @@ function (route::HydroRoute)(
     initstates_mat = expand_component_initstates(initstates_, styidx) |> device
 
     #* prepare states parameters and nns
-    new_pas = expand_component_params(params, ptyidx) |> device
+    new_pas = expand_component_params(params, get_param_names(route), ptyidx) |> device
     params_vec, params_axes = Vector(new_pas) |> device, getaxes(new_pas)
 
     #* prepare input function
@@ -291,7 +291,7 @@ function (route::RapidRoute)(input::Array, params::ComponentVector; kwargs...)
     itpfuncs = interp(input[1, :, :], timeidx)
 
     #* prepare the parameters for the routing function
-    expand_params = expand_component_params(params, ptyidx)[:params] |> device
+    expand_params = expand_component_params(params, get_param_names(route), ptyidx)[:params] |> device
     k_ps, x_ps = expand_params[:rapid_k], expand_params[:rapid_x]
     c0 = @. ((delta_t / k_ps) - (2 * x_ps)) / ((2 * (1 - x_ps)) + (delta_t / k_ps))
     c1 = @. ((delta_t / k_ps) + (2 * x_ps)) / ((2 * (1 - x_ps)) + (delta_t / k_ps))
@@ -311,6 +311,6 @@ function (route::RapidRoute)(input::Array, params::ComponentVector; kwargs...)
     end
 
     #* solve the ode
-    sol_arr = solver(du_func, new_params_vec, initstates, timeidx, convert_to_array=true)
+    sol_arr = solver(du_func, new_params_vec, initstates, timeidx)
     return reshape(sol_arr, 1, size(sol_arr)...)
 end

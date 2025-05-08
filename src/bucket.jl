@@ -185,7 +185,7 @@ function (ele::HydroBucket{N,true})(input::AbstractArray{T,3}, params::Component
     initstates_mat = expand_component_initstates(initstates_, styidx) |> device
 
     #* prepare states parameters and nns
-    new_params = expand_component_params(params, ptyidx) |> device
+    new_params = expand_component_params(params, get_param_names(ele), ptyidx) |> device
     params_vec, params_axes = Vector(new_params) |> device, getaxes(new_params)
 
     #* prepare input function
