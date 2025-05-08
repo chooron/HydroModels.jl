@@ -14,14 +14,14 @@ Validate component inputs, parameters, and initial states, parameter types and s
 - `ptypes::AbstractVector{Int}`: Parameter type indices
 - `stypes::AbstractVector{Int}`: State type indices
 """
-function check(; component::AbstractComponent, input::AbstractArray{<:Number,2}, pas::ComponentVector, initstates::ComponentVector, timeidx::AbstractVector)
+function check(component::AbstractComponent, input::AbstractArray{<:Number,2}, pas::ComponentVector, initstates::ComponentVector, timeidx::AbstractVector)
     check_input(component, input, timeidx)
     check_params(component, pas)
     check_initstates(component, initstates)
     check_nns(component, pas)
 end
 
-function check(; component::AbstractComponent, input::AbstractArray{<:Number,3}, pas::ComponentVector, initstates::ComponentVector, timeidx::AbstractVector, ptypes::AbstractVector{Int}, stypes::AbstractVector{Int})
+function check(component::AbstractComponent, input::AbstractArray{<:Number,3}, pas::ComponentVector, initstates::ComponentVector, timeidx::AbstractVector, ptypes::AbstractVector{Int}, stypes::AbstractVector{Int})
     check_input(component, input, timeidx)
     check_ptypes(component, input, ptypes)
     check_stypes(component, input, stypes)
