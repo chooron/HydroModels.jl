@@ -6,6 +6,9 @@ using Zygote
 using ForwardDiff
 using HydroModels
 
+@variables snowfall prcp temp snowpack melt
+@parameters f Smax Qmax Df Tmax Tmin
+
 bucket_1 = @hydrobucket begin
     fluxes = begin
         @hydroflux snowfall ~ step_func(Tmin - temp) * prcp

@@ -2,7 +2,7 @@
     include("../models/m50.jl")
 
     #! load data
-    df = DataFrame(CSV.File("data/m50/01013500.csv"))
+    df = DataFrame(CSV.File("E:\\JlCode\\HydroModels\\data\\m50\\01013500.csv"))
     ts = collect(1:100)
     prcp_vec = df[ts, "Prcp"]
     temp_vec = df[ts, "Temp"]
@@ -29,12 +29,12 @@
     input_mat = Matrix(reduce(hcat, collect(input_ntp[HydroModels.get_input_names(m50_model)]))')
 
     output = m50_model(input_mat, pas, initstates=initstates,
-        config=(timeidx=ts, solver=HydroModelSolvers.ODESolver(sensealg=BacksolveAdjoint(autojacvec=EnzymeVJP())))
+        config=(timeidx=ts, solver=HydroModels.ODESolver(sensealg=BacksolveAdjoint(autojacvec=EnzymeVJP())))
     )
 
     Zygote.gradient(pas) do p
         output = m50_model(input_mat, p, initstates=initstates,
-            config=(timeidx=ts, solver=HydroModelSolvers.ODESolver(sensealg=BacksolveAdjoint(autojacvec=EnzymeVJP())))
+            config=(timeidx=ts, solver=HydroModels.ODESolver(sensealg=BacksolveAdjoint(autojacvec=EnzymeVJP())))
         )
         output[end, :] |> sum
     end
