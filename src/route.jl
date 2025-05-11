@@ -27,6 +27,8 @@ HydroRoute(; rfluxes, dfluxes, aggr_func, name=nothing)
 struct HydroRoute{N} <: AbstractHydroRoute
     "Routing function"
     rfluxes::Vector{<:AbstractFlux}
+    "State derivative function"
+    dfluxes::Vector{<:AbstractStateFlux}
     "Generated function for calculating all hydrological fluxes."
     multi_flux_func::Function
     "Generated function for ordinary differential equations (ODE) calculations, or nothing if no ODE calculations are needed."
@@ -52,7 +54,7 @@ struct HydroRoute{N} <: AbstractHydroRoute
         route_name = isnothing(name) ? Symbol("##route#", hash(infos)) : name
         #* build the route function
         multi_flux_func, multi_ode_func = build_route_func(rfluxes, dfluxes, infos)
-        return new{route_name}(rfluxes, multi_flux_func, multi_ode_func, aggr_func, infos)
+        return new{route_name}(rfluxes, dfluxes, multi_flux_func, multi_ode_func, aggr_func, infos)
     end
 end
 
@@ -176,23 +178,22 @@ function (route::HydroRoute)(
     params_vec, params_axes = Vector(new_pas) |> device, getaxes(new_pas)
 
     #* prepare input function
-    itpfuncs = interp.(eachslice(input, dims=1), Ref(timeidx))
+    itpfunc = interp(reshape(input, input_dims * num_nodes, time_len), timeidx)
     solved_states = solver(
         (u, p, t) -> begin
-            tmp_states, tmp_outflow = route.multi_ode_func(
-                ntuple(i -> itpfuncs[i](t), input_dims),
-                eachslice(u, dims=1),
+            tmp_outflow, tmp_states = route.multi_ode_func(
+                itpfunc(t),
+                u,
                 ComponentVector(p, params_axes)
             )
-            tmp_states_arr = reduce(hcat, tmp_states)
-            tmp_inflow_arr = reduce(hcat, route.aggr_func.(tmp_outflow))
-            # todo 这里元编程表达一直存在问题
-            tmp_states_arr .+ tmp_inflow_arr |> permutedims
+            tmp_inflow_arr = stack(route.aggr_func.(tmp_outflow), dims=1)
+            tmp_output_state = stack(tmp_states, dims=1)
+            tmp_output_state .+ tmp_inflow_arr
         end,
         params_vec, initstates_mat, timeidx
     )
     #* run other functions
-    output = route.multi_flux_func(eachslice(input, dims=1), eachslice(solved_states, dims=1), new_pas)
+    output = route.multi_flux_func(input, solved_states, new_pas)
     cat(solved_states, stack(output, dims=1), dims=1)
 end
 

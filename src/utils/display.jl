@@ -292,7 +292,7 @@ function Base.show(io::IO, route::AbstractHydroRoute)
         print(io, "│ ")
         printstyled(io, "Fluxes:", color=:yellow)
         println(io)
-        for flux in route.fluxes
+        for flux in route.rfluxes
             for (output, ex) in zip(get_outputs(flux), get_exprs(flux))
                 print(io, "│   ")
                 println(io, output ~ ex)
