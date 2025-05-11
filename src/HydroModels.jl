@@ -17,7 +17,6 @@ RuntimeGeneratedFunctions.init(@__MODULE__)
 using Symbolics
 using Symbolics: tosymbol, unwrap
 using SymbolicUtils.Code
-import SymbolicUtils: BasicSymbolic, Sym, Term, iscall, operation, arguments, issym, symtype, sorted_arguments
 @reexport using ModelingToolkit: @variables, @parameters, Num, isparameter, get_variables
 # graph compute
 using Graphs
@@ -46,9 +45,13 @@ abstract type AbstractRoute <: AbstractElement end
 abstract type AbstractHydroRoute <: AbstractRoute end
 abstract type AbstractModel <: AbstractComponent end
 
-export AbstractComponent, AbstractHydroFlux, AbstractNeuralFlux, AbstractStateFlux,
-    AbstractElement, AbstractBucket, AbstractHydrograph,
-    AbstractRoute, AbstractHydroRoute, AbstractModel
+export AbstractComponent, # base type
+    AbstractHydroFlux, AbstractNeuralFlux, AbstractStateFlux, # flux types
+    AbstractElement, # element types
+    AbstractBucket, # bucket types
+    AbstractHydrograph, # hydrograph types
+    AbstractRoute, AbstractHydroRoute, # route types
+    AbstractModel # model types
 
 export get_name, get_input_names, get_output_names, get_param_names, get_state_names, get_nn_names
 export get_exprs, get_inputs, get_outputs, get_params, get_nns, get_vars
@@ -58,7 +61,6 @@ include("utils/attribute.jl")
 include("utils/display.jl")
 include("utils/check.jl")
 include("utils/aggregation.jl")
-include("utils/expression.jl")
 include("utils/miscellaneous.jl")
 include("utils/build.jl")
 include("utils/smooth.jl")
@@ -124,7 +126,11 @@ AVAILABLE_MODELS = [
     :wetland,
     :xinanjiang
 ]
-export AVAILABLE_MODELS
+
+AVAILABLE_ROUTERS = [
+    :rapid
+]
+export AVAILABLE_MODELS, AVAILABLE_ROUTERS
 
 function load_model(model_name::Symbol)
     if model_name in AVAILABLE_MODELS
@@ -138,7 +144,18 @@ function load_model(model_name::Symbol)
     end
 end
 
-export load_model
+function load_router(router_name::Symbol)
+    if router_name in AVAILABLE_ROUTERS
+        if !isdefined(HydroModels, router_name)
+            router_path = joinpath(@__DIR__, "routers", "$(router_name).jl")
+            include(router_path)
+        end
+        return getfield(getfield(HydroModels, router_name), :router)
+    else
+        throw(ArgumentError("Router $router_name is not available"))
+    end
+end
+export load_model, load_router
 
 ## package version
 const version = VersionNumber(TOML.parsefile(joinpath(@__DIR__, "..", "Project.toml"))["version"])
