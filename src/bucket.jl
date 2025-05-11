@@ -52,9 +52,10 @@ struct HydroBucket{N,S} <: AbstractBucket
         inputs, outputs, states = get_vars(fluxes, dfluxes)
         params, nns = reduce(union, get_params.(vcat(fluxes, dfluxes))), reduce(union, get_nns.(fluxes))
         infos = (; inputs=inputs, outputs=outputs, states=states, params=params, nns=nns)
-        flux_funcs, ode_funcs = build_bucket_func(fluxes, dfluxes, infos)
+        single_flux_func, single_ode_func = build_single_bucket_func(fluxes, dfluxes, infos)
+        multi_flux_func, multi_ode_func = build_multi_bucket_func(fluxes, dfluxes, infos)
         bucket_name = isnothing(name) ? Symbol("##bucket#", hash(infos)) : name
-        return new{bucket_name,!isempty(states)}(fluxes, dfluxes, flux_funcs, ode_funcs, infos)
+        return new{bucket_name,!isempty(states)}(fluxes, dfluxes, [single_flux_func, multi_flux_func], [single_ode_func, multi_ode_func], infos)
     end
 end
 
@@ -164,7 +165,7 @@ function (ele::HydroBucket{N,true})(input::AbstractArray{T,2}, params::Component
         param_vec, initstates_, timeidx
     )
     #* concatenate states and fluxes
-    flux_output = ele.flux_funcs[1](eachslice(input, dims=1), eachslice(solved_states, dims=1), params)
+    flux_output = ele.flux_funcs[1](input, solved_states, params)
     vcat(solved_states, stack(flux_output, dims=1))
 end
 
@@ -188,29 +189,28 @@ function (ele::HydroBucket{N,true})(input::AbstractArray{T,3}, params::Component
     new_params = expand_component_params(params, get_param_names(ele), ptyidx) |> device
     params_vec, params_axes = Vector(new_params) |> device, getaxes(new_params)
 
-    #* prepare input function
-    itpfuncs = interp.(eachslice(input, dims=1), Ref(timeidx))
-
+    itpfuncs = interp(reshape(input, input_dims * num_nodes, :), timeidx)
     solved_states = solver(
         (u, p, t) -> ele.ode_funcs[2](
-            ntuple(i -> itpfuncs[i](t), input_dims),
-            eachslice(u, dims=1),
+            reshape(itpfuncs(t), input_dims, num_nodes),
+            u,
             ComponentVector(p, params_axes)
         ),
         params_vec, initstates_mat, timeidx
     )
 
     #* run other functions
-    output = ele.flux_funcs[2](eachslice(input, dims=1), eachslice(solved_states, dims=1), new_params)
+    output = ele.flux_funcs[2](input, solved_states, new_params)
     cat(solved_states, stack(output, dims=1), dims=1)
 end
 
 (ele::HydroBucket{N,false})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T,N} = begin
-    stack(ele.flux_funcs[1](eachslice(input, dims=1), nothing, params), dims=1)
+    stack(ele.flux_funcs[1](input, nothing, params), dims=1)
 end
 
 function (ele::HydroBucket{N,false})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T,N}
     ptyidx = get(kwargs, :ptyidx, 1:size(input, 2))
-    output = ele.flux_funcs[2](eachslice(input, dims=1), nothing, expand_component_params(params, ptyidx))
-    stack(output, dims=1)
+    device = get(kwargs, :device, identity)
+    new_params = expand_component_params(params, get_param_names(ele), ptyidx) |> device
+    stack(ele.flux_funcs[2](input, nothing, new_params), dims=1)
 end
