@@ -79,10 +79,12 @@ function generate_compute_calls(fluxes, ::Val{:state})
     compute_calls = []
     
     for f in fluxes
+        input_names, output_names, _ = get_var_names(f)
         if f isa AbstractNeuralFlux
-            append!(compute_calls, [:($(f.infos[:nn_inputs]) = [$(get_input_names(f)...)])])
-            push!(compute_calls, :($(f.infos[:nn_outputs]) = $(f.func)($(f.infos[:nn_inputs]), $(get_nn_names(f)[1]))))
-            append!(compute_calls, [:($(nm) = $(f.infos[:nn_outputs])[$i]) for (i, nm) in enumerate(get_output_names(f))])
+            nn_names = get_nn_names(f)[1]
+            append!(compute_calls, [:($(f.infos[:nn_inputs]) = [$(input_names...)])])
+            push!(compute_calls, :($(f.infos[:nn_outputs]) = $(f.func)($(f.infos[:nn_inputs]), $(nn_names))))
+            append!(compute_calls, [:($(nm) = $(f.infos[:nn_outputs])[$i]) for (i, nm) in enumerate(output_names)])
         else
             # Process regular flux
             append!(compute_calls, [:($nm = $(toexpr(expr))) for (nm, expr) in zip(get_output_names(f), f.exprs)])

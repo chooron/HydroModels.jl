@@ -107,7 +107,7 @@ function (solver::ManualSolver{false})(
         new_states = du_func(last_state, pas, t) .+ last_state
         return vcat(states_list, [new_states]), new_states
     end
-    states_vec, _ = foldl_init(recur_op, timeidx)
+    states_vec, _ = Lux.foldl_init(recur_op, timeidx)
     stack(states_vec, dims=N + 1)
 end
 

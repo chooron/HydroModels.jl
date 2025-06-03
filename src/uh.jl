@@ -124,7 +124,7 @@ macro unithydro(args...)
     configs = configs_expr !== nothing ? configs_expr : default_configs
     params_expr = Expr(:call, :reduce, :union, Expr(:call, :map,
         Expr(:->, :val, quote
-            Num.(filter(x -> isparameter(x), get_variables(val)))
+            HydroModels.Num.(filter(x -> HydroModels.isparameter(x), HydroModels.get_variables(val)))
         end),
         Expr(:vect, cond_values...)
     ))

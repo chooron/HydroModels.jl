@@ -3,11 +3,9 @@ module HydroModels
 ## External packages
 # common packages
 using Reexport
-@reexport using ComponentArrays
 using LinearAlgebra
 using SparseArrays
 using Random
-using TOML
 
 # runtime generated functions
 using RuntimeGeneratedFunctions
@@ -15,18 +13,19 @@ RuntimeGeneratedFunctions.init(@__MODULE__)
 
 # Symbolic building
 using Symbolics
-using Symbolics: tosymbol, unwrap
+using Symbolics: tosymbol, unwrap, wrap, Num, Symbolic, @variables, get_variables
 using SymbolicUtils.Code
-@reexport using ModelingToolkit: @variables, @parameters, Num, isparameter, get_variables
+import SymbolicUtils: symtype, term, hasmetadata, issym
+
 # graph compute
 using Graphs
 
 # deep learning
 using Lux
-using Lux: foldl_init
 using NNlib
 
 # SciML ecosystem
+@reexport using ComponentArrays
 @reexport using DataInterpolations
 using OrdinaryDiffEq
 using SciMLSensitivity
@@ -57,6 +56,9 @@ export get_name, get_input_names, get_output_names, get_param_names, get_state_n
 export get_exprs, get_inputs, get_outputs, get_params, get_nns, get_vars
 
 # utils
+include("utils/parameters.jl") # parameters.jl in ModelingToolkit
+export @variables, @parameters
+
 include("utils/attribute.jl")
 include("utils/display.jl")
 include("utils/check.jl")
@@ -156,8 +158,5 @@ function load_router(router_name::Symbol)
     end
 end
 export load_model, load_router
-
-## package version
-const version = VersionNumber(TOML.parsefile(joinpath(@__DIR__, "..", "Project.toml"))["version"])
 
 end # module HydroModels
