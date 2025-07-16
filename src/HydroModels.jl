@@ -84,6 +84,8 @@ include("uh.jl")
 export UnitHydrograph, @unithydro
 include("model.jl")
 export HydroModel, @hydromodel
+include("group.jl")
+export GroupHydroFlux, @grouphydroflux
 
 AVAILABLE_MODELS = [
     :alpine1,

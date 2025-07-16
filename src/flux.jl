@@ -87,7 +87,6 @@ macro hydroflux(args...)
     elseif Meta.isexpr(eqs_expr, :for)
         loop_var = eqs_expr.args[1].args[1]
         range_expr = eqs_expr.args[1].args[2]
-        loop_body = eqs_expr.args[2]
         range_val = if Meta.isexpr(range_expr, :call) && range_expr.args[1] == :(:)
             if length(range_expr.args) == 3
                 range_expr.args[2]:range_expr.args[3]
@@ -97,11 +96,12 @@ macro hydroflux(args...)
         else
             eval(range_expr)
         end
-        all_equations = []
+        loop_body = eqs_expr.args[2]
         if !Meta.isexpr(loop_body, :block)
             loop_body = Expr(:block, loop_body)
         end
         equations = filter(x -> !(x isa LineNumberNode) && !Meta.isexpr(x, :line), loop_body.args)
+        all_equations = []
         for i_val in range_val
             for eq in equations
                 new_eq = deepcopy(eq)
@@ -115,17 +115,17 @@ macro hydroflux(args...)
     end
 
     return esc(quote
-        Num = HydroModels.Num
+        HNum = HydroModels.Num
         equations = $vect_eqs_expr
-        lhs_terms = Num.([eq.lhs for eq in equations])
-        rhs_terms = Num.([eq.rhs for eq in equations])
+        lhs_terms = HNum.([eq.lhs for eq in equations])
+        rhs_terms = HNum.([eq.rhs for eq in equations])
 
-        all_vars = Num.(mapreduce(HydroModels.get_variables, union, rhs_terms, init=Set{Num}()))
-        inputs = Num.(filter(x -> !HydroModels.isparameter(x), collect(all_vars)))
-        params = Num.(filter(x -> HydroModels.isparameter(x), collect(all_vars)))
+        all_vars = HNum.(mapreduce(HydroModels.get_variables, union, rhs_terms, init=Set{HNum}()))
+        inputs = HNum.(filter(x -> !HydroModels.isparameter(x), collect(all_vars)))
+        params = HNum.(filter(x -> HydroModels.isparameter(x), collect(all_vars)))
         inputs = setdiff(inputs, lhs_terms)
 
-        HydroFlux(inputs, lhs_terms, params, exprs=Num.(rhs_terms), name=$(name))
+        HydroFlux(inputs, lhs_terms, params, exprs=rhs_terms, name=$(name))
     end)
 end
 
@@ -330,13 +330,13 @@ macro stateflux(args...)
     end
 
     return esc(quote
-        Num = HydroModels.Num
-        all_vars = Num.(HydroModels.get_variables($rhs))
-        inputs = Num.(filter(x -> !HydroModels.isparameter(x), collect(all_vars)))
-        params = Num.(filter(x -> HydroModels.isparameter(x), collect(all_vars)))
+        HNum = HydroModels.Num
+        all_vars = HNum.(HydroModels.get_variables($rhs))
+        inputs = HNum.(filter(x -> !HydroModels.isparameter(x), collect(all_vars)))
+        params = HNum.(filter(x -> HydroModels.isparameter(x), collect(all_vars)))
         inputs = setdiff(inputs, only($lhs))
 
-        StateFlux(inputs, only($lhs), params, expr=Num($rhs), name=$(name))
+        StateFlux(inputs, only($lhs), params, expr=HNum($rhs), name=$(name))
     end)
 end
 

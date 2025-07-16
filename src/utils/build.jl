@@ -16,9 +16,9 @@ function extract_names(infos)
     output_names = length(infos.outputs) == 0 ? [] : tosymbol.(infos.outputs)
     state_names = length(infos.states) == 0 ? [] : tosymbol.(infos.states)
     param_names = length(infos.params) == 0 ? [] : tosymbol.(infos.params)
-    
-    return (input_names=input_names, output_names=output_names, 
-            state_names=state_names, param_names=param_names)
+
+    return (input_names=input_names, output_names=output_names,
+        state_names=state_names, param_names=param_names)
 end
 
 """
@@ -77,7 +77,7 @@ Generates computation calls for state mode (scalar inputs and outputs).
 """
 function generate_compute_calls(fluxes, ::Val{:state})
     compute_calls = []
-    
+
     for f in fluxes
         input_names, output_names, _ = get_var_names(f)
         if f isa AbstractNeuralFlux
@@ -90,7 +90,7 @@ function generate_compute_calls(fluxes, ::Val{:state})
             append!(compute_calls, [:($nm = $(toexpr(expr))) for (nm, expr) in zip(get_output_names(f), f.exprs)])
         end
     end
-    
+
     return compute_calls
 end
 
@@ -101,7 +101,7 @@ Generates computation calls for flux mode (vectorized inputs and outputs).
 """
 function generate_compute_calls(fluxes, ::Val{:flux})
     compute_calls = []
-    
+
     for f in fluxes
         input_names, output_names, _ = get_var_names(f)
         if f isa AbstractNeuralFlux
@@ -114,7 +114,7 @@ function generate_compute_calls(fluxes, ::Val{:flux})
             append!(compute_calls, [:($nm = @. $(simplify_expr(toexpr(expr)))) for (nm, expr) in zip(output_names, f.exprs)])
         end
     end
-    
+
     return compute_calls
 end
 
@@ -125,7 +125,7 @@ Generates computation calls for multi-state mode (batch processing for state cal
 """
 function generate_compute_calls(fluxes, ::Val{:multi_state})
     compute_calls = []
-    
+
     for f in fluxes
         input_names, output_names, _ = get_var_names(f)
         if f isa AbstractNeuralFlux
@@ -138,7 +138,7 @@ function generate_compute_calls(fluxes, ::Val{:multi_state})
             append!(compute_calls, [:($nm = @. $(simplify_expr(toexpr(expr)))) for (nm, expr) in zip(output_names, f.exprs)])
         end
     end
-    
+
     return compute_calls
 end
 
@@ -149,7 +149,7 @@ Generates computation calls for multi-flux mode (multi-dimensional batch process
 """
 function generate_compute_calls(fluxes, ::Val{:multi_flux})
     compute_calls = []
-    
+
     for f in fluxes
         input_names, output_names, _ = get_var_names(f)
         if f isa AbstractNeuralFlux
@@ -162,7 +162,7 @@ function generate_compute_calls(fluxes, ::Val{:multi_flux})
             append!(compute_calls, [:($nm = @. $(simplify_expr(toexpr(expr)))) for (nm, expr) in zip(output_names, f.exprs)])
         end
     end
-    
+
     return compute_calls
 end
 
@@ -179,7 +179,7 @@ Generates return statements based on mode, dispatching to specialized functions.
 # Returns
 - Return expression
 """
-@inline function generate_return_expression(;output_names=nothing, dfluxes=nothing, mode=:normal)
+@inline function generate_return_expression(; output_names=nothing, dfluxes=nothing, mode=:normal)
     generate_return_expression(output_names, dfluxes, Val(mode))
 end
 
@@ -236,11 +236,11 @@ Generates a runtime function for flux calculations based on symbolic expressions
 """
 function build_flux_func(inputs::Vector{Num}, outputs::Vector{Num}, params::Vector{Num}, exprs::Vector{Num})
     names = (
-        input_names = length(inputs) == 0 ? [] : tosymbol.(inputs),
-        output_names = length(outputs) == 0 ? [] : tosymbol.(outputs),
-        param_names = length(params) == 0 ? [] : tosymbol.(params)
+        input_names=length(inputs) == 0 ? [] : tosymbol.(inputs),
+        output_names=length(outputs) == 0 ? [] : tosymbol.(outputs),
+        param_names=length(params) == 0 ? [] : tosymbol.(params)
     )
-    
+
     flux_exprs = map(expr -> :(@. $(simplify_expr(toexpr(expr)))), exprs)
     input_assign_calls = generate_variable_assignments(names.input_names)
     params_assign_calls = generate_param_assignments(names.param_names)
@@ -266,7 +266,7 @@ Builds runtime functions for flux calculations and state differentials in a hydr
 """
 function build_single_bucket_func(fluxes::Vector{<:AbstractFlux}, dfluxes::Vector{<:AbstractStateFlux}, infos::NamedTuple)
     names = extract_names(infos)
-    
+
     # Define variable assignments
     input_define_calls_1 = generate_variable_assignments(names.input_names, dims=0)
     state_define_calls_1 = generate_variable_assignments(names.state_names, dims=0, target=:states)
@@ -276,13 +276,13 @@ function build_single_bucket_func(fluxes::Vector{<:AbstractFlux}, dfluxes::Vecto
     nn_params_assign_calls = generate_nn_assignments(filter(f -> f isa AbstractNeuralFlux, fluxes))
     define_calls_1 = [input_define_calls_1..., state_define_calls_1..., params_assign_calls..., nn_params_assign_calls...]
     define_calls_2 = [input_define_calls_2..., state_define_calls_2..., params_assign_calls..., nn_params_assign_calls...]
-    
+
     # Generate computation calls
     flux_compute_calls = generate_compute_calls(fluxes, :flux)
-    
+
     # Return expression
     return_flux = generate_return_expression(output_names=names.output_names, mode=:normal)
-    
+
     # Create function expression
     flux_func_expr = :(function (inputs, states, pas)
         $([:(Base.@_inline_meta)]...)
@@ -291,7 +291,7 @@ function build_single_bucket_func(fluxes::Vector{<:AbstractFlux}, dfluxes::Vecto
         $(return_flux)
     end)
     generated_flux_func = @RuntimeGeneratedFunction(flux_func_expr)
-    
+
     # If state variables exist, create differential function
     if !isempty(names.state_names)
         state_compute_calls = generate_compute_calls(fluxes, :state)
@@ -316,26 +316,26 @@ Builds runtime functions for multi-dimensional batch processing in a hydrologica
 """
 function build_multi_bucket_func(fluxes::Vector{<:AbstractFlux}, dfluxes::Vector{<:AbstractStateFlux}, infos::NamedTuple)
     names = extract_names(infos)
-    
+
     # Define variable assignments for different dimensions
     input_define_calls_1 = generate_variable_assignments(names.input_names, dims=1)
     state_define_calls_1 = generate_variable_assignments(names.state_names, dims=1, target=:states)
-    
+
     input_define_calls_2 = generate_variable_assignments(names.input_names, dims=2)
     state_define_calls_2 = generate_variable_assignments(names.state_names, dims=2, target=:states)
-    
+
     params_assign_calls = generate_param_assignments(names.param_names)
     nn_params_assign_calls = generate_nn_assignments(filter(f -> f isa AbstractNeuralFlux, fluxes))
-    
+
     define_calls_1 = [input_define_calls_1..., state_define_calls_1..., params_assign_calls..., nn_params_assign_calls...]
     define_calls_2 = [input_define_calls_2..., state_define_calls_2..., params_assign_calls..., nn_params_assign_calls...]
-    
+
     # Generate computation calls
     multi_flux_compute_calls = generate_compute_calls(fluxes, :multi_flux)
-    
+
     # Return expression
     return_flux = generate_return_expression(output_names=names.output_names, mode=:normal)
-    
+
     # Create multi-dimensional flux function
     multi_flux_func_expr = :(function (inputs, states, pas)
         $([:(Base.@_inline_meta)]...)
@@ -344,7 +344,7 @@ function build_multi_bucket_func(fluxes::Vector{<:AbstractFlux}, dfluxes::Vector
         $(return_flux)
     end)
     generated_multi_flux_func = @RuntimeGeneratedFunction(multi_flux_func_expr)
-    
+
     # If state variables exist, create multi-dimensional differential function
     if !isempty(names.state_names)
         multi_state_compute_calls = generate_compute_calls(fluxes, :multi_state)
@@ -369,26 +369,26 @@ Builds routing calculation functions for a hydrological model.
 """
 function build_route_func(fluxes::AbstractVector{<:AbstractFlux}, dfluxes::AbstractVector{<:AbstractStateFlux}, infos::NamedTuple)
     names = extract_names(infos)
-    
+
     # Define variable assignments for different dimensions
     input_define_calls_1 = generate_variable_assignments(names.input_names, dims=1)
     state_define_calls_1 = generate_variable_assignments(names.state_names, dims=1, target=:states)
-    
+
     input_define_calls_2 = generate_variable_assignments(names.input_names, dims=2)
     state_define_calls_2 = generate_variable_assignments(names.state_names, dims=2, target=:states)
-    
+
     params_assign_calls = generate_param_assignments(names.param_names)
     nn_params_assign_calls = generate_nn_assignments(filter(f -> f isa AbstractNeuralFlux, fluxes))
-    
+
     define_calls_1 = [input_define_calls_1..., state_define_calls_1..., params_assign_calls..., nn_params_assign_calls...]
     define_calls_2 = [input_define_calls_2..., state_define_calls_2..., params_assign_calls..., nn_params_assign_calls...]
-    
+
     # Generate computation calls
     multi_flux_compute_calls = generate_compute_calls(fluxes, :multi_flux)
-    
+
     # Return expression
     return_flux = generate_return_expression(output_names=names.output_names, mode=:normal)
-    
+
     # Create multi-dimensional flux function
     multi_flux_func_expr = :(function (inputs, states, pas)
         $([:(Base.@_inline_meta)]...)
@@ -397,7 +397,7 @@ function build_route_func(fluxes::AbstractVector{<:AbstractFlux}, dfluxes::Abstr
         $(return_flux)
     end)
     generated_multi_flux_func = @RuntimeGeneratedFunction(multi_flux_func_expr)
-    
+
     # If state variables exist, create multi-dimensional differential function
     multi_state_compute_calls = generate_compute_calls(fluxes, :multi_state)
     return_multi_state = generate_return_expression(output_names=names.output_names, dfluxes=dfluxes, mode=:output_state)
@@ -419,20 +419,20 @@ Builds a neural network layer function for a hydrological model.
 """
 function build_nnlayer_func(fluxes::Vector{<:AbstractHydroFlux}, dfluxes::Vector{<:AbstractStateFlux}, infos::NamedTuple)
     names = extract_names(infos)
-    
+
     # Define variable assignments
     input_define_calls = generate_variable_assignments(names.input_names, dims=1)
     state_define_calls = generate_variable_assignments(names.state_names, target=:states)
     params_assign_calls = generate_param_assignments(names.param_names)
     nn_params_assign_calls = [:($(nflux.infos[:nns][1]) = pas.nns.$(nflux.infos[:nns][1])) for nflux in filter(f -> f isa AbstractNeuralFlux, fluxes)]
     define_calls = [input_define_calls..., state_define_calls..., params_assign_calls..., nn_params_assign_calls...]
-    
+
     # Generate computation calls
     compute_calls = generate_compute_calls(fluxes, :flux)
-    
+
     # Return expression
     return_flux = generate_return_expression(output_names=names.output_names, dfluxes=dfluxes, mode=:output_state)
-    
+
     # Create function expression
     func_expr = :(function (inputs, pas, states)
         $([:(Base.@_inline_meta)]...)
@@ -440,7 +440,7 @@ function build_nnlayer_func(fluxes::Vector{<:AbstractHydroFlux}, dfluxes::Vector
         $(compute_calls...)
         $(return_flux)
     end)
-    
+
     return @RuntimeGeneratedFunction(func_expr)
 end
 
@@ -454,7 +454,7 @@ function build_uh_func(uh_pairs::AbstractVector{<:Pair}, params::AbstractVector,
     values_rev = reverse(last.(uh_pairs))
     param_names = tosymbol.(params)
     params_assign_calls = generate_param_assignments(param_names)
-    
+
     values_exprs = map(eachindex(values_rev)) do i
         :(
             if $(toexpr(conditions_rev[i])) < t < $(toexpr(conditions_rev[i+1]))
@@ -469,7 +469,7 @@ function build_uh_func(uh_pairs::AbstractVector{<:Pair}, params::AbstractVector,
         $(values_exprs...)
         $(default_return)
     end)
-    
+
     max_lag_expr = :(function (pas)
         $(params_assign_calls...)
         ceil($(toexpr(max_lag)))

@@ -378,10 +378,10 @@ function Base.show(io::IO, model::AbstractModel)
         printstyled(io, "Routes:  ", color=:light_cyan)
         println(io, length(routes_in_model), " route", length(routes_in_model) == 1 ? "" : "s")
 
-        # Print routes count
+        # Print uh count
         print(io, "│   ")
         printstyled(io, "UnitHydrographs:  ", color=:light_cyan)
-        println(io, length(uh_in_model), " route", length(uh_in_model) == 1 ? "" : "s")
+        println(io, length(uh_in_model), " uh", length(uh_in_model) == 1 ? "" : "s")
         
         printstyled(io, "└─", color=:light_blue)
         println(io)

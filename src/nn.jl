@@ -49,6 +49,7 @@ struct NeuralFlux{N} <: AbstractNeuralFlux
     ) where {T<:Num}
         #* Check chain name
         chain_name = chain_name === nothing ? chain.name : chain_name
+        @assert !isnothing(chain_name) "`chain_name` must be provided for NeuralFlux, or set `name` in chain"
         ps = LuxCore.initialparameters(Random.default_rng(), chain)
         ps_axes = getaxes(ComponentVector(ps))
         nn_func = (x, p) -> LuxCore.apply(chain, x, ComponentVector(p, ps_axes), st)[1]

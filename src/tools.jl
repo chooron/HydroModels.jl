@@ -68,9 +68,10 @@ where stability and computational efficiency are prioritized over high-order acc
 """
 struct ManualSolver{mutable}
     dev
+    nearzero
 
-    function ManualSolver(; dev=identity, mutable::Bool=false)
-        return new{mutable}(dev)
+    function ManualSolver(; dev=identity, nearzero=1e-6, mutable::Bool=false)
+        return new{mutable}(dev, nearzero)
     end
 end
 
@@ -84,9 +85,10 @@ function (solver::ManualSolver{true})(
     T1 = promote_type(eltype(pas), eltype(initstates))
     states_results = zeros(T1, size(initstates)..., length(timeidx)) |> solver.dev
     tmp_initstates = copy(initstates)
+    nearzero = solver.nearzero |> eltype(initstates)
     for (i, t) in enumerate(timeidx)
         tmp_du = du_func(tmp_initstates, pas, t)
-        tmp_initstates = tmp_initstates .+ tmp_du
+        tmp_initstates = max.(nearzero, tmp_initstates .+ tmp_du)
         states_results[ntuple(Returns(Colon()), N)..., i] .= tmp_initstates
     end
     states_results
@@ -99,12 +101,13 @@ function (solver::ManualSolver{false})(
     timeidx::AbstractVector;
     kwargs...
 ) where {T,N}
+    nearzero = solver.nearzero |> eltype(initstates)
     function recur_op(::Nothing, t)
-        new_states = du_func(initstates, pas, t) .+ initstates
+        new_states = max.(nearzero, du_func(initstates, pas, t) .+ initstates)
         return [new_states], new_states
     end
     function recur_op((states_list, last_state), t)
-        new_states = du_func(last_state, pas, t) .+ last_state
+        new_states = max.(nearzero, du_func(last_state, pas, t) .+ last_state)
         return vcat(states_list, [new_states]), new_states
     end
     states_vec, _ = Lux.foldl_init(recur_op, timeidx)
@@ -119,7 +122,8 @@ A custom ODEProblem solver
     alg = Tsit5()
     sensealg = GaussAdjoint(autojacvec=EnzymeVJP())
     dev = identity
-    kwargs::Dict = Dict(:reltol=>1e-3, :abstol=>1e-3) # must be a Dict
+    nearzero = 1e-6
+    kwargs::Dict = Dict(:reltol => 1e-3, :abstol => 1e-3)
 end
 
 function (solver::ODESolver)(
@@ -128,18 +132,22 @@ function (solver::ODESolver)(
     initstates::AbstractArray,
     timeidx::AbstractVector;
 )
-    ode_func!(du, u, p, t) = begin
-        du[:] = du_func(u, p, t)
-        nothing
+    nearzero = solver.nearzero |> eltype(initstates)
+    #* define none-zeros callback
+    condition(u, t, integrator) = u[1]
+    function affect!(integrator)
+        integrator.u .= nearzero
     end
-
+    function ode_func!(du, u, p, t)
+        du[:] = du_func(u, p, t)
+    end
     #* build problem
     prob = ODEProblem{true}(ode_func!, initstates, (timeidx[1], timeidx[end]), params)
+    cb = ContinuousCallback(condition, affect!, save_positions=(false, false))
     #* solve problem
     sol = solve(
-        prob, solver.alg, saveat=timeidx,
-        sensealg=solver.sensealg;
-        solver.kwargs...
+        prob, solver.alg, saveat=timeidx, callback=cb,
+        sensealg=solver.sensealg; solver.kwargs...
     )
     if SciMLBase.successful_retcode(sol)
         sol_arr = Array(sol)
@@ -156,6 +164,7 @@ A custom DiscreteProblem solver
 """
 @kwdef struct DiscreteSolver
     alg = FunctionMap{true}()
+    nearzero = 1e-6
     dev = identity
 end
 
@@ -165,14 +174,20 @@ function (solver::DiscreteSolver)(
     initstates::AbstractArray,
     timeidx::AbstractVector;
 )
-    ode_func!(du, u, p, t) = begin
+    nearzero = solver.nearzero |> eltype(initstates)
+    #* define none-zeros callback
+    condition(u, t, integrator) = u[1]
+    function affect!(integrator)
+        integrator.u .= nearzero
+    end
+    function ode_func!(du, u, p, t)
         du[:] = du_func(u, p, t)
-        nothing
     end
     #* build problem
     prob = DiscreteProblem(ode_func!, initstates, (timeidx[1], timeidx[end]), params)
+    cb = ContinuousCallback(condition, affect!, save_positions=(false, false))
     #* solve problem
-    sol = solve(prob, solver.alg, saveat=timeidx)
+    sol = solve(prob, solver.alg, saveat=timeidx, callback=cb)
     if SciMLBase.successful_retcode(sol)
         sol_arr = Array(sol)
     else

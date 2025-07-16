@@ -24,10 +24,8 @@ UnitHydrograph(inputs, params; uh_pairs, max_lag, outputs=[], configs=(solvetype
 - Used to convolve input time series with the defined unit hydrograph.
 """
 struct UnitHydrograph{N,ST} <: AbstractHydrograph
-    "The unit hydrograph function"
-    uh_func::Function
-    "calculate max lag"
-    max_lag_func::Function
+    "calculate weight of unit hydrograph"
+    weight_func::Function
     "A named tuple containing information about inputs, outputs, parameters, and states"
     infos::NamedTuple
 
@@ -45,11 +43,17 @@ struct UnitHydrograph{N,ST} <: AbstractHydrograph
             tosymbol.(get(configs, :outputs, Num[]))
         end
         outputs = map(name -> only(@variables $name), output_names)
+        solvetype = get(configs, :solvetype, :DISCRETE)
+        min_weight_prop = get(configs, :min_weight_prop, 0.001)
+        @assert solvetype in [:DISCRETE, :SPARSE, :DSP] "solvetype must be one of [:DISCRETE, :SPARSE, :DSP]"
+        solvetype == :DSP && @warn "The DSP solver is not supported for Zygote, please use :DISCRETE or :SPARSE instead."
+        weight_func(pas) = begin
+            weights = map(t -> uh_func(t, pas), 1:max_lag_func(pas))[1:end-1]
+            filter(x -> x > maximum(weights) * min_weight_prop, weights)
+        end
         infos = (; inputs=inputs, outputs=outputs, params=params)
         uh_name = isnothing(name) ? Symbol("##uh#", hash(infos)) : name
-        solvetype = get(configs, :solvetype, :DISCRETE)
-        @assert solvetype in [:DISCRETE, :SPARSE] "solvetype must be one of [:DISCRETE, :SPARSE]"
-        return new{uh_name,solvetype}(uh_func, max_lag_func, infos)
+        return new{uh_name,solvetype}(weight_func, infos)
     end
 
     function UnitHydrograph(
@@ -58,6 +62,7 @@ struct UnitHydrograph{N,ST} <: AbstractHydrograph
         configs::NamedTuple=(solvetype=:DISCRETE, suffix=:_lag, outputs=Num[]),
         name::Union{Symbol,Nothing}=nothing,
     ) where {T<:Num}
+
         uh_func, max_lag_func = build_uh_func(uh_pairs, params, max_lag)
         return UnitHydrograph(inputs, params, uh_func=uh_func, max_lag_func=max_lag_func, configs=configs, name=name)
     end
@@ -169,13 +174,11 @@ routed_flow = uh(input_runoff, parameters)
 """
 (::UnitHydrograph)(::AbstractVector, ::ComponentVector; kwargs...) = @error "UnitHydrograph is not support for single timepoint"
 
-function (flux::UnitHydrograph{N,:DISCRETE})(input::AbstractArray{T,2}, pas::ComponentVector; kwargs...) where {T,N}
-    solver = get(kwargs, :solver, ManualSolver(mutable=true))
-    timeidx = get(kwargs, :timeidx, collect(1:size(input, 2)))
-    interp = get(kwargs, :interp, DirectInterpolation)
-    interp_func = interp(input, timeidx)
-    #* prepare the initial states
-    uh_weight = map(t -> flux.uh_func(t, pas), 1:flux.max_lag_func(pas))[1:end-1]
+function (uh::UnitHydrograph{N,:DISCRETE})(input::AbstractArray{T,2}, pas::ComponentVector; kwargs...) where {T,N}
+    solver = ManualSolver(mutable=true)
+    timeidx = collect(1:size(input, 2))
+    interp_func = DirectInterpolation(input, timeidx)
+    uh_weight = uh.weight_func(pas)
     if length(uh_weight) == 0
         @warn "The unit hydrograph weight is empty, please check the unit hydrograph function"
         return input
@@ -190,9 +193,8 @@ function (flux::UnitHydrograph{N,:DISCRETE})(input::AbstractArray{T,2}, pas::Com
     end
 end
 
-function (flux::UnitHydrograph{N,:SPARSE})(input::AbstractArray{T,2}, pas::ComponentVector; kwargs...) where {T,N}
-    uh_weight = map(t -> flux.uh_func(t, pas), 1:flux.max_lag_func(pas))[1:end-1]
-
+function (uh::UnitHydrograph{N,:SPARSE})(input::AbstractArray{T,2}, pas::ComponentVector; kwargs...) where {T,N}
+    uh_weight = uh.weight_func(pas)
     if length(uh_weight) == 0
         @warn "The unit hydrograph weight is empty, please check the unit hydrograph function"
         return input
@@ -204,6 +206,16 @@ function (flux::UnitHydrograph{N,:SPARSE})(input::AbstractArray{T,2}, pas::Compo
             sum(spdiagm(uh_result...), dims=2)[1:end-length(uh_weight)+1]
         end
         return stack(sparse_compute.(eachslice(input, dims=1)), dims=1)
+    end
+end
+
+function (uh::UnitHydrograph{N,:DSP})(input::AbstractArray{T,2}, pas::ComponentVector; kwargs...) where {T,N}
+    uh_weight = uh.weight_func(pas)
+    if length(uh_weight) == 0
+        @warn "The unit hydrograph weight is empty, please check the unit hydrograph function"
+        return input
+    else
+        stack(conv.(eachslice(input, dims=1), Ref(uh_weight)), dims=1)
     end
 end
 
