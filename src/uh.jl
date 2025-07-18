@@ -25,46 +25,27 @@ UnitHydrograph(inputs, params; uh_pairs, max_lag, outputs=[], configs=(solvetype
 """
 struct UnitHydrograph{N,ST} <: AbstractHydrograph
     "calculate weight of unit hydrograph"
-    weight_func::Function
+    wfunc::Function
     "A named tuple containing information about inputs, outputs, parameters, and states"
     infos::NamedTuple
 
     function UnitHydrograph(
-        inputs::AbstractVector{T}, params::AbstractVector{T};
-        uh_func::Function, max_lag_func::Function,
-        configs::NamedTuple=(solvetype=:DISCRETE, suffix=:_lag, outputs=Num[]),
-        name::Union{Symbol,Nothing}=nothing,
+        inputs::AbstractVector{T}, outputs::AbstractVector{T}, params::AbstractVector{T};
+        uh_pairs::AbstractVector{<:Pair}, max_lag=uh_pairs[1][1], name::Optional{Symbol}=nothing,
+        kwargs...
     ) where {T<:Num}
-        #* Setup the name information of the hydroroutement
-        input_names = tosymbol.(inputs)
-        output_names = if length(get(configs, :outputs, Num[])) == 0
-            Symbol.(input_names, get(configs, :suffix, :_lag))
-        else
-            tosymbol.(get(configs, :outputs, Num[]))
-        end
-        outputs = map(name -> only(@variables $name), output_names)
-        solvetype = get(configs, :solvetype, :DISCRETE)
-        min_weight_prop = get(configs, :min_weight_prop, 0.001)
+        uh_func, max_lag_func = build_uh_func(uh_pairs, params, max_lag)
+        solvetype = get(kwargs, :solvetype, :DISCRETE)
         @assert solvetype in [:DISCRETE, :SPARSE, :DSP] "solvetype must be one of [:DISCRETE, :SPARSE, :DSP]"
         solvetype == :DSP && @warn "The DSP solver is not supported for Zygote, please use :DISCRETE or :SPARSE instead."
-        weight_func(pas) = begin
+        min_weight_prop = get(kwargs, :min_weight_prop, 1e-6)
+        wfunc(pas) = begin
             weights = map(t -> uh_func(t, pas), 1:max_lag_func(pas))[1:end-1]
             filter(x -> x > maximum(weights) * min_weight_prop, weights)
         end
         infos = (; inputs=inputs, outputs=outputs, params=params)
         uh_name = isnothing(name) ? Symbol("##uh#", hash(infos)) : name
-        return new{uh_name,solvetype}(weight_func, infos)
-    end
-
-    function UnitHydrograph(
-        inputs::AbstractVector{T}, params::AbstractVector{T},
-        uh_pairs::AbstractVector{<:Pair}, max_lag=uh_pairs[1][1],
-        configs::NamedTuple=(solvetype=:DISCRETE, suffix=:_lag, outputs=Num[]),
-        name::Union{Symbol,Nothing}=nothing,
-    ) where {T<:Num}
-
-        uh_func, max_lag_func = build_uh_func(uh_pairs, params, max_lag)
-        return UnitHydrograph(inputs, params, uh_func=uh_func, max_lag_func=max_lag_func, configs=configs, name=name)
+        return new{uh_name,solvetype}(wfunc, infos)
     end
 end
 
@@ -97,48 +78,54 @@ Defines a `UnitHydrograph` with the specified name, piecewise UH function defini
 macro unithydro(args...)
     name = length(args) == 1 ? nothing : args[1]
     expr = length(args) == 1 ? args[1] : args[2]
-    @assert Meta.isexpr(expr, :block) "Expected a begin...end block after unit hydrograph name"
+    @assert Meta.isexpr(expr, :block) "Expected a begin...end block"
+    uh_func_expr, uh_vars_expr,kwargs_vec = nothing, nothing, Expr[]
 
-    uh_func_expr, uh_vars_expr, configs_expr = nothing, nothing, nothing
     for arg in expr.args
-        if arg isa LineNumberNode
-            continue
-        elseif Meta.isexpr(arg, :(=)) && arg.args[1] == :uh_func
-            uh_func_expr = arg.args[2]
-        elseif Meta.isexpr(arg, :(=)) && arg.args[1] == :uh_vars
-            uh_vars_expr = arg.args[2]
-        elseif Meta.isexpr(arg, :(=)) && arg.args[1] == :configs
-            configs_expr = arg.args[2]
+        arg isa LineNumberNode && continue
+        if Meta.isexpr(arg, :(=))
+            key, value = arg.args[1], arg.args[2]
+            if key == :uh_func
+                uh_func_expr = value
+            elseif key == :uh_vars
+                uh_vars_expr = value
+            else
+                push!(kwargs_vec, Expr(:kw, key, value))
+            end
         end
     end
 
     @assert uh_func_expr !== nothing "Missing uh_func in unit hydrograph definition"
     @assert uh_vars_expr !== nothing "Missing uh_vars in unit hydrograph definition"
-    @assert Meta.isexpr(uh_func_expr, :block) "Expected a begin...end block for uh_func"
+    @assert Meta.isexpr(uh_vars_expr, :vect) "uh_vars must be a vector of Pairs, e.g., [in1 => out1, in2 => out2]"
+    uh_inputs_expr, uh_outputs_expr = Expr(:vect), Expr(:vect)
+
+    for pair_expr in uh_vars_expr.args
+        pair_expr isa LineNumberNode && continue
+        @assert Meta.isexpr(pair_expr, :call) && pair_expr.args[1] == :(=>) "Elements of uh_vars must be Pairs (=>)"
+        push!(uh_inputs_expr.args, pair_expr.args[2])
+        push!(uh_outputs_expr.args, pair_expr.args[3])
+    end
 
     uh_pairs, cond_values = Pair[], []
-    for expr in uh_func_expr.args
-        if expr isa LineNumberNode
-            continue
-        elseif expr.args[1] == :(=>)
-            push!(uh_pairs, expr.args[2] => expr.args[3])
-            push!(cond_values, expr.args[3])
+    for uh_expr in uh_func_expr.args
+        uh_expr isa LineNumberNode && continue
+        if Meta.isexpr(uh_expr, :call) && uh_expr.args[1] == :(=>)
+            push!(uh_pairs, uh_expr.args[2] => uh_expr.args[3])
+            push!(cond_values, uh_expr.args[3])
         end
     end
 
-    configs = configs_expr !== nothing ? configs_expr : default_configs
-    params_expr = Expr(:call, :reduce, :union, Expr(:call, :map,
-        Expr(:->, :val, quote
-            HydroModels.Num.(filter(x -> HydroModels.isparameter(x), HydroModels.get_variables(val)))
-        end),
-        Expr(:vect, cond_values...)
-    ))
-
     return esc(quote
+        HNum = HydroModels.Num
+        params_val = reduce(union, map(
+            val -> HNum.(filter(x -> HydroModels.isparameter(x), HydroModels.get_variables(val))),
+            [$(cond_values...)]
+        ))
         UnitHydrograph(
-            $uh_vars_expr, $params_expr,
-            $uh_pairs, $(uh_pairs[1][1]),
-            $configs, $(name)
+            $uh_inputs_expr, $uh_outputs_expr, params_val;
+            uh_pairs=$uh_pairs, max_lag=$(uh_pairs[1][1]), name=$(name),
+            $(kwargs_vec...)
         )
     end)
 end
@@ -178,13 +165,12 @@ function (uh::UnitHydrograph{N,:DISCRETE})(input::AbstractArray{T,2}, pas::Compo
     solver = ManualSolver(mutable=true)
     timeidx = collect(1:size(input, 2))
     interp_func = DirectInterpolation(input, timeidx)
-    uh_weight = uh.weight_func(pas)
+    uh_weight = uh.wfunc(pas)
     if length(uh_weight) == 0
         @warn "The unit hydrograph weight is empty, please check the unit hydrograph function"
         return input
     else
         update_func(i, u, p) = i .* p .+ [diff(u, dims=1); -u[end]]
-        #* solve the problem
         sol = solver((u, p, t) -> stack(update_func.(interp_func(t), eachslice(u, dims=1), Ref(p)), dims=1),
             uh_weight ./ sum(uh_weight),
             zeros(size(input, 1), length(uh_weight)), timeidx
@@ -194,7 +180,7 @@ function (uh::UnitHydrograph{N,:DISCRETE})(input::AbstractArray{T,2}, pas::Compo
 end
 
 function (uh::UnitHydrograph{N,:SPARSE})(input::AbstractArray{T,2}, pas::ComponentVector; kwargs...) where {T,N}
-    uh_weight = uh.weight_func(pas)
+    uh_weight = uh.wfunc(pas)
     if length(uh_weight) == 0
         @warn "The unit hydrograph weight is empty, please check the unit hydrograph function"
         return input
@@ -210,7 +196,7 @@ function (uh::UnitHydrograph{N,:SPARSE})(input::AbstractArray{T,2}, pas::Compone
 end
 
 function (uh::UnitHydrograph{N,:DSP})(input::AbstractArray{T,2}, pas::ComponentVector; kwargs...) where {T,N}
-    uh_weight = uh.weight_func(pas)
+    uh_weight = uh.wfunc(pas)
     if length(uh_weight) == 0
         @warn "The unit hydrograph weight is empty, please check the unit hydrograph function"
         return input

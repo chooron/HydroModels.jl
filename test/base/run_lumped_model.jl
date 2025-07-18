@@ -48,6 +48,11 @@ step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
         bucket_2
     end
 
+    multi_model = @hydromodel :multi_exphydro begin
+        multiply(bucket_1)
+        multiply(bucket_2)
+    end
+
     @test Set(HydroModels.get_input_names(model)) == Set([:temp, :lday, :prcp])
     @test Set(HydroModels.get_param_names(model)) == Set([:Tmin, :Tmax, :Df, :Smax, :f, :Qmax])
     @test Set(HydroModels.get_state_names(model)) == Set([:snowpack, :soilwater])
@@ -59,11 +64,15 @@ step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
 
     input_arr = repeat(reshape(input_mat, size(input_mat)[1], 1, size(input_mat)[2]), 1, 10, 1)
     node_names = [Symbol(:node_, i) for i in 1:10]
-    node_params = ComponentVector(f=fill(f_value, 10), Smax=fill(Smax_value, 10), Qmax=fill(Qmax_value, 10), Df=fill(Df_value, 10), Tmax=fill(Tmax_value, 10), Tmin=fill(Tmin_value, 10))
+    node_params = ComponentVector(
+        f=fill(f_value, 10), Smax=fill(Smax_value, 10),
+        Qmax=fill(Qmax_value, 10), Df=fill(Df_value, 10),
+        Tmax=fill(Tmax_value, 10), Tmin=fill(Tmin_value, 10)
+    )
     node_initstates = ComponentVector(snowpack=fill(snowpack_value, 10), soilwater=fill(soilwater_value, 10))
     node_pas = ComponentVector(params=node_params)
     config = (timeidx=ts, ptyidx=1:10, styidx=1:10)
-    result_arr = model(input_arr, node_pas; initstates=node_initstates, config=config)
+    result_arr = multi_model(input_arr, node_pas; initstates=node_initstates, config=config)
     @test size(result_arr) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), 10, length(ts))
 end
 
@@ -110,7 +119,7 @@ end
     end
 
 
-    uh_1 =  @unithydro :maxbas_uh begin
+    uh_1 = @unithydro :maxbas_uh begin
         uh_func = begin
             x4 => (t / x4)^2.5
         end
@@ -144,6 +153,14 @@ end
         uh_1
         uh_2
         rst_ele
+    end
+
+
+    multi_model = @hydromodel :multi_exphydro begin
+        multiply(prod_ele)
+        uh_1
+        uh_2
+        multiply(rst_ele)
     end
 
     @test Set(HydroModels.get_input_names(model)) == Set([:prcp, :ep])

@@ -195,3 +195,23 @@ function get_default_states(component::AbstractComponent, input::AbstractArray{T
     state_names = get_state_names(component)
     return ComponentVector(NamedTuple{Tuple(state_names)}(fill(zeros(T, size(input, 2)), length(state_names))))
 end
+
+function convert_to_namedtuple(
+    component::AbstractComponent, input::AbstractArray{T,2},
+)::NamedTuple where {T}
+    state_names = get_state_names(component)
+    output_names = get_output_names(component)
+    return NamedTuple{Tuple(vcat(state_names, output_names))}(eachslice(input, dims=1))
+end
+
+function convert_to_namedtuple(
+    component::AbstractComponent, input::AbstractArray{T,3},
+)::Vector{<:NamedTuple} where {T}
+    state_names = get_state_names(component)
+    output_names = get_output_names(component)
+    return map(eachslice(input, dims=2)) do
+        NamedTuple{Tuple(vcat(state_names, output_names))}(eachslice(input, dims=1))
+    end
+end
+
+export convert_to_namedtuple

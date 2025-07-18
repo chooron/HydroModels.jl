@@ -158,7 +158,6 @@ function generate_compute_calls(fluxes, ::Val{:multi_flux})
             push!(compute_calls, :($(f.infos[:nn_outputs]) = stack($(f.func).(eachslice($(f.infos[:nn_inputs]), dims=2), Ref($(nn_names))), dims=2)))
             append!(compute_calls, [:($(nm) = $(f.infos[:nn_outputs])[$i, :, :]) for (i, nm) in enumerate(output_names)])
         else
-            # Process regular flux
             append!(compute_calls, [:($nm = @. $(simplify_expr(toexpr(expr)))) for (nm, expr) in zip(output_names, f.exprs)])
         end
     end

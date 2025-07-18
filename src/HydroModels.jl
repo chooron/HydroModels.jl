@@ -28,7 +28,11 @@ using NNlib
 @reexport using ComponentArrays
 @reexport using DataInterpolations
 using OrdinaryDiffEq
+using DiffEqCallbacks
 using SciMLSensitivity
+
+# define Optional type
+const Optional{T} = Union{T, Nothing}
 
 abstract type AbstractComponent end
 
@@ -39,6 +43,8 @@ abstract type AbstractStateFlux <: AbstractFlux end
 
 abstract type AbstractElement <: AbstractComponent end
 abstract type AbstractBucket <: AbstractElement end
+abstract type AbstractHydroBucket <: AbstractBucket end
+abstract type AbstractNeuralBucket <: AbstractBucket end
 abstract type AbstractHydrograph <: AbstractElement end
 abstract type AbstractRoute <: AbstractElement end
 abstract type AbstractHydroRoute <: AbstractRoute end
@@ -47,7 +53,7 @@ abstract type AbstractModel <: AbstractComponent end
 export AbstractComponent, # base type
     AbstractHydroFlux, AbstractNeuralFlux, AbstractStateFlux, # flux types
     AbstractElement, # element types
-    AbstractBucket, # bucket types
+    AbstractHydroBucket, AbstractNeuralBucket, # bucket types
     AbstractHydrograph, # hydrograph types
     AbstractRoute, AbstractHydroRoute, # route types
     AbstractModel # model types
@@ -75,7 +81,7 @@ export ManualSolver, ODESolver, DiscreteSolver, DirectInterpolation
 include("flux.jl")
 export HydroFlux, StateFlux, @hydroflux, @stateflux
 include("bucket.jl")
-export HydroBucket, @hydrobucket
+export SingleHydroBucket, MultiHydroBucket, @hydrobucket, multiply
 include("nn.jl")
 export NeuralFlux, NeuralBucket, @neuralflux, @neuralbucket
 include("route.jl")
@@ -84,8 +90,8 @@ include("uh.jl")
 export UnitHydrograph, @unithydro
 include("model.jl")
 export HydroModel, @hydromodel
-include("group.jl")
-export GroupHydroFlux, @grouphydroflux
+include("miscellaneous.jl")
+export GroupHydroFlux, @grouphydroflux, FunctionElement, SummationElement
 
 AVAILABLE_MODELS = [
     :alpine1,

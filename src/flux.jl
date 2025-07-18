@@ -38,9 +38,11 @@ struct HydroFlux{N} <: AbstractHydroFlux
 
     function HydroFlux(
         inputs::Vector{T}, outputs::Vector{T}, params::Vector{T};
-        exprs::Vector{T}, name::Union{Symbol,Nothing}=nothing,
+        exprs::Vector{T}, name::Optional{Symbol}=nothing,
     ) where {T}
-        @assert length(exprs) == length(outputs) "The number of expressions and outputs must match, but got expressions: $(length(exprs)) and outputs: $(length(outputs))"
+        assert_msg = "The number of expressions and outputs must match" *
+                     " but got expressions: $(length(exprs)) and outputs: $(length(outputs))"
+        @assert length(exprs) == length(outputs) assert_msg
         flux_func = build_flux_func(inputs, outputs, params, exprs)
         infos = (; inputs=inputs, outputs=outputs, params=params)
         flux_name = isnothing(name) ? Symbol("##hydro_flux#", hash(infos)) : name
@@ -49,7 +51,7 @@ struct HydroFlux{N} <: AbstractHydroFlux
 
     function HydroFlux(
         fluxes::Pair{Vector{Num},Vector{Num}}, params::Vector{Num}=Num[];
-        exprs::Vector, name::Union{Symbol,Nothing}=nothing,
+        exprs::Vector, name::Optional{Symbol}=nothing,
     )
         return HydroFlux(fluxes[1], fluxes[2], params, exprs=exprs, name=name)
     end
@@ -184,7 +186,7 @@ output = flux(input, params, ptyidx=1:n_nodes)  # input: (2, n_nodes, timesteps)
 ```
 """
 function (flux::HydroFlux{N})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T,N}
-    reduce(hcat, flux.func(eachslice(input, dims=1), params)) |> permutedims
+    stack(flux.func(eachslice(input, dims=1), params), dims=1)
 end
 
 function (flux::HydroFlux{N})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T,N}
@@ -274,25 +276,24 @@ struct StateFlux{N} <: AbstractStateFlux
     infos::NamedTuple
 
     function StateFlux(
-        inputs::Vector{T},
-        state::T,
-        params::Vector{T}=T[];
-        expr::T,
-        name::Union{Symbol,Nothing}=nothing,
+        inputs::Vector{T}, state::T, params::Vector{T}=T[];
+        expr::T, name::Optional{Symbol}=nothing,
     ) where {T<:Num}
         infos = (; inputs=inputs, states=[state], params=params)
         flux_name = isnothing(name) ? Symbol("##state_flux#", hash(infos)) : name
         return new{flux_name}([expr], infos)
     end
     #* construct state flux with input fluxes and output fluxes
-    function StateFlux(fluxes::Pair{Vector{Num},Vector{Num}}, state::Num, name::Union{Symbol,Nothing}=nothing)
+    function StateFlux(fluxes::Pair{Vector{Num},Vector{Num}}, state::Num, name::Optional{Symbol}=nothing)
         expr = sum(fluxes[1]) - sum(fluxes[2])
         infos = (; inputs=vcat(fluxes[1], fluxes[2]), states=[state], params=Num[])
         flux_name = isnothing(name) ? Symbol("##state_flux#", hash(infos)) : name
         return new{flux_name}([expr], infos)
     end
     #* construct state flux with state variables
-    StateFlux(states::Pair{Num,Num}, name::Union{Symbol,Nothing}=nothing) = StateFlux([states[2]], states[1], expr=states[2] - states[1], name=name)
+    StateFlux(states::Pair{Num,Num}, name::Optional{Symbol}=nothing) = begin
+        StateFlux([states[2]], states[1], expr=states[2] - states[1], name=name)
+    end
 end
 
 """

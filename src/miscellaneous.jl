@@ -1,3 +1,18 @@
+using Symbolics
+
+struct FunctionElement <: AbstractElement
+    inputs::Vector{Num}
+    func::Function
+end
+
+function (ele::FunctionElement)(input::AbstractArray, params::ComponentVector; kwargs...) where {T}
+    ele.func(input, params; kwargs...)
+end
+
+function SummationElement(inputs::Vector{Num})
+    return FunctionElement(inputs, (input, params) -> sum(input, dims=2))
+end
+
 """
 # GroupHydroFlux.jl
 构建全是由HydroFlux构建的组合Flux

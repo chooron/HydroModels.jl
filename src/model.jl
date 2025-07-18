@@ -11,7 +11,7 @@ Represents a complete hydrological model that integrates multiple components for
 
 # Constructor
 ```julia
-HydroModel(; components::Vector{<:AbstractComponent}, name::Union{Symbol,Nothing}=nothing)
+HydroModel(; components::Vector{<:AbstractComponent}, name::Optional{Symbol}=nothing)
 ```
 - `components`: Required. A vector containing the different model components.
 - `name`: Optional symbol to identify the model. If `nothing`, a unique name is generated.
@@ -45,7 +45,7 @@ struct HydroModel{N} <: AbstractModel
 
     function HydroModel(;
         components::Vector{C},
-        name::Union{Symbol,Nothing}=nothing,
+        name::Optional{Symbol}=nothing,
     ) where {C<:AbstractComponent}
         inputs, outputs, states = get_vars(components)
         params = reduce(union, get_params.(components))

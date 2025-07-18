@@ -30,9 +30,9 @@ struct HydroRoute{N} <: AbstractHydroRoute
     "State derivative function"
     dfluxes::Vector{<:AbstractStateFlux}
     "Generated function for calculating all hydrological fluxes."
-    multi_flux_func::Function
+    flux_func::Function
     "Generated function for ordinary differential equations (ODE) calculations, or nothing if no ODE calculations are needed."
-    multi_ode_func::Function
+    ode_func::Function
     "Outflow projection function"
     aggr_func::Function
     "Metadata: contains keys for input, output, param, state, and nn"
@@ -42,7 +42,7 @@ struct HydroRoute{N} <: AbstractHydroRoute
         rfluxes::Vector{<:AbstractFlux},
         dfluxes::Vector{<:AbstractStateFlux},
         aggr_func::Function,
-        name::Union{Symbol,Nothing}=nothing,
+        name::Optional{Symbol}=nothing,
     )
         #* Extract all variable names of funcs and dfuncs
         inputs, outputs, states = get_vars(rfluxes, dfluxes)
@@ -53,8 +53,8 @@ struct HydroRoute{N} <: AbstractHydroRoute
         #* define the route name
         route_name = isnothing(name) ? Symbol("##route#", hash(infos)) : name
         #* build the route function
-        multi_flux_func, multi_ode_func = build_route_func(rfluxes, dfluxes, infos)
-        return new{route_name}(rfluxes, dfluxes, multi_flux_func, multi_ode_func, aggr_func, infos)
+        flux_func, ode_func = build_route_func(rfluxes, dfluxes, infos)
+        return new{route_name}(rfluxes, dfluxes, flux_func, ode_func, aggr_func, infos)
     end
 end
 
@@ -105,19 +105,18 @@ macro hydroroute(args...)
             error("Unknown assignment: $lhs. Expected 'fluxes', 'dfluxes', or 'aggr_func'")
         end
     end
-    @assert !isnothing(fluxes_expr) && !isnothing(dfluxes_expr) && !isnothing(aggr_func_expr) "'fluxes', 'dfluxes', and 'aggr_func' must all be specified"
+    @assert (!isnothing(fluxes_expr) && !isnothing(dfluxes_expr) && !isnothing(aggr_func_expr),
+        "'fluxes', 'dfluxes', and 'aggr_func' must all be specified")
     return esc(quote
-        let
-            fluxes = $fluxes_expr
-            dfluxes = $dfluxes_expr
-            aggr_func = $aggr_func_expr
-            HydroRoute(
-                rfluxes=fluxes,
-                dfluxes=dfluxes,
-                aggr_func=aggr_func,
-                name=$(name)
-            )
-        end
+        fluxes = $fluxes_expr
+        dfluxes = $dfluxes_expr
+        aggr_func = $aggr_func_expr
+        HydroRoute(
+            rfluxes=fluxes,
+            dfluxes=dfluxes,
+            aggr_func=aggr_func,
+            name=$(name)
+        )
     end)
 end
 
@@ -181,9 +180,8 @@ function (route::HydroRoute)(
     itpfunc = interp(reshape(input, input_dims * num_nodes, time_len), timeidx)
     solved_states = solver(
         (u, p, t) -> begin
-            tmp_outflow, tmp_states = route.multi_ode_func(
-                itpfunc(t),
-                u,
+            tmp_outflow, tmp_states = route.ode_func(
+                itpfunc(t), u,
                 ComponentVector(p, params_axes)
             )
             tmp_inflow_arr = stack(route.aggr_func.(tmp_outflow), dims=1)
@@ -192,7 +190,7 @@ function (route::HydroRoute)(
         end,
         params_vec, initstates_mat, timeidx
     )
-    #* run other functions
-    output = route.multi_flux_func(input, solved_states, new_pas)
+    #* run flux functions
+    output = route.flux_func(input, solved_states, new_pas)
     cat(solved_states, stack(output, dims=1), dims=1)
 end

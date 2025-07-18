@@ -221,7 +221,7 @@ bucket = NeuralBucket(
 The NeuralBucket differs from HydroBucket by using Lux.jl's recurrence layers to handle state
 updates over time, making it particularly suitable for sequence modeling tasks.
 """
-struct NeuralBucket{N} <: AbstractBucket
+struct NeuralBucket{N} <: AbstractNeuralBucket
     fluxes::Vector{<:AbstractHydroFlux}
     dfluxes::Vector{<:AbstractStateFlux}
     func::Function
@@ -321,8 +321,7 @@ the second dimension, and time steps along the third dimension.
 function (bucket::NeuralBucket{N})(input::AbstractArray{T,3}, pas::ComponentVector; kwargs...) where {T,N}
     ptyidx = get(kwargs, :ptyidx, 1:size(input, 2))
     styidx = get(kwargs, :styidx, 1:size(input, 2))
-    state_names = get_state_names(bucket)
-    initstates = get(kwargs, :initstates, ComponentVector(NamedTuple{Tuple(state_names)}(fill(zeros(T, size(input, 2)), length(state_names)))))
+    initstates = get(kwargs, :initstates, get_default_states(bucket, input))
     new_pas = expand_component_params_and_initstates(pas, initstates, ptyidx, styidx)
     output = bucket.func(input, new_pas)
     return stack(output, dims=3)

@@ -1,11 +1,12 @@
 name = "HydroModels"
 uuid = "7e3cde01-c141-467b-bff6-5350a0af19fc"
 authors = ["jingx <50790703+chooron@users.noreply.github.com>"]
-version = "0.3.2"
+version = "0.3.3"
 
 [deps]
 ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
 DataInterpolations = "82cc6244-b520-54b8-b5a6-8a565e85f1d0"
+DiffEqCallbacks = "459566f4-90b8-5000-8ac3-15dfb0a30def"
 Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 LinearSolve = "7ed4a6bd-45f5-4d41-b270-4a48e9bafcae"
@@ -37,6 +38,7 @@ ComponentArrays = "0.15"
 DataFrames = "1"
 DataInterpolations = "8.0"
 Dates = "1.11.0"
+DiffEqCallbacks = "4.8.0"
 ForwardDiff = "0.10"
 Graphs = "1"
 LinearAlgebra = "1"
