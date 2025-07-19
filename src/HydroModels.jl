@@ -35,6 +35,7 @@ using SciMLSensitivity
 const Optional{T} = Union{T, Nothing}
 
 abstract type AbstractComponent end
+abstract type AbstractNetwork end
 
 abstract type AbstractFlux <: AbstractComponent end
 abstract type AbstractHydroFlux <: AbstractFlux end
@@ -56,7 +57,8 @@ export AbstractComponent, # base type
     AbstractHydroBucket, AbstractNeuralBucket, # bucket types
     AbstractHydrograph, # hydrograph types
     AbstractRoute, AbstractHydroRoute, # route types
-    AbstractModel # model types
+    AbstractModel, # model types
+    AbstractNetwork # network types
 
 export get_name, get_input_names, get_output_names, get_param_names, get_state_names, get_nn_names
 export get_exprs, get_inputs, get_outputs, get_params, get_nns, get_vars

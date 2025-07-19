@@ -5,7 +5,7 @@ struct FunctionElement <: AbstractElement
     func::Function
 end
 
-function (ele::FunctionElement)(input::AbstractArray, params::ComponentVector; kwargs...) where {T}
+function (ele::FunctionElement)(input::AbstractArray, params::ComponentVector; kwargs...)
     ele.func(input, params; kwargs...)
 end
 

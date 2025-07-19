@@ -22,34 +22,46 @@ using ..HydroModels: step_func
 @parameters Smax [description = "Maximum soil moisture storage", bounds = (1, 2000), unit = "[mm]"]
 @parameters tc [description = "Runoff coefficient", bounds = (0, 1), unit = "[d-1]"]
 
-# Soil water component
-bucket_01 = @hydrobucket :soil begin
-    fluxes = begin
-        @hydroflux Ps ~ step_func(Tt - T) * P
-        @hydroflux QN ~ min(step_func(T - Tt) * ddf * (T - Tt), Sn)
-    end
-    dfluxes = begin
-        @stateflux Sn ~ Ps - QN
-    end
-end
-bucket_02 = @hydrobucket :soil begin
-    fluxes = begin
-        @hydroflux Pr ~ step_func(T - Tt) * P
-        @hydroflux Ea ~ step_func(Sm) * Ep
-        @hydroflux Qse ~ step_func(Sm - Smax) * (Pr + QN)
-        @hydroflux Qss ~ tc * Sm
-    end
-    dfluxes = begin
-        @stateflux Sm ~ Pr + QN - Ea - Qse - Qss
-    end
-end
 
-flux_01 = @hydroflux Qt ~ Qse + Qss
+function build_upper_soil_bucket(;
+    name::Optional{Symbol}=nothing,
+    P=P, T=T, Tt=Tt,
+    ddf=ddf, Sn=Sn,
+)
+    return @hydrobucket name begin
+        fluxes = begin
+            @hydroflux Ps ~ step_func(Tt - T) * P
+            @hydroflux QN ~ min(step_func(T - Tt) * ddf * (T - Tt), Sn)
+        end
+        dfluxes = begin
+            @stateflux Sn ~ Ps - QN
+        end
+    end
+end
+# Soil water component
+function build_lower_soil_bucket(;
+    name::Optional{Symbol}=nothing,
+    P=P, T=T, Tt=Tt,
+    ddf=ddf, Sn=Sn,
+    Sm=Sm, Smax
+)
+    return @hydrobucket name begin
+        fluxes = begin
+            @hydroflux Pr ~ step_func(T - Tt) * P
+            @hydroflux Ea ~ step_func(Sm) * Ep
+            @hydroflux Qse ~ step_func(Sm - Smax) * (Pr + QN)
+            @hydroflux Qss ~ tc * Sm
+        end
+        dfluxes = begin
+            @stateflux Sm ~ Pr + QN - Ea - Qse - Qss
+        end
+    end
+end
 
 model = @hydromodel :alpine1 begin
-    bucket_01
-    bucket_02
-    flux_01
+    build_upper_soil_bucket()
+    build_lower_soil_bucket()
+    @hydroflux Qt ~ Qse + Qss
 end
 
 end

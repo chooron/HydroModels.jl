@@ -36,6 +36,7 @@ struct UnitHydrograph{N,ST} <: AbstractHydrograph
     ) where {T<:Num}
         uh_func, max_lag_func = build_uh_func(uh_pairs, params, max_lag)
         solvetype = get(kwargs, :solvetype, :DISCRETE)
+        @assert length(inputs) == length(outputs) == 1 "only one input and one output is supported"
         @assert solvetype in [:DISCRETE, :SPARSE, :DSP] "solvetype must be one of [:DISCRETE, :SPARSE, :DSP]"
         solvetype == :DSP && @warn "The DSP solver is not supported for Zygote, please use :DISCRETE or :SPARSE instead."
         min_weight_prop = get(kwargs, :min_weight_prop, 1e-6)
@@ -97,16 +98,8 @@ macro unithydro(args...)
 
     @assert uh_func_expr !== nothing "Missing uh_func in unit hydrograph definition"
     @assert uh_vars_expr !== nothing "Missing uh_vars in unit hydrograph definition"
-    @assert Meta.isexpr(uh_vars_expr, :vect) "uh_vars must be a vector of Pairs, e.g., [in1 => out1, in2 => out2]"
-    uh_inputs_expr, uh_outputs_expr = Expr(:vect), Expr(:vect)
-
-    for pair_expr in uh_vars_expr.args
-        pair_expr isa LineNumberNode && continue
-        @assert Meta.isexpr(pair_expr, :call) && pair_expr.args[1] == :(=>) "Elements of uh_vars must be Pairs (=>)"
-        push!(uh_inputs_expr.args, pair_expr.args[2])
-        push!(uh_outputs_expr.args, pair_expr.args[3])
-    end
-
+    @assert Meta.isexpr(uh_vars_expr, :call) && uh_vars_expr.args[1] == :(=>) "uh_vars must be a single Pair, e.g., P => Q"
+    uh_inputs_expr, uh_outputs_expr = Expr(:vect, uh_vars_expr.args[2]), Expr(:vect, uh_vars_expr.args[3])
     uh_pairs, cond_values = Pair[], []
     for uh_expr in uh_func_expr.args
         uh_expr isa LineNumberNode && continue

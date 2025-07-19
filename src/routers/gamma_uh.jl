@@ -7,8 +7,8 @@ function gamma_uh()
         uh_func = begin
             10 => (1 / t) * (beta2 * t)^alpha2 / gamma(alpha2) * exp(-beta2 * t)
         end
-        uh_vars = [flow => flow_lag]
-        configs = (solvetype=:SPARSE, )
+        uh_vars = flow => flow_lag
+        solvetype=:SPARSE
     end
     return uh
 end

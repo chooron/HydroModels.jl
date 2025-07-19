@@ -15,6 +15,7 @@ snow_ele = @hydrobucket :surface begin
     dfluxes = begin
         @stateflux snowpack ~ snowfall - melt
     end
+    nmul = 9
 end
 
 soil_ele = @hydrobucket :soil begin
@@ -27,6 +28,7 @@ soil_ele = @hydrobucket :soil begin
     dfluxes = begin
         @stateflux soilwater ~ (rainfall + melt) - (evap + flow)
     end
+    nmul = 9
 end
 
 convertflux = @hydroflux q ~ flow * area_coef

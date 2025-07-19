@@ -183,7 +183,7 @@ end
     node_pas = ComponentVector(params=node_params)
 
     # Test output as 3D array
-    result_mat_vec = model(input_arr, node_pas, initstates=node_initstates, config=(timeidx=ts, ptyidx=1:10, styidx=1:10))
+    result_mat_vec = multi_model(input_arr, node_pas, initstates=node_initstates, config=(timeidx=ts, ptyidx=1:10, styidx=1:10))
     @test size(result_mat_vec) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), 10, length(ts))
 end
 
@@ -291,6 +291,6 @@ end
     node_pas = ComponentVector(params=node_params, initstates=node_initstates, nns=nn_params)
 
     # Run the model for multiple nodes and get results as a 3D array
-    result_mat_vec = model(input_arr, node_pas, initstates=node_initstates, config=(timeidx=ts,))
+    result_mat_vec = multi_model(input_arr, node_pas, initstates=node_initstates, config=(timeidx=ts,))
     @test size(result_mat_vec) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), 10, length(ts))
 end

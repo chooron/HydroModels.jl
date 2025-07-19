@@ -245,8 +245,7 @@ function (ele::MultiHydroBucket{N,true})(input::AbstractArray{T,3}, params::Comp
     solved_states = solver(
         (u, p, t) -> ele.ode_func(
             reshape(itpfuncs(t), input_dims, num_nodes),
-            u,
-            ComponentVector(p, params_axes)
+            u, ComponentVector(p, params_axes)
         ),
         params_vec, initstates_mat, timeidx
     )
