@@ -54,7 +54,7 @@ function sort_fluxes(fluxes::AbstractVector{<:AbstractComponent})
             end
         end
     end
-    
+
     # Sort fluxes based on the topological order of the directed graph
     sorted_fluxes = AbstractComponent[]
     for idx in topological_sort(digraph)
@@ -212,6 +212,58 @@ function convert_to_namedtuple(
     return map(eachslice(input, dims=2)) do
         NamedTuple{Tuple(vcat(state_names, output_names))}(eachslice(input, dims=1))
     end
+end
+
+"""
+    Extract variables from an expression.
+"""
+function extract_variables(expr)
+    function _extract_vars!(expr::Any, vars::Set{Symbol})
+        # 对于非表达式或非符号的内容，直接忽略
+    end
+
+    function _extract_vars!(s::Symbol, vars::Set{Symbol})
+        # 如果一个符号单独出现，它很可能是一个变量
+        push!(vars, s)
+    end
+
+    function _extract_vars!(ex::Expr, vars::Set{Symbol})
+        # 我们需要根据表达式的类型来决定如何处理
+        if ex.head == :call
+            # :call -> f(a, b)
+            # 第一个参数 ex.args[1] 是函数名，不作为变量提取
+            # 从第二个参数开始递归
+            for arg in ex.args[2:end]
+                _extract_vars!(arg, vars)
+            end
+        elseif ex.head == :.
+            # :. -> A.b
+            # 这种形式是访问属性，我们不认为 b 是一个独立的变量
+            # 我们可以选择递归左侧 A，因为它可能是一个变量
+            _extract_vars!(ex.args[1], vars)
+        elseif ex.head == :(=) || ex.head == :function || ex.head == :macro
+            # 对于赋值、函数/宏定义，我们不提取变量，避免复杂性
+            # （可以根据需求细化）
+        else
+            # 对于其他表达式（如 a + b, [a, b] 等），递归所有参数
+            for arg in ex.args
+                _extract_vars!(arg, vars)
+            end
+        end
+    end
+    vars = Set{Symbol}()
+    _extract_vars!(expr, vars)
+    return vars
+end
+
+function check_defined_variables(expr)
+    for var_name in extract_variables(expr)
+        if !isdefined(__module__, var_name)
+            expr_str = string(expr)
+            return error("Undefined variable '$(var_name)' detected in expression: `$(expr_str)`")
+        end
+    end
+    return true
 end
 
 export convert_to_namedtuple

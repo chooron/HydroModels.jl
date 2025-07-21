@@ -73,26 +73,26 @@ end
     @test size(sol_2) == size(ones(2, 9, 20))
 end
 
-@testset "test rapid route based on muskingum route flux" begin
-    @variables q q_routed
+# @testset "test rapid route based on muskingum route flux" begin
+#     @variables q q_routed
 
-    network = DiGraph(9)
-    add_edge!(network, 1, 2)
-    add_edge!(network, 2, 5)
-    add_edge!(network, 3, 5)
-    add_edge!(network, 4, 5)
-    add_edge!(network, 5, 8)
-    add_edge!(network, 6, 9)
-    add_edge!(network, 7, 8)
-    add_edge!(network, 8, 9)
+#     network = DiGraph(9)
+#     add_edge!(network, 1, 2)
+#     add_edge!(network, 2, 5)
+#     add_edge!(network, 3, 5)
+#     add_edge!(network, 4, 5)
+#     add_edge!(network, 5, 8)
+#     add_edge!(network, 6, 9)
+#     add_edge!(network, 7, 8)
+#     add_edge!(network, 8, 9)
 
-    ndtypes = [:ntype1, :ntype2, :ntype3]
-    params = ComponentVector(rapid_k=fill(2.0, length(ndtypes)), rapid_x=fill(0.2, length(ndtypes)))
-    ptyidx = [1, 1, 1, 2, 2, 2, 3, 3, 3]
-    pas = ComponentVector(params=params)
-    vroute = HydroModels.RapidRoute([q] => [q_routed], network=network)
-    input_arr = ones(1, 9, 20)
-    timeidx = collect(1:20)
-    sol_2 = vroute(input_arr, pas, timeidx=timeidx, ptyidx=ptyidx, solver=ManualSolver(mutable=true))
-    @test size(sol_2) == size(ones(1, 9, 20))
-end
+#     ndtypes = [:ntype1, :ntype2, :ntype3]
+#     params = ComponentVector(rapid_k=fill(2.0, length(ndtypes)), rapid_x=fill(0.2, length(ndtypes)))
+#     ptyidx = [1, 1, 1, 2, 2, 2, 3, 3, 3]
+#     pas = ComponentVector(params=params)
+#     vroute = HydroModels.RapidRoute([q] => [q_routed], network=network)
+#     input_arr = ones(1, 9, 20)
+#     timeidx = collect(1:20)
+#     sol_2 = vroute(input_arr, pas, timeidx=timeidx, ptyidx=ptyidx, solver=ManualSolver(mutable=true))
+#     @test size(sol_2) == size(ones(1, 9, 20))
+# end

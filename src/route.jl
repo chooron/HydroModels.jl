@@ -105,16 +105,13 @@ macro hydroroute(args...)
             error("Unknown assignment: $lhs. Expected 'fluxes', 'dfluxes', or 'aggr_func'")
         end
     end
-    @assert (!isnothing(fluxes_expr) && !isnothing(dfluxes_expr) && !isnothing(aggr_func_expr),
-        "'fluxes', 'dfluxes', and 'aggr_func' must all be specified")
+    err_msg = "'fluxes', 'dfluxes', and 'aggr_func' must all be specified"
+    @assert !isnothing(fluxes_expr) && !isnothing(dfluxes_expr) && !isnothing(aggr_func_expr) err_msg
     return esc(quote
-        fluxes = $fluxes_expr
-        dfluxes = $dfluxes_expr
-        aggr_func = $aggr_func_expr
         HydroRoute(
-            rfluxes=fluxes,
-            dfluxes=dfluxes,
-            aggr_func=aggr_func,
+            rfluxes=$fluxes_expr,
+            dfluxes=$dfluxes_expr,
+            aggr_func=$aggr_func_expr,
             name=$(name)
         )
     end)

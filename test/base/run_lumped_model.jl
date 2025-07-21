@@ -123,8 +123,8 @@ end
         uh_func = begin
             x4 => (t / x4)^2.5
         end
-        uh_vars = [slowflow]
-        configs = (solvetype=:SPARSE, suffix=:_routed)
+        uh_vars = slowflow => slowflow_routed
+        solvetype=:SPARSE
     end
 
     uh_2 = @unithydro begin
@@ -132,8 +132,8 @@ end
             2x4 => (1 - 0.5 * (2 - t / x4)^2.5)
             x4 => (0.5 * (t / x4)^2.5)
         end
-        uh_vars = [fastflow]
-        configs = (solvetype=:SPARSE, suffix=:_routed)
+        uh_vars = fastflow => fastflow_routed
+        solvetype=:SPARSE
     end
 
     rst_ele = @hydrobucket begin
@@ -255,6 +255,11 @@ end
     model = @hydromodel :m50 begin
         snow_ele
         soil_ele
+    end
+
+    multi_model = @hydromodel :m50 begin
+        multiply(snow_ele)
+        multiply(soil_ele)
     end
 
     @test Set(HydroModels.get_input_names(model)) == Set([:prcp, :temp, :lday])

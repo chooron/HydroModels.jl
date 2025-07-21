@@ -36,24 +36,25 @@ struct HydroFlux{N} <: AbstractHydroFlux
     "Metadata about the flux, including input, output, and parameter names"
     infos::NamedTuple
 
-    function HydroFlux(
-        inputs::Vector{T}, outputs::Vector{T}, params::Vector{T};
+    function HydroFlux(;
         exprs::Vector{T}, name::Optional{Symbol}=nothing,
     ) where {T}
+        # parse expressions and extract variables
+        outputs = Num.([eq.lhs for eq in exprs])
+        eqs = Num.([eq.rhs for eq in exprs])
+        all_vars = Num.(mapreduce(HydroModels.get_variables, union, eqs, init=Set{Num}()))
+        inputs = setdiff(Num.(filter(x -> !HydroModels.isparameter(x), collect(all_vars))), outputs)
+        params = Num.(filter(x -> HydroModels.isparameter(x), collect(all_vars)))
         assert_msg = "The number of expressions and outputs must match" *
                      " but got expressions: $(length(exprs)) and outputs: $(length(outputs))"
         @assert length(exprs) == length(outputs) assert_msg
-        flux_func = build_flux_func(inputs, outputs, params, exprs)
+
+        # build the function for flux calculations
+        flux_func = build_flux_func(inputs, outputs, params, eqs)
         infos = (; inputs=inputs, outputs=outputs, params=params)
         flux_name = isnothing(name) ? Symbol("##hydro_flux#", hash(infos)) : name
-        return new{flux_name}(exprs, flux_func, infos)
-    end
 
-    function HydroFlux(
-        fluxes::Pair{Vector{Num},Vector{Num}}, params::Vector{Num}=Num[];
-        exprs::Vector, name::Optional{Symbol}=nothing,
-    )
-        return HydroFlux(fluxes[1], fluxes[2], params, exprs=exprs, name=name)
+        return new{flux_name}(eqs, flux_func, infos)
     end
 end
 
@@ -116,19 +117,13 @@ macro hydroflux(args...)
         Expr(:vect, eqs_expr)
     end
 
-    return esc(quote
-        HNum = HydroModels.Num
-        equations = $vect_eqs_expr
-        lhs_terms = HNum.([eq.lhs for eq in equations])
-        rhs_terms = HNum.([eq.rhs for eq in equations])
-
-        all_vars = HNum.(mapreduce(HydroModels.get_variables, union, rhs_terms, init=Set{HNum}()))
-        inputs = HNum.(filter(x -> !HydroModels.isparameter(x), collect(all_vars)))
-        params = HNum.(filter(x -> HydroModels.isparameter(x), collect(all_vars)))
-        inputs = setdiff(inputs, lhs_terms)
-
-        HydroFlux(inputs, lhs_terms, params, exprs=rhs_terms, name=$(name))
-    end)
+    for var_name in extract_variables(vect_eqs_expr)
+        if !@isdefined(var_name)
+            expr_str = string(vect_eqs_expr)
+            return :(error("Undefined variable '", $(string(var_name)), "' detected in expression: `", $expr_str, "`"))
+        end
+    end
+    return esc(:(HydroFlux(exprs=$vect_eqs_expr, name=$name)))
 end
 
 function replace_loop_var!(expr, var_name, value)
@@ -275,24 +270,17 @@ struct StateFlux{N} <: AbstractStateFlux
     "bucket information: keys contains: input, output, param, state"
     infos::NamedTuple
 
-    function StateFlux(
-        inputs::Vector{T}, state::T, params::Vector{T}=T[];
-        expr::T, name::Optional{Symbol}=nothing,
-    ) where {T<:Num}
-        infos = (; inputs=inputs, states=[state], params=params)
+    function StateFlux(;
+        exprs::Vector{T}, name::Optional{Symbol}=nothing
+    ) where {T}
+        states = Num.([eq.lhs for eq in exprs])
+        eqs = Num.([eq.rhs for eq in exprs])
+        all_vars = Num.(mapreduce(HydroModels.get_variables, union, eqs, init=Set{Num}()))
+        inputs = setdiff(Num.(filter(x -> !HydroModels.isparameter(x), collect(all_vars))), states)
+        params = Num.(filter(x -> HydroModels.isparameter(x), collect(all_vars)))
+        infos = (; inputs=inputs, states=states, params=params)
         flux_name = isnothing(name) ? Symbol("##state_flux#", hash(infos)) : name
-        return new{flux_name}([expr], infos)
-    end
-    #* construct state flux with input fluxes and output fluxes
-    function StateFlux(fluxes::Pair{Vector{Num},Vector{Num}}, state::Num, name::Optional{Symbol}=nothing)
-        expr = sum(fluxes[1]) - sum(fluxes[2])
-        infos = (; inputs=vcat(fluxes[1], fluxes[2]), states=[state], params=Num[])
-        flux_name = isnothing(name) ? Symbol("##state_flux#", hash(infos)) : name
-        return new{flux_name}([expr], infos)
-    end
-    #* construct state flux with state variables
-    StateFlux(states::Pair{Num,Num}, name::Optional{Symbol}=nothing) = begin
-        StateFlux([states[2]], states[1], expr=states[2] - states[1], name=name)
+        return new{flux_name}(eqs, infos)
     end
 end
 
@@ -306,40 +294,27 @@ Create a `StateFlux` from an equation, where:
 
 # Examples
 ```julia
-@variables x, y, z
-@parameters a, b
+@variables x y z
+@parameters a b
 
 # Create a named state flux
-flux1 = @stateflux_build :my_flux z = a*x + b*y
+flux1 = @stateflux_build :my_flux z ~ a*x + b*y
 
 # Create a state flux without a name
-flux2 = @stateflux_build z = a*x + b*y
+flux2 = @stateflux_build z ~ a*x + b*y
 ```
 """
 macro stateflux(args...)
     # Process arguments
     name = length(args) == 1 ? nothing : args[1]
     eq_expr = length(args) == 1 ? args[1] : args[2]
-
-    # Handle both = and ~ operators
-    if Meta.isexpr(eq_expr, :(=))
-        lhs, rhs = eq_expr.args[1], eq_expr.args[2]
-    elseif Meta.isexpr(eq_expr, :call) && eq_expr.args[1] == :~
-        lhs, rhs = eq_expr.args[2], eq_expr.args[3]
-    else
-        error("Expected equation (using = or ~), got: $eq_expr")
+    for var_name in extract_variables(eq_expr)
+        if !@isdefined(var_name)
+            expr_str = string(eq_expr)
+            return :(error("Undefined variable '", $(string(var_name)), "' detected in expression: `", $expr_str, "`"))
+        end
     end
-
-    return esc(quote
-        HNum = HydroModels.Num
-        all_vars = HNum.(HydroModels.get_variables($rhs))
-        inputs = HNum.(filter(x -> !HydroModels.isparameter(x), collect(all_vars)))
-        params = HNum.(filter(x -> HydroModels.isparameter(x), collect(all_vars)))
-        inputs = setdiff(inputs, only($lhs))
-
-        StateFlux(inputs, only($lhs), params, expr=HNum($rhs), name=$(name))
-    end)
+    return esc(:(StateFlux(exprs=[$eq_expr], name=$name)))
 end
 
 (::StateFlux)(::AbstractArray, ::ComponentVector; kwargs...) = @error "State Flux cannot run directly, please using HydroFlux to run"
-

@@ -67,8 +67,6 @@ struct NeuralFlux{N} <: AbstractNeuralFlux
     end
 end
 
-(chain::LuxCore.AbstractLuxLayer)(inputs::AbstractVector{Num}) = (chain=chain, inputs=inputs, name=hasproperty(chain, :name) ? chain.name : nothing)
-
 """
     @neuralflux(eq::Expr)
 
@@ -93,16 +91,24 @@ flux2 = @neuralflux [z₁, z₂] ~ chain2([x, y])
 """
 macro neuralflux(args...)
     name = length(args) == 1 ? nothing : args[1]
-    eqs_expr = length(args) == 1 ? args[1] : args[2]
-    @assert eqs_expr.head == :call && eqs_expr.args[1] == :~ "Expected equation in the form: outputs ~ chain(inputs)"
-    lhs, rhs = eqs_expr.args[2], eqs_expr.args[3]  # Output variable(s) and Chain info expression
+    eq_expr = length(args) == 1 ? args[1] : args[2]
+    
+    for var_name in extract_variables(eq_expr)
+        if !@isdefined(var_name)
+            expr_str = string(eq_expr)
+            return :(error("Undefined variable '", $(string(var_name)), "' detected in expression: `", $expr_str, "`"))
+        end
+    end
+
+    @assert eq_expr.head == :call && eq_expr.args[1] == :~ "Expected equation in the form: outputs ~ chain(inputs)"
+    lhs, rhs = eq_expr.args[2], eq_expr.args[3]  # Output variable(s) and Chain info expression
+    @assert rhs.head == :call "The right-hand side of `~` must be a function call, e.g., my_chain([x, y])"
+    @assert length(rhs.args) >= 2 "The chain call must have at least one argument for the inputs."
+
+    chain_expr, inputs_expr = rhs.args[1], rhs.args[2]
     return esc(quote
-        outputs = $lhs isa Vector ? $lhs : [$lhs]
-        chain_info = $rhs
-        NeuralFlux(
-            chain_info.inputs, outputs, chain_info.chain;
-            name=$(name), chain_name=chain_info.name
-        )
+        local outputs = $lhs isa AbstractVector ? $lhs : [$lhs]
+        NeuralFlux($inputs_expr, outputs, $chain_expr; name=$(name))
     end)
 end
 

@@ -28,7 +28,8 @@ docs/.vscode
 
 .windsurfrules
 CUDA.md
-
+AGENT.md
+DESIGN.md
 Manifest.toml
 
 dev

@@ -83,7 +83,7 @@ export ManualSolver, ODESolver, DiscreteSolver, DirectInterpolation
 include("flux.jl")
 export HydroFlux, StateFlux, @hydroflux, @stateflux
 include("bucket.jl")
-export SingleHydroBucket, MultiHydroBucket, @hydrobucket, multiply
+export HydroBucket, @hydrobucket, multiply
 include("nn.jl")
 export NeuralFlux, NeuralBucket, @neuralflux, @neuralbucket
 include("route.jl")

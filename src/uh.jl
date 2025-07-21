@@ -31,14 +31,15 @@ struct UnitHydrograph{N,ST} <: AbstractHydrograph
 
     function UnitHydrograph(
         inputs::AbstractVector{T}, outputs::AbstractVector{T}, params::AbstractVector{T};
-        uh_pairs::AbstractVector{<:Pair}, max_lag=uh_pairs[1][1], name::Optional{Symbol}=nothing,
+        uh_pairs::AbstractVector{<:Pair}, name::Optional{Symbol}=nothing,
         kwargs...
     ) where {T<:Num}
-        uh_func, max_lag_func = build_uh_func(uh_pairs, params, max_lag)
         solvetype = get(kwargs, :solvetype, :DISCRETE)
+        max_lag = get(kwargs, :max_lag, uh_pairs[1][1])
+        uh_func, max_lag_func = build_uh_func(uh_pairs, params, max_lag)
         @assert length(inputs) == length(outputs) == 1 "only one input and one output is supported"
         @assert solvetype in [:DISCRETE, :SPARSE, :DSP] "solvetype must be one of [:DISCRETE, :SPARSE, :DSP]"
-        solvetype == :DSP && @warn "The DSP solver is not supported for Zygote, please use :DISCRETE or :SPARSE instead."
+        solvetype == :DSP && @warn "The DSP solver is not supported for Zygote, please use :DISCRETE or :SPARSE instead, and this method required DSP.jl"
         min_weight_prop = get(kwargs, :min_weight_prop, 1e-6)
         wfunc(pas) = begin
             weights = map(t -> uh_func(t, pas), 1:max_lag_func(pas))[1:end-1]
@@ -80,7 +81,7 @@ macro unithydro(args...)
     name = length(args) == 1 ? nothing : args[1]
     expr = length(args) == 1 ? args[1] : args[2]
     @assert Meta.isexpr(expr, :block) "Expected a begin...end block"
-    uh_func_expr, uh_vars_expr,kwargs_vec = nothing, nothing, Expr[]
+    uh_func_expr, uh_vars_expr, kwargs_vec = nothing, nothing, Expr[]
 
     for arg in expr.args
         arg isa LineNumberNode && continue
@@ -98,6 +99,20 @@ macro unithydro(args...)
 
     @assert uh_func_expr !== nothing "Missing uh_func in unit hydrograph definition"
     @assert uh_vars_expr !== nothing "Missing uh_vars in unit hydrograph definition"
+        
+    for var_name in extract_variables(uh_func_expr)
+        if !@isdefined(var_name)
+            expr_str = string(uh_func_expr)
+            return :(error("Undefined variable '", $(string(var_name)), "' detected in expression: `", $expr_str, "`"))
+        end
+    end
+    for var_name in extract_variables(uh_vars_expr)
+        if !@isdefined(var_name)
+            expr_str = string(uh_vars_expr)
+            return :(error("Undefined variable '", $(string(var_name)), "' detected in expression: `", $expr_str, "`"))
+        end
+    end
+
     @assert Meta.isexpr(uh_vars_expr, :call) && uh_vars_expr.args[1] == :(=>) "uh_vars must be a single Pair, e.g., P => Q"
     uh_inputs_expr, uh_outputs_expr = Expr(:vect, uh_vars_expr.args[2]), Expr(:vect, uh_vars_expr.args[3])
     uh_pairs, cond_values = Pair[], []
