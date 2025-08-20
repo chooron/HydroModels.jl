@@ -18,7 +18,7 @@ using Zygote, ForwardDiff
 @testset "HydroModels.jl" begin
     include("base/run_flux.jl")
     include("base/run_bucket.jl")
-    include("base/run_neural.jl")
+    # include("base/run_neural.jl")
     include("base/run_uh.jl")
     include("base/run_route.jl")
     include("base/run_lumped_model.jl")

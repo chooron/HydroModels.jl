@@ -172,7 +172,8 @@ function expand_component_initstates(initstates::ComponentVector, styidx::Abstra
 end
 
 function expand_component_initstates(initstates::AbstractMatrix, styidx::AbstractVector)
-    initstates[:, styidx]
+    expand_initstates = initstates[:, styidx]
+    vec(expand_initstates) # Convert to vector for gradient support
 end
 
 function expand_component_params_and_initstates(pas::ComponentVector, initstates::ComponentVector, ptyidx::AbstractVector, styidx::AbstractVector)

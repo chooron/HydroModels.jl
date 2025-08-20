@@ -105,7 +105,6 @@ macro hydrobucket(args...)
             @assert Meta.isexpr(rhs, :block) "Expected 'dfluxes' to be defined in a begin...end block"
             dfluxes_expr = Expr(:vect, filter(x -> !(x isa LineNumberNode), rhs.args)...)
         elseif lhs == :nmul
-            @assert rhs isa Integer "Expected 'nmul' to be an integer"
             nmul_val = rhs
         else
             error("Unknown assignment: $lhs. Expected 'fluxes' or 'dfluxes'")
@@ -208,7 +207,7 @@ function (ele::HydroBucket{N,true,true})(input::AbstractArray{T,3}, params::Comp
     #* prepare initstates, parameters and nns
     initstates = get(kwargs, :initstates, zeros(eltype(params), length(get_state_names(ele)), num_nodes)) |> device
     initstates_ = initstates isa ComponentVector ? initstates[get_state_names(ele)] : initstates
-    initstates_mat = expand_component_initstates(initstates_, styidx) |> device
+    initstates_expand = expand_component_initstates(initstates_, styidx) |> device
     new_params = expand_component_params(params, get_param_names(ele), ptyidx) |> device
     params_vec, params_axes = Vector(new_params) |> device, getaxes(new_params)
 
@@ -219,12 +218,12 @@ function (ele::HydroBucket{N,true,true})(input::AbstractArray{T,3}, params::Comp
             reshape(itpfuncs(t), input_dims, num_nodes),
             u, ComponentVector(p, params_axes)
         ),
-        params_vec, initstates_mat, timeidx
+        params_vec, initstates_expand, timeidx
     )
-
+    solved_states_reshape = reshape(solved_states, length(get_state_names(ele)), num_nodes, time_len)    
     #* run other functions
-    output = ele.flux_func(input, solved_states, new_params)
-    cat(solved_states, stack(output, dims=1), dims=1)
+    output = ele.flux_func(input, solved_states_reshape, new_params)
+    cat(solved_states_reshape, stack(output, dims=1), dims=1)
 end
 
 function (ele::HydroBucket{N,false,false})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T,N}

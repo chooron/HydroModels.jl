@@ -52,7 +52,8 @@ get_nn_names(cpt::AbstractComponent) = length(get_nns(cpt)) == 0 ? Symbol[] : to
 Get expressions defined in component.
 """
 get_exprs(cpt::AbstractFlux) = cpt.exprs
-get_exprs(cpt::AbstractNeuralFlux) = get_outputs(cpt) ~ cpt.chain(get_inputs(cpt))
+# get_exprs(cpt::AbstractNeuralFlux) = get_outputs(cpt) ~ cpt.chain(get_inputs(cpt))
+get_exprs(cpt::AbstractNeuralFlux) = get_outputs(cpt) ~ cpt.chain
 
 """
     get_vars(comps::AbstractComponent)

@@ -167,7 +167,7 @@ function (route::HydroRoute)(
     #* prepare initstates
     initstates = get(kwargs, :initstates, zeros(eltype(params), length(get_state_names(route)), num_nodes)) |> device
     initstates_ = initstates isa ComponentVector ? initstates[get_state_names(route)] : initstates
-    initstates_mat = expand_component_initstates(initstates_, styidx) |> device
+    initstates_expand = expand_component_initstates(initstates_, styidx) |> device
 
     #* prepare states parameters and nns
     new_pas = expand_component_params(params, get_param_names(route), ptyidx) |> device
@@ -178,16 +178,16 @@ function (route::HydroRoute)(
     solved_states = solver(
         (u, p, t) -> begin
             tmp_outflow, tmp_states = route.ode_func(
-                itpfunc(t), u,
+                reshape(itpfunc(t), input_dims, num_nodes), u,
                 ComponentVector(p, params_axes)
             )
-            tmp_inflow_arr = stack(route.aggr_func.(tmp_outflow), dims=1)
-            tmp_output_state = stack(tmp_states, dims=1)
-            tmp_output_state .+ tmp_inflow_arr
+            tmp_inflow_arr = route.aggr_func(tmp_outflow)
+            tmp_states .+ tmp_inflow_arr
         end,
-        params_vec, initstates_mat, timeidx
+        params_vec, initstates_expand, timeidx
     )
+    solved_states_reshape = reshape(solved_states, length(get_state_names(route)), num_nodes, time_len)
     #* run flux functions
-    output = route.flux_func(input, solved_states, new_pas)
-    cat(solved_states, stack(output, dims=1), dims=1)
+    output = route.flux_func(input, solved_states_reshape, new_pas)
+    cat(solved_states_reshape, stack(output, dims=1), dims=1)
 end

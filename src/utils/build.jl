@@ -22,7 +22,7 @@ function extract_names(infos)
 end
 
 """
-    generate_variable_assignments(names; dims=0, target="inputs", prefix="")
+    generate_input_assignments(names; dims=0, target="inputs", prefix="")
 
 Generates variable assignment statements, reducing repetitive assignment expressions in different functions.
 
@@ -35,13 +35,28 @@ Generates variable assignment statements, reducing repetitive assignment express
 # Returns
 - Array of assignment statements
 """
-function generate_variable_assignments(names; dims=0, target=:inputs, prefix="")
+function generate_input_assignments(names; dims=0, prefix="")
     if dims == 0
-        return [:($(Symbol(prefix, i)) = $(target)[$idx]) for (idx, i) in enumerate(names)]
+        return [:($(Symbol(prefix, i)) = inputs[$idx]) for (idx, i) in enumerate(names)]
     elseif dims == 1
-        return [:($(Symbol(prefix, i)) = $(target)[$idx, :]) for (idx, i) in enumerate(names)]
+        return [:($(Symbol(prefix, i)) = inputs[$idx, :]) for (idx, i) in enumerate(names)]
     elseif dims == 2
-        return [:($(Symbol(prefix, i)) = $(target)[$idx, :, :]) for (idx, i) in enumerate(names)]
+        return [:($(Symbol(prefix, i)) = inputs[$idx, :, :]) for (idx, i) in enumerate(names)]
+    end
+end
+
+function generate_state_assignments(names; dims=0, prefix="", reshape=false)
+    if dims == 0
+        return [:($(Symbol(prefix, i)) = states[$idx]) for (idx, i) in enumerate(names)]
+    elseif dims == 1
+        if reshape
+            reshape_expr = [:(new_states = reshape(states, length($names), :))]
+            return vcat(reshape_expr, [:($(Symbol(prefix, i)) = new_states[$idx, :]) for (idx, i) in enumerate(names)])
+        else
+            return [:($(Symbol(prefix, i)) = states[$idx, :]) for (idx, i) in enumerate(names)]
+        end
+    elseif dims == 2
+        return [:($(Symbol(prefix, i)) = states[$idx, :, :]) for (idx, i) in enumerate(names)]
     end
 end
 
@@ -206,7 +221,7 @@ end
 Generates return expression for multi-state differentials.
 """
 function generate_return_expression(::Any, dfluxes, ::Val{:multi_state})
-    return :(return stack([$(map(expr -> :(@. $(simplify_expr(toexpr(expr)))), reduce(vcat, get_exprs.(dfluxes)))...)], dims=1))
+    return :(return reduce(vcat, [$(map(expr -> :(@. $(simplify_expr(toexpr(expr)))), reduce(vcat, get_exprs.(dfluxes)))...)]))
 end
 
 """
@@ -215,7 +230,7 @@ end
 Generates return expression for routing calculations.
 """
 function generate_return_expression(output_names, dfluxes, ::Val{:output_state})
-    return :(return [$(output_names...)], [$(map(expr -> :(@. $(simplify_expr(toexpr(expr)))), reduce(vcat, get_exprs.(dfluxes)))...)])
+    return :(return $(output_names...), $(map(expr -> :(@. $(simplify_expr(toexpr(expr)))), reduce(vcat, get_exprs.(dfluxes)))...))
 end
 
 """
@@ -241,7 +256,7 @@ function build_flux_func(inputs::Vector{Num}, outputs::Vector{Num}, params::Vect
     )
 
     flux_exprs = map(expr -> :(@. $(simplify_expr(toexpr(expr)))), exprs)
-    input_assign_calls = generate_variable_assignments(names.input_names)
+    input_assign_calls = generate_input_assignments(names.input_names)
     params_assign_calls = generate_param_assignments(names.param_names)
     compute_calls = [:($o = $expr) for (o, expr) in zip(names.output_names, flux_exprs)]
     return_expr = :(return [$(names.output_names...)])
@@ -267,10 +282,10 @@ function build_single_bucket_func(fluxes::Vector{<:AbstractFlux}, dfluxes::Vecto
     names = extract_names(infos)
 
     # Define variable assignments
-    input_define_calls_1 = generate_variable_assignments(names.input_names, dims=0)
-    state_define_calls_1 = generate_variable_assignments(names.state_names, dims=0, target=:states)
-    input_define_calls_2 = generate_variable_assignments(names.input_names, dims=1)
-    state_define_calls_2 = generate_variable_assignments(names.state_names, dims=1, target=:states)
+    input_define_calls_1 = generate_input_assignments(names.input_names, dims=0)
+    state_define_calls_1 = generate_state_assignments(names.state_names, dims=0)
+    input_define_calls_2 = generate_input_assignments(names.input_names, dims=1)
+    state_define_calls_2 = generate_state_assignments(names.state_names, dims=1)
     params_assign_calls = generate_param_assignments(names.param_names)
     nn_params_assign_calls = generate_nn_assignments(filter(f -> f isa AbstractNeuralFlux, fluxes))
     define_calls_1 = [input_define_calls_1..., state_define_calls_1..., params_assign_calls..., nn_params_assign_calls...]
@@ -317,11 +332,11 @@ function build_multi_bucket_func(fluxes::Vector{<:AbstractFlux}, dfluxes::Vector
     names = extract_names(infos)
 
     # Define variable assignments for different dimensions
-    input_define_calls_1 = generate_variable_assignments(names.input_names, dims=1)
-    state_define_calls_1 = generate_variable_assignments(names.state_names, dims=1, target=:states)
+    input_define_calls_1 = generate_input_assignments(names.input_names, dims=1)
+    state_define_calls_1 = generate_state_assignments(names.state_names, dims=1, reshape=true)
 
-    input_define_calls_2 = generate_variable_assignments(names.input_names, dims=2)
-    state_define_calls_2 = generate_variable_assignments(names.state_names, dims=2, target=:states)
+    input_define_calls_2 = generate_input_assignments(names.input_names, dims=2)
+    state_define_calls_2 = generate_state_assignments(names.state_names, dims=2)
 
     params_assign_calls = generate_param_assignments(names.param_names)
     nn_params_assign_calls = generate_nn_assignments(filter(f -> f isa AbstractNeuralFlux, fluxes))
@@ -370,11 +385,11 @@ function build_route_func(fluxes::AbstractVector{<:AbstractFlux}, dfluxes::Abstr
     names = extract_names(infos)
 
     # Define variable assignments for different dimensions
-    input_define_calls_1 = generate_variable_assignments(names.input_names, dims=1)
-    state_define_calls_1 = generate_variable_assignments(names.state_names, dims=1, target=:states)
+    input_define_calls_1 = generate_input_assignments(names.input_names, dims=1)
+    state_define_calls_1 = generate_state_assignments(names.state_names, dims=1, reshape=true)
 
-    input_define_calls_2 = generate_variable_assignments(names.input_names, dims=2)
-    state_define_calls_2 = generate_variable_assignments(names.state_names, dims=2, target=:states)
+    input_define_calls_2 = generate_input_assignments(names.input_names, dims=2)
+    state_define_calls_2 = generate_state_assignments(names.state_names, dims=2)
 
     params_assign_calls = generate_param_assignments(names.param_names)
     nn_params_assign_calls = generate_nn_assignments(filter(f -> f isa AbstractNeuralFlux, fluxes))
@@ -420,8 +435,8 @@ function build_nnlayer_func(fluxes::Vector{<:AbstractHydroFlux}, dfluxes::Vector
     names = extract_names(infos)
 
     # Define variable assignments
-    input_define_calls = generate_variable_assignments(names.input_names, dims=1)
-    state_define_calls = generate_variable_assignments(names.state_names, target=:states)
+    input_define_calls = generate_input_assignments(names.input_names, dims=1)
+    state_define_calls = generate_state_assignments(names.state_names, dims=1)
     params_assign_calls = generate_param_assignments(names.param_names)
     nn_params_assign_calls = [:($(nflux.infos[:nns][1]) = pas.nns.$(nflux.infos[:nns][1])) for nflux in filter(f -> f isa AbstractNeuralFlux, fluxes)]
     define_calls = [input_define_calls..., state_define_calls..., params_assign_calls..., nn_params_assign_calls...]

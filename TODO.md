@@ -31,3 +31,8 @@
 - [ ] 如何实现同级的hydrobucket权重叠加，考虑将bucket的func进行拼接
 - [ ] 集成计算，bucket与model
 - [ ] bucket需要分为多维和单维的
+- [ ] bucket中优化参数超过100个时会使用ReverseDiffAdjoint这个敏感性算法，这时候优化会出现错误，难以解决
+
+## BUG
+- [ ] bucket 中如果有neuralflux,打印的时候会报错
+- [ ] neuralbucket仍有问题
