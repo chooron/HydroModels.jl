@@ -88,7 +88,6 @@ function (solver::ManualSolver{true})(
     nearzero = solver.nearzero |> eltype(initstates)
     for (i, t) in enumerate(timeidx)
         tmp_du = du_func(tmp_initstates, pas, t)
-        # println("u:" , size(tmp_initstates), " du:", size(tmp_du))
         tmp_initstates = max.(nearzero, tmp_initstates .+ tmp_du)
         states_results[ntuple(Returns(Colon()), N)..., i] .= tmp_initstates
     end
@@ -186,9 +185,9 @@ function (solver::DiscreteSolver)(
     end
     #* build problem
     prob = DiscreteProblem(ode_func!, initstates, (timeidx[1], timeidx[end]), params)
-    cb = ContinuousCallback(condition, affect!, save_positions=(false, false))
+    # cb = ContinuousCallback(condition, affect!, save_positions=(false, false))
     #* solve problem
-    sol = solve(prob, solver.alg, saveat=timeidx, callback=cb)
+    sol = solve(prob, solver.alg, saveat=timeidx) # , callback=cb
     if SciMLBase.successful_retcode(sol)
         sol_arr = Array(sol)
     else

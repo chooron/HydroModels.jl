@@ -25,30 +25,44 @@ UnitHydrograph(inputs, params; uh_pairs, max_lag, outputs=[], configs=(solvetype
 """
 struct UnitHydrograph{N,ST} <: AbstractHydrograph
     "calculate weight of unit hydrograph"
-    wfunc::Function
+    uh_func::Function
+    max_lag::Function
     "A named tuple containing information about inputs, outputs, parameters, and states"
     infos::NamedTuple
 
     function UnitHydrograph(
-        inputs::AbstractVector{T}, outputs::AbstractVector{T}, params::AbstractVector{T};
-        uh_pairs::AbstractVector{<:Pair}, name::Optional{Symbol}=nothing,
+        inputs::AbstractVector{T}, outputs::AbstractVector{T}, params::AbstractVector{T},
+        uh_func::Function, max_lag::Function; name::Optional{Symbol}=nothing,
         kwargs...
     ) where {T<:Num}
         solvetype = get(kwargs, :solvetype, :DISCRETE)
-        max_lag = get(kwargs, :max_lag, uh_pairs[1][1])
-        uh_func, max_lag_func = build_uh_func(uh_pairs, params, max_lag)
-        @assert length(inputs) == length(outputs) == 1 "only one input and one output is supported"
-        @assert solvetype in [:DISCRETE, :SPARSE, :DSP] "solvetype must be one of [:DISCRETE, :SPARSE, :DSP]"
-        solvetype == :DSP && @warn "The DSP solver is not supported for Zygote, please use :DISCRETE or :SPARSE instead, and this method required DSP.jl"
-        min_weight_prop = get(kwargs, :min_weight_prop, 1e-6)
-        wfunc(pas) = begin
-            weights = map(t -> uh_func(t, pas), 1:max_lag_func(pas))[1:end-1]
-            filter(x -> x > maximum(weights) * min_weight_prop, weights)
-        end
         infos = (; inputs=inputs, outputs=outputs, params=params)
         uh_name = isnothing(name) ? Symbol("##uh#", hash(infos)) : name
-        return new{uh_name,solvetype}(wfunc, infos)
-    end
+        return new{uh_name, solvetype}(uh_func, max_lag, infos)
+    end 
+
+    # function UnitHydrograph(
+    #     inputs::AbstractVector{T}, outputs::AbstractVector{T}, params::AbstractVector{T};
+    #     uh_pairs::AbstractVector{<:Pair}, name::Optional{Symbol}=nothing,
+    #     kwargs...
+    # ) where {T<:Num}
+    #     solvetype = get(kwargs, :solvetype, :DISCRETE)
+    #     max_lag = get(kwargs, :max_lag, uh_pairs[1][1])
+    #     uh_func, max_lag_func = build_uh_func(uh_pairs, params, max_lag)
+    #     @assert length(inputs) == length(outputs) == 1 "only one input and one output is supported"
+    #     @assert solvetype in [:DISCRETE, :SPARSE, :DSP] "solvetype must be one of [:DISCRETE, :SPARSE, :DSP]"
+    #     solvetype == :DSP && @warn "The DSP solver is not supported for Zygote, please use :DISCRETE or :SPARSE instead, and this method required DSP.jl"
+    #     min_weight_prop = get(kwargs, :min_weight_prop, 1e-6)
+    #     # wfunc(pas) = begin
+    #     #     # weights = map(t -> uh_func(t, pas), 1:max_lag_func(pas))[1:end-1]
+    #     #     # filter(x -> x > maximum(weights) * min_weight_prop, weights)
+    #     #     lag_weights = [uh_func(t, pas) for t in 1:max_lag_func(pas)]
+    #     #     lag_weights = vcat([lag_weights[1]], (circshift(lag_weights, -1).-lag_weights)[1:end-1])
+    #     # end
+    #     infos = (; inputs=inputs, outputs=outputs, params=params)
+    #     uh_name = isnothing(name) ? Symbol("##uh#", hash(infos)) : name
+    #     return new{uh_name,solvetype}(uh_func, max_lag_func, infos)
+    # end
 end
 
 """
@@ -99,7 +113,7 @@ macro unithydro(args...)
 
     @assert uh_func_expr !== nothing "Missing uh_func in unit hydrograph definition"
     @assert uh_vars_expr !== nothing "Missing uh_vars in unit hydrograph definition"
-        
+
     for var_name in extract_variables(uh_func_expr)
         if !@isdefined(var_name)
             expr_str = string(uh_func_expr)
@@ -170,12 +184,13 @@ routed_flow = uh(input_runoff, parameters)
 (::UnitHydrograph)(::AbstractVector, ::ComponentVector; kwargs...) = @error "UnitHydrograph is not support for single timepoint"
 
 function (uh::UnitHydrograph{N,:DISCRETE})(input::AbstractArray{T,2}, pas::ComponentVector; kwargs...) where {T,N}
-    solver = ManualSolver(mutable=true)
+    solver = get(kwargs, :solver, ManualSolver(mutable=true))
+    interp = get(kwargs, :interp, DirectInterpolation)
     timeidx = collect(1:size(input, 2))
-    interp_func = DirectInterpolation(input, timeidx)
-    uh_weight = uh.wfunc(pas)
+    interp_func = interp(input, timeidx)
+    lag_weights = [uh.uh_func(t, pas) for t in 1:uh.max_lag(pas)]
+    uh_weight = vcat([lag_weights[1]], (circshift(lag_weights, -1).-lag_weights)[1:end-1])
     if length(uh_weight) == 0
-        @warn "The unit hydrograph weight is empty, please check the unit hydrograph function"
         return input
     else
         update_func(i, u, p) = i .* p .+ [diff(u, dims=1); -u[end]]
@@ -188,9 +203,9 @@ function (uh::UnitHydrograph{N,:DISCRETE})(input::AbstractArray{T,2}, pas::Compo
 end
 
 function (uh::UnitHydrograph{N,:SPARSE})(input::AbstractArray{T,2}, pas::ComponentVector; kwargs...) where {T,N}
-    uh_weight = uh.wfunc(pas)
+    lag_weights = [uh.uh_func(t, pas) for t in 1:uh.max_lag(pas)]
+    uh_weight = vcat([lag_weights[1]], (circshift(lag_weights, -1).-lag_weights)[1:end-1])
     if length(uh_weight) == 0
-        @warn "The unit hydrograph weight is empty, please check the unit hydrograph function"
         return input
     else
         function sparse_compute(input_vec)
@@ -217,9 +232,9 @@ function (uh::UnitHydrograph)(input::AbstractArray{T,3}, pas::AbstractArray; kwa
     #* Extract the initial state of the parameters and routement in the pas variable
     ptyidx = get(kwargs, :ptyidx, 1:size(input, 2))
     uh_param_names = get_param_names(uh)
-    extract_params = stack(pas[:params][uh_param_names], dims=1)[ptyidx, :]
+    extract_params = eachrow(reshape(reduce(vcat, pas[:params][uh_param_names]), :, length(uh_param_names))[ptyidx, :])
     extract_params_cv = map(eachindex(ptyidx)) do idx
-        ComponentVector(params=NamedTuple{Tuple(uh_param_names)}(extract_params[idx, :]))
+        ComponentVector(params=NamedTuple{Tuple(uh_param_names)}(extract_params[idx]))
     end
     node_sols = uh.(eachslice(input, dims=2), extract_params_cv)
     sol_mat = reduce((m1, m2) -> cat(m1, m2, dims=1), node_sols)

@@ -49,12 +49,7 @@ function generate_state_assignments(names; dims=0, prefix="", reshape=false)
     if dims == 0
         return [:($(Symbol(prefix, i)) = states[$idx]) for (idx, i) in enumerate(names)]
     elseif dims == 1
-        if reshape
-            reshape_expr = [:(new_states = reshape(states, length($names), :))]
-            return vcat(reshape_expr, [:($(Symbol(prefix, i)) = new_states[$idx, :]) for (idx, i) in enumerate(names)])
-        else
-            return [:($(Symbol(prefix, i)) = states[$idx, :]) for (idx, i) in enumerate(names)]
-        end
+        return [:($(Symbol(prefix, i)) = states[$idx, :]) for (idx, i) in enumerate(names)]
     elseif dims == 2
         return [:($(Symbol(prefix, i)) = states[$idx, :, :]) for (idx, i) in enumerate(names)]
     end

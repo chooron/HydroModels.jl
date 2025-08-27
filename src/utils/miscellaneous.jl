@@ -145,13 +145,9 @@ Expand the parameters of a component vector based on the provided index.
 - `new_pas::ComponentVector`: The expanded component vector.
 """
 function expand_component_params(pas::ComponentVector, pnames::AbstractVector, ptyidx::AbstractVector)
-    params = view(pas, :params)
-    expand_params = NamedTuple{Tuple(pnames)}([params[p][ptyidx] for p in pnames])
-    return if haskey(pas, :nns)
-        ComponentVector(params=expand_params, nns=pas[:nns])
-    else
-        ComponentVector(params=expand_params)
-    end
+    params_ntp = NamedTuple(pas[:params])
+    expand_params = (; params=NamedTuple{Tuple(pnames)}([params_ntp[p][ptyidx] for p in pnames]))
+    return merge(pas |> NamedTuple, expand_params) |> ComponentVector
 end
 
 """
@@ -173,7 +169,7 @@ end
 
 function expand_component_initstates(initstates::AbstractMatrix, styidx::AbstractVector)
     expand_initstates = initstates[:, styidx]
-    vec(expand_initstates) # Convert to vector for gradient support
+    vec(expand_initstates') |> Vector # Convert to vector for gradient support
 end
 
 function expand_component_params_and_initstates(pas::ComponentVector, initstates::ComponentVector, ptyidx::AbstractVector, styidx::AbstractVector)

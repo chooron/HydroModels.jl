@@ -6,6 +6,7 @@ using Reexport
 using LinearAlgebra
 using SparseArrays
 using Random
+using SpecialFunctions
 
 # runtime generated functions
 using RuntimeGeneratedFunctions

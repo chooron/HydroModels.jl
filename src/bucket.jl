@@ -115,7 +115,7 @@ macro hydrobucket(args...)
     if !isnothing(dfluxes_expr)
         push!(kwargs, :($:(dfluxes=$dfluxes_expr)))
     end
-    return esc(:(HydroBucket(;$(kwargs...))))
+    return esc(:(HydroBucket(; $(kwargs...))))
 end
 
 """
@@ -195,7 +195,7 @@ end
 
 function (ele::HydroBucket{N,true,true})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T,N}
     input_dims, num_nodes, time_len = size(input)
-
+    num_states = length(get_state_names(ele))
     #* get kwargs
     ptyidx = get(kwargs, :ptyidx, collect(1:num_nodes))
     styidx = get(kwargs, :styidx, collect(1:num_nodes))
@@ -210,17 +210,16 @@ function (ele::HydroBucket{N,true,true})(input::AbstractArray{T,3}, params::Comp
     initstates_expand = expand_component_initstates(initstates_, styidx) |> device
     new_params = expand_component_params(params, get_param_names(ele), ptyidx) |> device
     params_vec, params_axes = Vector(new_params) |> device, getaxes(new_params)
-
     #* solve ode problem
     itpfuncs = interp(reshape(input, input_dims * num_nodes, :), timeidx)
     solved_states = solver(
         (u, p, t) -> ele.ode_func(
             reshape(itpfuncs(t), input_dims, num_nodes),
-            u, ComponentVector(p, params_axes)
+            reshape(u, num_nodes, num_states)', ComponentVector(p, params_axes)
         ),
         params_vec, initstates_expand, timeidx
     )
-    solved_states_reshape = reshape(solved_states, length(get_state_names(ele)), num_nodes, time_len)    
+    solved_states_reshape = permutedims(reshape(solved_states, num_nodes, num_states, time_len), (2, 1, 3))
     #* run other functions
     output = ele.flux_func(input, solved_states_reshape, new_params)
     cat(solved_states_reshape, stack(output, dims=1), dims=1)

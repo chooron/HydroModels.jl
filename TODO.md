@@ -36,3 +36,6 @@
 ## BUG
 - [ ] bucket 中如果有neuralflux,打印的时候会报错
 - [ ] neuralbucket仍有问题
+- [ ] 还是得拆分开, 把DifferentialEquations独立出来
+- [ ] unit hydro 也存在问题
+- [ ] @neuralfux 构建时可以接收一个归一化的参数
