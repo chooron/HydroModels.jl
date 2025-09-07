@@ -197,6 +197,30 @@ function (l::HydroLuxLayer)(input::Tuple, ps, st::NamedTuple)
     return (stack(vcat(new_states, output), dims=1), new_states), st
 end
 
+
+
+"""
+    build_nnlayer_func(fluxes, dfluxes, infos)
+
+Builds a neural network layer function for a hydrological model.
+"""
+function build_nnlayer_func(fluxes::Vector{<:AbstractHydroFlux}, dfluxes::Vector{<:AbstractStateFlux}, infos::HydroModelCore.HydroInfos)
+    define_calls = [
+        generate_var_assignments(vars=infos.inputs, target=:inputs, dims=1)...,
+        generate_var_assignments(vars=infos.states, target=:states, dims=1)...,
+        generate_param_assignments(params=infos.params)...,
+        generate_nn_assignments(nnfluxes=filter(f -> f isa AbstractNeuralFlux, fluxes))...
+    ]
+
+    func_expr = :(function (inputs, pas, states)
+        Base.@_inline_meta
+        $(define_calls...)
+        $(generate_compute_calls(fluxes=fluxes, dims=1)...)
+        return [$(outputs...)]
+    end)
+    return @RuntimeGeneratedFunction(func_expr)
+end
+
 """    NeuralBucket{N} <: AbstractBucket
 
 A recurrent neural network-based bucket for hydrological modeling that leverages Lux.jl's recurrence layers.
@@ -325,7 +349,7 @@ The input array must have variables arranged along the first dimension, nodes al
 the second dimension, and time steps along the third dimension.
 """
 function (bucket::NeuralBucket{N})(input::AbstractArray{T,3}, pas::ComponentVector; kwargs...) where {T,N}
-    ptyidx = get(kwargs, :ptyidx, 1:size(input, 2))
+    ptyidx = styidx = get(kwargs, :ptyidx, 1:size(input, 2))
     styidx = get(kwargs, :styidx, 1:size(input, 2))
     initstates = get(kwargs, :initstates, get_default_states(bucket, input))
     new_pas = expand_component_params_and_initstates(pas, initstates, ptyidx, styidx)

@@ -39,3 +39,5 @@
 - [ ] 还是得拆分开, 把DifferentialEquations独立出来
 - [ ] unit hydro 也存在问题
 - [ ] @neuralfux 构建时可以接收一个归一化的参数
+- [ ] styidx这个参数可能重要性不大
+- [ ] HydroBucket用于多节点计算过少,考虑抛弃这个功能,将多节点计算主要放在Lux-based的基础上

@@ -1,92 +1,74 @@
 """
-    HydroFlux{N} <: AbstractHydroFlux
+    HydroFlux{E,F,I} <: AbstractHydroFlux
 
-Represents a simple flux component with mathematical formulas in a hydrological model. 
+Represents a simple flux component with mathematical formulas in a hydrological model.
+
+The component automatically determines inputs, outputs, and parameters from the provided expressions. It then builds a callable function to perform the calculations efficiently.
 
 # Arguments
-- `inputs::Vector{Num}`: Vector of input variables
-- `outputs::Vector{Num}`: Vector of output variables
-- `params::Vector{Num}=Num[]`: Vector of parameter variables
-- `exprs::Vector{Num}`: Vector of expressions for output calculations
-- `name::Union{Symbol,Nothing}=nothing`: Optional flux identifier
+- `exprs::Vector{Equation}`: A vector of equations defining the flux calculations. The left-hand side of each equation is treated as an output variable, and the right-hand side is the expression used to compute it.
+- `name::Union{Symbol,Nothing}=nothing`: An optional identifier for the flux component. If not provided, a unique name is generated automatically.
 
 # Fields
-- `exprs::Vector{Num}`: Vector of mathematical expressions
-- `func::Function`: Generated function for flux calculations
-- `infos::NamedTuple`: Metadata (inputs::Vector{Num}, outputs::Vector{Num}, params::Vector{Num})
-
-## Model Structure
-The flux model consists of:
-- Input variables: External variables used in calculations
-- Output variables: Computed flux results
-- Parameters: Model parameters used in calculations
-- Expressions: Mathematical formulas defining the relationships
-
-## Metadata Components
-The `infos` field tracks:
-- `inputs`: Input variable names
-- `outputs`: Output variable names
-- `params`: Parameter names
+- `name::Symbol`: The identifier for the flux.
+- `exprs::Vector{Num}`: Vector of the right-hand-side mathematical expressions from the input equations.
+- `func::Function`: A compiled function generated from the expressions for efficient computation. The function is designed to work with arrays of input data.
+- `infos::NamedTuple`: Metadata about the component, containing the derived names of `inputs`, `outputs`, and `params`.
 """
-struct HydroFlux{N} <: AbstractHydroFlux
+struct HydroFlux{E,F,I} <: AbstractHydroFlux
+    "flux name"
+    name::Symbol
     "Vector of expressions describing the formulas for output variables"
-    exprs::Vector
+    exprs::E
     "Compiled function that calculates the flux"
-    func::Function
+    func::F
     "Metadata about the flux, including input, output, and parameter names"
-    infos::NamedTuple
+    infos::I
 
     function HydroFlux(;
-        exprs::Vector{T}, name::Optional{Symbol}=nothing,
-    ) where {T}
+        exprs::E, name::Optional{Symbol}=nothing,
+    ) where {E}
         # parse expressions and extract variables
         outputs = Num.([eq.lhs for eq in exprs])
         eqs = Num.([eq.rhs for eq in exprs])
-        all_vars = Num.(mapreduce(HydroModels.get_variables, union, eqs, init=Set{Num}()))
-        inputs = setdiff(Num.(filter(x -> !HydroModels.isparameter(x), collect(all_vars))), outputs)
-        params = Num.(filter(x -> HydroModels.isparameter(x), collect(all_vars)))
+        all_vars = Num.(mapreduce(get_variables, union, eqs, init=Set{Num}()))
+        inputs = setdiff(Num.(filter(x -> !isparameter(x), collect(all_vars))), outputs)
+        params = Num.(filter(x -> isparameter(x), collect(all_vars)))
         assert_msg = "The number of expressions and outputs must match" *
                      " but got expressions: $(length(exprs)) and outputs: $(length(outputs))"
         @assert length(exprs) == length(outputs) assert_msg
 
         # build the function for flux calculations
-        flux_func = build_flux_func(inputs, outputs, params, eqs)
-        infos = (; inputs=inputs, outputs=outputs, params=params)
+        infos = HydroInfos(
+            inputs=!isempty(inputs) ? tosymbol.(inputs) : Symbol[],
+            params=!isempty(params) ? tosymbol.(params) : Symbol[],
+            outputs=!isempty(outputs) ? tosymbol.(outputs) : Symbol[]
+        )
+        flux_func = build_flux_func(eqs, infos)
         flux_name = isnothing(name) ? Symbol("##hydro_flux#", hash(infos)) : name
 
-        return new{flux_name}(eqs, flux_func, infos)
+        return new{typeof(eqs),typeof(flux_func),typeof(infos)}(
+            flux_name, eqs, flux_func, infos
+        )
     end
 end
 
 """
     @hydroflux(name, eqs...)
 
-Create a `HydroFlux` from a set of equations, where:
-- Left sides of equations are output variables
-- Right sides contain input variables and parameters
-- Parameters are identified using ModelingToolkit's `isparameter`
-- `name` is an optional name for the flux (provide as first argument)
+A macro to conveniently create a `HydroFlux` component from a set of equations.
 
-# Examples
-```julia
-@variables x, y, z
-@parameters a, b
+It parses the given equations to identify output variables (left-hand sides), input variables, and parameters (right-hand sides). Parameters are distinguished from variables using `ModelingToolkit's` `isparameter` function.
 
-# Create a named flux with one equation
-flux1 = @hydroflux :my_flux z = a*x + b*y
-
-# Create a flux with multiple equations
-flux2 = @hydroflux begin
-    z₁ = a*x + b*y
-    z₂ = x^2 + y^2
-end
-```
+# Arguments
+- `name`: An optional `Symbol` to name the flux component. If it's the only argument, it's treated as the expression.
+- `eqs...`: One or more equations defining the flux. These can be provided as a single equation, multiple equations, or within a `begin...end` block.
 """
 macro hydroflux(args...)
     name = length(args) == 1 ? nothing : args[1]
     eqs_expr = length(args) == 1 ? args[1] : args[2]
     vect_eqs_expr = if Meta.isexpr(eqs_expr, :block)
-        Expr(:vect, filter(arg -> !(arg isa LineNumberNode) && !Meta.isexpr(arg, :line), eqs_expr.args)...)
+        Expr(:tuple, filter(arg -> !(arg isa LineNumberNode) && !Meta.isexpr(arg, :line), eqs_expr.args)...)
     elseif Meta.isexpr(eqs_expr, :for)
         loop_var = eqs_expr.args[1].args[1]
         range_expr = eqs_expr.args[1].args[2]
@@ -112,9 +94,9 @@ macro hydroflux(args...)
                 push!(all_equations, new_eq)
             end
         end
-        Expr(:vect, all_equations...)
+        Expr(:tuple, all_equations...)
     else
-        Expr(:vect, eqs_expr)
+        Expr(:tuple, eqs_expr)
     end
 
     for var_name in extract_variables(vect_eqs_expr)
@@ -139,52 +121,47 @@ function replace_loop_var!(expr, var_name, value)
 end
 
 """
-    (flux::AbstractHydroFlux)(input::AbstractArray, params::ComponentVector; kwargs...)
+    build_flux_func(inputs::Vector{Num}, outputs::Vector{Num}, params::Vector{Num}, exprs::Vector{Num})
 
-Apply a HydroFlux model to input data for calculating water fluxes.
+Generates a runtime function for flux calculations based on symbolic expressions.
+"""
+function build_flux_func(exprs::Vector{Num}, infos::HydroModelCore.HydroInfos)
+    flux_exprs = map(expr -> :(@. $(simplify_expr(toexpr(expr)))), exprs)
+    input_assign_calls = generate_var_assignments(vars=infos.inputs, target=:inputs)
+    params_assign_calls = generate_param_assignments(params=infos.params)
+    compute_calls = [:($o = $expr) for (o, expr) in zip(infos.outputs, flux_exprs)]
+
+    flux_func_expr = :(function (inputs, pas)
+        Base.@_inline_meta
+        $(input_assign_calls...)
+        $(params_assign_calls...)
+        $(compute_calls...)
+        return [$((infos.outputs)...)]
+    end)
+    return @RuntimeGeneratedFunction(flux_func_expr)
+end
+
+
+"""
+    StateFlux{N,E,I} <: AbstractStateFlux
+
+Represents a state flux component that symbolically defines the rate of change for a state variable in a hydrological model. The component's name is encoded in the type parameter `N` for enhanced type stability.
+
+This component is primarily a declarative structure used within a larger model (like a `HydroBucket`) to define the system's differential equations. It does not perform calculations directly.
 
 # Arguments
-- `input::AbstractArray`: Input data array with the following possible dimensions:
-  - `Matrix`: Time series data with shape (variables, timesteps)
-  - `Array{3}`: Distributed data with shape (variables, nodes, timesteps)
-- `params::ComponentVector`: Model parameters organized in a component vector
-- `kwargs`: Additional keyword arguments:
-  - `ptyidx::AbstractVector{Int}`: Parameter type indices for distributed runs (default: all nodes)
+- `exprs::Vector{Equation}`: A vector of equations defining the state change. The left-hand side represents the state variable, and the right-hand side is the expression for its derivative (rate of change).
+- `name::Union{Symbol,Nothing}=nothing`: An optional identifier for the state flux. If not provided, a name is generated based on the state variable.
 
-# Returns
-- `Matrix`: For 2D input, returns matrix of shape (output_variables, timesteps)
-- `Array{3}`: For 3D input, returns array of shape (output_variables, nodes, timesteps)
-
-# Description
-This function applies the flux calculations to input time series data, supporting both 
-single-node and distributed (multi-node) simulations. For distributed runs, parameters 
-are automatically expanded to match the number of nodes.
-
-## Input Data Structure
-- Variables must be arranged along the first dimension
-- For distributed runs, nodes are along the second dimension
-- Time steps are always in the last dimension
-
-## Parameter Handling
-- Single-node: Parameters are used as is
-- Multi-node: Parameters are expanded using `ptyidx` to match node count
-- Component parameters maintain type stability
-
-## Example
-```julia
-# Single-node simulation
-flux = HydroFlux([P, E] => [Q], params=[k], exprs=[k*P - E])
-output = flux(input, params)  # input: (2, timesteps)
-
-# Multi-node simulation
-output = flux(input, params, ptyidx=1:n_nodes)  # input: (2, n_nodes, timesteps)
-```
+# Fields
+- `exprs::Vector{Num}`: A vector containing the right-hand-side expressions from the input equations, which define the state's rate of change.
+- `infos::NamedTuple`: Metadata about the component, including the derived names of `inputs`, `states`, and `params` extracted from the expressions.
 """
-function (flux::HydroFlux{N})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T,N}
+function (flux::HydroFlux)(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T}
     stack(flux.func(eachslice(input, dims=1), params), dims=1)
 end
 
-function (flux::HydroFlux{N})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T,N}
+function (flux::HydroFlux)(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T}
     ptyidx = get(kwargs, :ptyidx, collect(1:size(input, 2)))
     expand_params = expand_component_params(params, get_param_names(flux), ptyidx)
     output = flux.func(eachslice(input, dims=1), expand_params)
@@ -192,117 +169,54 @@ function (flux::HydroFlux{N})(input::AbstractArray{T,3}, params::ComponentVector
 end
 
 """
-    StateFlux{N} <: AbstractStateFlux
+    @stateflux(name, eq)
 
-Represents a state flux component in a hydrological model that describes how state variables 
-change over time. The type parameter `N` is used to encode the component name at the type 
-level for better type stability.
+A macro to conveniently create a `StateFlux` component from a single equation.
+
+The left side of the equation is interpreted as the state variable, and the right side is the expression defining its rate of change.
+
+The standard convention is to use `~` to define the relationship (e.g., `S ~ P - E`), consistent with `ModelingToolkit` for differential equations.
 
 # Arguments
-- `inputs::Vector{Num}`: Vector of input variables affecting state change
-- `state::Num`: State variable being updated
-- `params::Vector{Num}=Num[]`: Optional vector of parameter variables
-- `expr::Num`: Expression defining the state derivative
-- `name::Union{Symbol,Nothing}=nothing`: Optional flux identifier
-
-# Fields
-- `exprs::Vector{Num}`: Vector of state derivative expressions
-- `infos::NamedTuple`: Component metadata including input, state, and parameter information
-
-# Description
-StateFlux is a type-stable implementation for representing state changes in hydrological models.
-It defines how state variables evolve over time based on inputs, current state, and parameters.
-The component can be constructed in three ways to accommodate different modeling needs:
-
-## Model Structure
-The state flux model consists of:
-- Input variables: External variables affecting state change
-- State variable: The variable being updated
-- Parameters: Model parameters used in calculations
-- Expression: Mathematical formula defining state derivative
-
-## Metadata Components
-The `infos` field tracks:
-- `inputs`: Input variable names
-- `states`: State variable names
-- `params`: Parameter names
-- `inflows`: Input flux names (when constructed from fluxes)
-- `outflows`: Output flux names (when constructed from fluxes)
-
-## Construction Methods
-1. Explicit Definition:
-   ```julia
-   # Define state change as a function of inputs and parameters
-   flux = StateFlux(
-       inputs=[precip, evap],  # input variables
-       state=soil_moisture,    # state variable
-       params=[k₁, k₂],       # parameters
-       expr=k₁*precip - k₂*evap  # state derivative
-   )
-   ```
-
-2. Flux-Based Definition:
-   ```julia
-   # Define state change as difference between inflows and outflows
-   flux = StateFlux(
-       [inflow₁, inflow₂] => [outflow₁, outflow₂],  # input/output fluxes
-       soil_moisture                                  # state variable
-   )
-   ```
-
-3. State Transition:
-   ```julia
-   # Define direct state transition
-   flux = StateFlux(
-       old_state => new_state  # state transition pair
-   )
-   ```
-
-## Usage Notes
-1. State derivatives are automatically calculated from expressions
-2. Names are auto-generated from state variables if not provided
-3. StateFlux components must be used within a HydroBucket
-4. Flux pairs automatically create mass-balance equations
+- `name`: An optional `Symbol` to name the state flux component.
+- `eq`: A single equation that defines the change in a state variable.
 """
-struct StateFlux{N} <: AbstractStateFlux
+struct StateFlux{N,E,I} <: AbstractStateFlux
     "flux expressions to descripe the formula of the state variable"
-    exprs::Vector{Num}
+    exprs::E
     "bucket information: keys contains: input, output, param, state"
-    infos::NamedTuple
+    infos::I
 
     function StateFlux(;
-        exprs::Vector{T}, name::Optional{Symbol}=nothing
-    ) where {T}
+        exprs::E, name::Optional{Symbol}=nothing
+    ) where {E}
         states = Num.([eq.lhs for eq in exprs])
         eqs = Num.([eq.rhs for eq in exprs])
         all_vars = Num.(mapreduce(HydroModels.get_variables, union, eqs, init=Set{Num}()))
         inputs = setdiff(Num.(filter(x -> !HydroModels.isparameter(x), collect(all_vars))), states)
         params = Num.(filter(x -> HydroModels.isparameter(x), collect(all_vars)))
-        infos = (; inputs=inputs, states=states, params=params)
+        infos = HydroInfos(
+            inputs=!isempty(inputs) ? tosymbol.(inputs) : Symbol[],
+            states=!isempty(states) ? tosymbol.(states) : Symbol[],
+            params=!isempty(params) ? tosymbol.(params) : Symbol[]
+        )
         flux_name = isnothing(name) ? Symbol("##state_flux#", hash(infos)) : name
-        return new{flux_name}(eqs, infos)
+        return new{flux_name,typeof(eqs),typeof(infos)}(eqs, infos)
     end
 end
 
 """
-    stateflux(name, eq)
+    @stateflux(name, eq)
 
-Create a `StateFlux` from an equation, where:
-- Left side of the equation is the state variable
-- Right side contains the expression for the state variable's change
-- `name` is an optional name for the flux (provide as first argument)
+A macro to conveniently create a `StateFlux` component from a single equation.
 
-# Examples
-```julia
-@variables x y z
-@parameters a b
+The left side of the equation is interpreted as the state variable, and the right side is the expression defining its rate of change.
 
-# Create a named state flux
-flux1 = @stateflux_build :my_flux z ~ a*x + b*y
+The standard convention is to use `~` to define the relationship (e.g., `S ~ P - E`), consistent with `ModelingToolkit` for differential equations.
 
-# Create a state flux without a name
-flux2 = @stateflux_build z ~ a*x + b*y
-```
+# Arguments
+- `name`: An optional `Symbol` to name the state flux component.
+- `eq`: A single equation that defines the change in a state variable.
 """
 macro stateflux(args...)
     # Process arguments

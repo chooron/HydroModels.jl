@@ -1,59 +1,54 @@
 """
-    HydroModel{N} <: AbstractModel
+    HydroModel{CS,NT,VI,OI,DS} <: AbstractModel
 
-Represents a complete hydrological model that integrates multiple components for simulating water processes.
+Represents a complete hydrological model by integrating a sequence of components. It manages the data flow between them automatically.
+
+The model orchestrates how inputs and the outputs of preceding components are routed as inputs to subsequent components.
+
+# Arguments
+- `components::Tuple`: A tuple of computational components (e.g., `HydroBucket`, `UnitHydrograph`) that are executed in sequence.
+- `name::Optional{Symbol}=nothing`: An optional identifier for the model. A unique name is generated if not provided.
 
 # Fields
-- `components::Vector{<:AbstractComponent}`: Hydrological computation components (e.g., `HydroBucket`, `UnitHydrograph`).
-- `infos::NamedTuple`: Metadata including variable names (inputs, outputs, states, params, nns) aggregated from components.
-- `_varindices::AbstractVector{AbstractVector{Int}}`: Input variable indices for each component, determined automatically during construction to manage data flow.
-- `_outputindices::AbstractVector{Int}`: Indices used to select and order the final model outputs from all internal variables.
-
-# Constructor
-```julia
-HydroModel(; components::Vector{<:AbstractComponent}, name::Optional{Symbol}=nothing)
-```
-- `components`: Required. A vector containing the different model components.
-- `name`: Optional symbol to identify the model. If `nothing`, a unique name is generated.
-
-# Usage Example
-```julia
-# Assuming bucket1 and routing1 are predefined AbstractComponent instances
-model = HydroModel(
-    name = :simple_catchment,
-    components = [bucket1, routing1]
-)
-
-# Simulate the model
-# output = model(input_data, parameters)
-```
-
-# Notes
-- The type parameter `N` encodes the model `name` at the type level for potential dispatch optimizations.
-- Component connections and variable routing (`_varindices`, `_outputindices`) are handled automatically.
-- The constructed `model` object is callable to perform simulations (see the function call operator documentation for details).
+- `name::Symbol`: The identifier for the model.
+- `components::Tuple`: The tuple of hydrological components that constitute the model.
+- `infos::NamedTuple`: Aggregated metadata from all components, including the names of all `inputs`, `outputs`, `states`, `params`, and `nns`.
+- `_varindices::Vector{Vector{Int}}`: Internal field. Stores the input variable indices for each component to manage data routing.
+- `_outputindices::Vector{Int}`: Internal field. Stores the indices used to select and order the final model outputs from all intermediate variables.
+- `_defaultstates::ComponentVector`: A `ComponentVector` holding the default initial values (zeros) for all state variables in the model.
 """
-struct HydroModel{N} <: AbstractModel
+struct HydroModel{CS,NT,VI,OI,DS} <: AbstractModel
+    "hydrological mode name"
+    name::Symbol
     "hydrological computation elements"
-    components::Vector{<:AbstractComponent}
+    components::CS
     "meta data of hydrological model"
-    infos::NamedTuple
+    infos::NT
     "input variables index for each components"
-    _varindices::AbstractVector{AbstractVector{Int}}
+    _varindices::VI
     "output variables index for sort output variables"
-    _outputindices::AbstractVector{Int}
+    _outputindices::OI
+    "default initial states"
+    _defaultstates::DS
 
     function HydroModel(;
-        components::Vector{C},
+        components::Tuple,
         name::Optional{Symbol}=nothing,
-    ) where {C<:AbstractComponent}
-        inputs, outputs, states = get_vars(components)
-        params = reduce(union, get_params.(components))
-        nns = reduce(union, get_nns.(components))
+    )
+        inputs, outputs, states = get_var_names(components)
+        params = reduce(union, get_param_names.(components))
+        nns = reduce(union, get_nn_names.(components))
         input_idx, output_idx = _prepare_indices(components, inputs, vcat(states, outputs))
-        infos = (; inputs=inputs, outputs=outputs, states=states, params=params, nns=nns)
+        infos = HydroInfos(
+            inputs=inputs, states=states, outputs=outputs,
+            params=params, nns=nns
+        )
         model_name = isnothing(name) ? Symbol("##model#", hash(infos)) : name
-        new{model_name}(components, infos, input_idx, output_idx)
+        states_axes = Axis(NamedTuple{Tuple(states)}(1:length(states)))
+        default_states = ComponentVector(zeros(length(states)), states_axes)
+        new{typeof(components),typeof(infos),typeof(input_idx),typeof(output_idx),typeof(default_states)}(
+            model_name, components, infos, input_idx, output_idx, default_states
+        )
     end
 end
 
@@ -74,18 +69,15 @@ Prepare input and output variable indices for connecting components in a hydrolo
   - First element: Vector of input indices for each component
   - Second element: Vector of output indices for all components
 """
-function _prepare_indices(components::Vector{<:AbstractComponent}, inputs::Vector{Num}, vars::Vector{Num})
+function _prepare_indices(components::CT, input_names::Vector{Symbol}, var_names::Vector{Symbol}) where {CT}
     input_idx, output_idx = Vector{Int}[], Vector{Int}()
-    input_names, var_names = tosymbol.(inputs), tosymbol.(vars)
     for component in components
-        #* extract input index
         tmp_input_idx = map((nm) -> findfirst(varnm -> varnm == nm, input_names), get_input_names(component))
         if nothing in tmp_input_idx
             @warn "input variable $(get_input_names(component)) not found in input_names"
         else
             push!(input_idx, tmp_input_idx)
         end
-        #* extract output index
         tmp_cpt_vcat_names = vcat(get_state_names(component), get_output_names(component))
         input_names = vcat(input_names, tmp_cpt_vcat_names)
     end
@@ -96,29 +88,15 @@ function _prepare_indices(components::Vector{<:AbstractComponent}, inputs::Vecto
 end
 
 """
-    @hydromodel name begin
-        component1
-        component2
-        ...
-    end
+    @hydromodel name begin ... end
 
-Creates a HydroModel with the specified name and components.
+A macro to conveniently create a `HydroModel` from a sequence of components.
+
+The components listed within the `begin...end` block are automatically collected into a tuple and passed to the `HydroModel` constructor.
 
 # Arguments
-- `name`: Symbol for the model name
-- Components can be:
-  - HydroBucket instances
-  - Flux definitions (using @hydroflux, @neuralflux, etc.)
-  - Other model components
-
-# Example
-```julia
-@hydromodel :model1 begin
-    bucket1
-    @neuralflux :flux1 [y] ~ chain([x1, x2])
-    bucket2
-end
-```
+- `name`: A `Symbol` that provides a name for the model.
+- The block should contain a list of pre-defined component instances (e.g., `HydroBucket` objects).
 """
 macro hydromodel(args...)
     name = length(args) == 1 ? nothing : args[1]
@@ -126,54 +104,46 @@ macro hydromodel(args...)
 
     @assert Meta.isexpr(expr, :block) "Expected a begin...end block after model name"
     components = filter(x -> !(x isa LineNumberNode), expr.args)
-    return esc(:(HydroModel(; name=$(name), components=[$(components...)])))
+    return esc(:(HydroModel(; name=$(name), components=tuple($(components...)))))
 end
 
 """
     (model::HydroModel)(input::AbstractArray, params::ComponentVector; kwargs...)
 
-Runs the hydrological model simulation using the provided input data and parameters.
+Executes the hydrological model simulation.
+
+This function sequentially runs each component in the model, handling the flow of data from inputs and previous components to the next.
 
 # Arguments
-- `input::AbstractArray{T,D}`: Input data. Shape can be `(variables, timesteps)` (D=2, single-node) or `(variables, nodes, timesteps)` (D=3, multi-node).
-- `params::ComponentVector`: Model parameters, structured according to the components' requirements.
+- `input::AbstractArray`: The input data for the model. Must be a 2D array `(variables, timesteps)` for a single-node simulation or a 3D array `(variables, nodes, timesteps)` for a multi-node simulation.
+- `params::ComponentVector`: A `ComponentVector` containing all parameters required by the model's components.
 
 # Keyword Arguments
-- `initstates::ComponentVector`: Optional initial states for stateful components. Defaults to component-defined defaults.
-- `config::Union{NamedTuple, Vector{<:NamedTuple}}`: Optional configuration for components (e.g., ODE solver, interpolation). Can be a single `NamedTuple` applied to all, or a `Vector` for component-specific settings.
-- `kwargs...`: Other keyword arguments passed down to individual components if applicable.
+- `initstates::AbstractVector=model._defaultstates`: A vector or `ComponentVector` specifying the initial states for any stateful components. Defaults to a zero vector for all states.
+- `config::NamedTuple=NamedTuple()`: Configuration options (e.g., ODE solver settings) to be passed down to the components.
 
 # Returns
-- `AbstractArray`: Model output, with shape matching the input's time (and node, if D=3) dimensions: `(output_variables, timesteps)` or `(output_variables, nodes, timesteps)`.
-
-# Example
-```julia
-# Assuming 'model' is a constructed HydroModel instance
-# input_data might be Matrix or 3D Array
-# parameters is a ComponentVector
-output = model(input_data, parameters; initstates=initial_conditions)
-```
-
-# Notes
-- The function orchestrates data flow through the model's components sequentially.
-- Input variable dimension (`size(input, 1)`) must match `get_input_names(model)`.
-- State evolution and output collection are handled internally.
+- `AbstractArray`: The final computed model output, with dimensions corresponding to the input `(output_variables, timesteps)` or `(output_variables, nodes, timesteps)`.
 """
-function (model::HydroModel{N})(
+function (model::HydroModel)(
     input::AbstractArray{T,D},
     params::ComponentVector;
-    kwargs...,
-) where {N,T<:Number,D}
-    config = get(kwargs, :config, NamedTuple())
-    initstates = get(kwargs, :initstates, get_default_states(model, input))
+    initstates::AbstractVector=model._defaultstates,
+    config::NamedTuple=NamedTuple(),
+) where {T,D}
     comp_configs = config isa NamedTuple ? fill(config, length(model.components)) : config
     @assert D in (2, 3) "input array dimension must be 2 or 3"
     @assert length(comp_configs) == length(model.components) "component configs length must be equal to components length"
     @assert size(input, 1) == length(get_input_names(model)) "input variables length must be equal to input variables length"
     outputs = input
     for (idx_, comp_, config_) in zip(model._varindices, model.components, comp_configs)
-        tmp_outputs = comp_(outputs[idx_, ntuple(_ -> Colon(), D-1)...], params; initstates=initstates, config_...)
-        outputs = cat(outputs, tmp_outputs, dims=1)
+        tmp_input = copy(view(outputs, idx_, ntuple(_ -> Colon(), D - 1)...))
+        tmp_output = comp_(
+            tmp_input, params;
+            initstates=initstates[get_state_names(comp_)],
+            config=config_
+        )
+        outputs = vcat(outputs, tmp_output)
     end
-    return outputs[model._outputindices, ntuple(_ -> Colon(), D-1)...]
+    return outputs[model._outputindices, ntuple(_ -> Colon(), D - 1)...]
 end

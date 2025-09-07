@@ -1,3 +1,10 @@
+@kwdef struct HydroConfig{S,I}
+    solver::S=ManualSolver(mutable=true)
+    interpolater::I=DirectInterpolation
+    ptyidx::Vector{Int}=Int[]
+    styidx::Vector{Int}=Int[]
+end
+
 """
     DirectInterpolation{D}(data::AbstractArray, ts::AbstractVector{<:Integer})
 
@@ -66,22 +73,22 @@ where stability and computational efficiency are prioritized over high-order acc
     - Creates new arrays at each step
 
 """
-struct ManualSolver{mutable}
-    dev
-    nearzero
+struct ManualSolver{M,D,NZ}
+    dev::D
+    nearzero::NZ
 
     function ManualSolver(; dev=identity, nearzero=1e-6, mutable::Bool=false)
-        return new{mutable}(dev, nearzero)
+        return new{mutable,typeof(dev),typeof(nearzero)}(dev, nearzero)
     end
 end
 
-function (solver::ManualSolver{true})(
+function (solver::ManualSolver{true,D,NZ})(
     du_func::Function,
     pas::AbstractVector,
-    initstates::AbstractArray{<:Number,N},
+    initstates::AbstractArray{T,N},
     timeidx::AbstractVector;
     kwargs...
-) where N
+) where {T,D,N,NZ}
     T1 = promote_type(eltype(pas), eltype(initstates))
     states_results = zeros(T1, size(initstates)..., length(timeidx)) |> solver.dev
     tmp_initstates = copy(initstates)
@@ -94,26 +101,32 @@ function (solver::ManualSolver{true})(
     states_results
 end
 
-function (solver::ManualSolver{false})(
+function (solver::ManualSolver{false,D,NZ})(
     du_func::Function,
     pas::AbstractVector,
     initstates::AbstractArray{T,N},
     timeidx::AbstractVector;
     kwargs...
-) where {T,N}
+) where {T,D,N,NZ}
     nearzero = solver.nearzero |> eltype(initstates)
-    function recur_op(::Nothing, t)
-        new_states = max.(nearzero, du_func(initstates, pas, t) .+ initstates)
-        return [new_states], new_states
+    states_vec = accumulate(timeidx; init=initstates) do last_state, t
+        max.(nearzero, du_func(last_state, pas, t) .+ last_state)
     end
-    function recur_op((states_list, last_state), t)
-        new_states = max.(nearzero, du_func(last_state, pas, t) .+ last_state)
-        return vcat(states_list, [new_states]), new_states
-    end
-    states_vec, _ = Lux.foldl_init(recur_op, timeidx)
-    stack(states_vec, dims=N + 1)
+    return stack(states_vec; dims=N + 1)
 end
 
+struct FunctionElement <: AbstractElement
+    inputs::Vector{Num}
+    func::Function
+end
+
+function (ele::FunctionElement)(input::AbstractArray, params::ComponentVector; kwargs...)
+    ele.func(input, params; kwargs...)
+end
+
+function SummationElement(inputs::Vector{Num})
+    return FunctionElement(inputs, (input, params) -> sum(input, dims=2))
+end
 
 """
 A custom ODEProblem solver
@@ -165,6 +178,7 @@ A custom DiscreteProblem solver
 @kwdef struct DiscreteSolver
     alg = FunctionMap{true}()
     nearzero = 1e-6
+    sensealg = ReverseDiffAdjoint()
     dev = identity
 end
 
@@ -187,7 +201,7 @@ function (solver::DiscreteSolver)(
     prob = DiscreteProblem(ode_func!, initstates, (timeidx[1], timeidx[end]), params)
     # cb = ContinuousCallback(condition, affect!, save_positions=(false, false))
     #* solve problem
-    sol = solve(prob, solver.alg, saveat=timeidx) # , callback=cb
+    sol = solve(prob, solver.alg, saveat=timeidx, sensealg=solver.sensealg) # , callback=cb
     if SciMLBase.successful_retcode(sol)
         sol_arr = Array(sol)
     else

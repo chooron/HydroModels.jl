@@ -41,28 +41,27 @@ struct UnitHydrograph{N,ST} <: AbstractHydrograph
         return new{uh_name, solvetype}(uh_func, max_lag, infos)
     end 
 
-    # function UnitHydrograph(
-    #     inputs::AbstractVector{T}, outputs::AbstractVector{T}, params::AbstractVector{T};
-    #     uh_pairs::AbstractVector{<:Pair}, name::Optional{Symbol}=nothing,
-    #     kwargs...
-    # ) where {T<:Num}
-    #     solvetype = get(kwargs, :solvetype, :DISCRETE)
-    #     max_lag = get(kwargs, :max_lag, uh_pairs[1][1])
-    #     uh_func, max_lag_func = build_uh_func(uh_pairs, params, max_lag)
-    #     @assert length(inputs) == length(outputs) == 1 "only one input and one output is supported"
-    #     @assert solvetype in [:DISCRETE, :SPARSE, :DSP] "solvetype must be one of [:DISCRETE, :SPARSE, :DSP]"
-    #     solvetype == :DSP && @warn "The DSP solver is not supported for Zygote, please use :DISCRETE or :SPARSE instead, and this method required DSP.jl"
-    #     min_weight_prop = get(kwargs, :min_weight_prop, 1e-6)
-    #     # wfunc(pas) = begin
-    #     #     # weights = map(t -> uh_func(t, pas), 1:max_lag_func(pas))[1:end-1]
-    #     #     # filter(x -> x > maximum(weights) * min_weight_prop, weights)
-    #     #     lag_weights = [uh_func(t, pas) for t in 1:max_lag_func(pas)]
-    #     #     lag_weights = vcat([lag_weights[1]], (circshift(lag_weights, -1).-lag_weights)[1:end-1])
-    #     # end
-    #     infos = (; inputs=inputs, outputs=outputs, params=params)
-    #     uh_name = isnothing(name) ? Symbol("##uh#", hash(infos)) : name
-    #     return new{uh_name,solvetype}(uh_func, max_lag_func, infos)
-    # end
+    function UnitHydrograph(
+        inputs::AbstractVector{T}, outputs::AbstractVector{T}, params::AbstractVector{T};
+        uh_pairs::AbstractVector{<:Pair}, name::Optional{Symbol}=nothing,
+        kwargs...
+    ) where {T<:Num}
+        solvetype = get(kwargs, :solvetype, :DISCRETE)
+        max_lag = get(kwargs, :max_lag, uh_pairs[1][1])
+        uh_func, max_lag_func = build_uh_func(uh_pairs, params, max_lag)
+        @assert length(inputs) == length(outputs) == 1 "only one input and one output is supported"
+        @assert solvetype in [:DISCRETE, :SPARSE, :DSP] "solvetype must be one of [:DISCRETE, :SPARSE, :DSP]"
+        solvetype == :DSP && @warn "The DSP solver is not supported for Zygote, please use :DISCRETE or :SPARSE instead, and this method required DSP.jl"
+        wfunc(pas) = begin
+            # weights = map(t -> uh_func(t, pas), 1:max_lag_func(pas))[1:end-1]
+            # filter(x -> x > maximum(weights) * min_weight_prop, weights)
+            lag_weights = [uh_func(t, pas) for t in 1:max_lag_func(pas)]
+            lag_weights = vcat([lag_weights[1]], (circshift(lag_weights, -1).-lag_weights)[1:end-1])
+        end
+        infos = (; inputs=inputs, outputs=outputs, params=params)
+        uh_name = isnothing(name) ? Symbol("##uh#", hash(infos)) : name
+        return new{uh_name,solvetype}(uh_func, max_lag_func, infos)
+    end
 end
 
 """
@@ -152,6 +151,40 @@ macro unithydro(args...)
     end)
 end
 
+
+"""
+    build_uh_func(uh_pairs, params, max_lag)
+
+Builds unit hydrograph functions.
+"""
+function build_uh_func(uh_pairs::AbstractVector{<:Pair}, params::AbstractVector, max_lag::Number)
+    conditions_rev = vcat([0], reverse(first.(uh_pairs)))
+    values_rev = reverse(last.(uh_pairs))
+    params_assign_calls = generate_param_assignments(params=params)
+
+    values_exprs = map(eachindex(values_rev)) do i
+        :(
+            if $(toexpr(conditions_rev[i])) < t < $(toexpr(conditions_rev[i+1]))
+                return $(toexpr(values_rev[i]))
+            end
+        )
+    end
+
+    uh_func_expr = :(function (t, pas)
+        $(params_assign_calls...)
+        $(values_exprs...)
+        return 0.0
+    end)
+
+    max_lag_expr = :(function (pas)
+        $(params_assign_calls...)
+        return ceil($(toexpr(max_lag)))
+    end)
+
+    return @RuntimeGeneratedFunction(uh_func_expr), @RuntimeGeneratedFunction(max_lag_expr)
+end
+
+
 """
     (flux::UnitHydrograph)(input::AbstractArray, pas::ComponentVector; kwargs...)
 
@@ -184,7 +217,7 @@ routed_flow = uh(input_runoff, parameters)
 (::UnitHydrograph)(::AbstractVector, ::ComponentVector; kwargs...) = @error "UnitHydrograph is not support for single timepoint"
 
 function (uh::UnitHydrograph{N,:DISCRETE})(input::AbstractArray{T,2}, pas::ComponentVector; kwargs...) where {T,N}
-    solver = get(kwargs, :solver, ManualSolver(mutable=true))
+    solver = get(kwargs, :solver, DiscreteSolver())
     interp = get(kwargs, :interp, DirectInterpolation)
     timeidx = collect(1:size(input, 2))
     interp_func = interp(input, timeidx)

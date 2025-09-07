@@ -2,11 +2,13 @@ module HydroModels
 
 ## External packages
 # common packages
+using Random
 using Reexport
 using LinearAlgebra
 using SparseArrays
-using Random
 using SpecialFunctions
+using ComponentArrays
+using DocStringExtensions
 
 # runtime generated functions
 using RuntimeGeneratedFunctions
@@ -25,61 +27,23 @@ using Graphs
 using Lux
 using NNlib
 
-# SciML ecosystem
-@reexport using ComponentArrays
+@reexport using OrdinaryDiffEq
+@reexport using SciMLSensitivity
 @reexport using DataInterpolations
-using OrdinaryDiffEq
-using DiffEqCallbacks
-using SciMLSensitivity
 
 # define Optional type
 const Optional{T} = Union{T, Nothing}
 
-abstract type AbstractComponent end
-abstract type AbstractNetwork end
-
-abstract type AbstractFlux <: AbstractComponent end
-abstract type AbstractHydroFlux <: AbstractFlux end
-abstract type AbstractNeuralFlux <: AbstractHydroFlux end
-abstract type AbstractStateFlux <: AbstractFlux end
-
-abstract type AbstractElement <: AbstractComponent end
-abstract type AbstractBucket <: AbstractElement end
-abstract type AbstractHydroBucket <: AbstractBucket end
-abstract type AbstractNeuralBucket <: AbstractBucket end
-abstract type AbstractHydrograph <: AbstractElement end
-abstract type AbstractRoute <: AbstractElement end
-abstract type AbstractHydroRoute <: AbstractRoute end
-abstract type AbstractModel <: AbstractComponent end
-
-export AbstractComponent, # base type
-    AbstractHydroFlux, AbstractNeuralFlux, AbstractStateFlux, # flux types
-    AbstractElement, # element types
-    AbstractHydroBucket, AbstractNeuralBucket, # bucket types
-    AbstractHydrograph, # hydrograph types
-    AbstractRoute, AbstractHydroRoute, # route types
-    AbstractModel, # model types
-    AbstractNetwork # network types
-
-export get_name, get_input_names, get_output_names, get_param_names, get_state_names, get_nn_names
-export get_exprs, get_inputs, get_outputs, get_params, get_nns, get_vars
+using HydroModelCore
 
 # utils
-include("utils/parameters.jl") # parameters.jl in ModelingToolkit
 export @variables, @parameters
 
-include("utils/attribute.jl")
-include("utils/display.jl")
-include("utils/check.jl")
-include("utils/aggregation.jl")
-include("utils/miscellaneous.jl")
-include("utils/build.jl")
-include("utils/smooth.jl")
-export step_func, smoothlogistic_func
+include("utils.jl")
+export sort_components, sort_fluxes
 #! When constructing an ODE problem to solve, use DataInterpolations.jl
 include("tools.jl")
-export ManualSolver, ODESolver, DiscreteSolver, DirectInterpolation
-
+export ManualSolver, DirectInterpolation, FunctionElement, SummationElement
 # framework build
 include("flux.jl")
 export HydroFlux, StateFlux, @hydroflux, @stateflux
@@ -93,81 +57,12 @@ include("uh.jl")
 export UnitHydrograph, @unithydro
 include("model.jl")
 export HydroModel, @hydromodel
-include("miscellaneous.jl")
-export GroupHydroFlux, @grouphydroflux, FunctionElement, SummationElement
 
-AVAILABLE_MODELS = [
-    :alpine1,
-    :alpine2,
-    :australia,
-    :collie1,
-    :collie2,
-    :collie3,
-    :echo,
-    :exphydro,
-    :flexb,
-    :gr4j,
-    :gsfb,
-    :gsmsocont,
-    :hbv_edu,
-    :hbv,
-    :hillslope,
-    :hymod,
-    :ihacres,
-    :ihm19,
-    :lascam,
-    :mcrm,
-    :modhydrolog,
-    :mopex1,
-    :mopex3,
-    :mopex4,
-    :mopex5,
-    :nam,
-    :newzealand1,
-    :newzealand2,
-    :penman,
-    :plateau,
-    :prms,
-    :sacramento,
-    :smar,
-    :smart,
-    :susannah1,
-    :susannah2,
-    :tank,
-    :tcm,
-    :unitedstates,
-    :wetland,
-    :xinanjiang
-]
+step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
+export step_func
 
-AVAILABLE_ROUTERS = [
-    :rapid
-]
-export AVAILABLE_MODELS, AVAILABLE_ROUTERS
+smoothlogistic_func(S, Smax, r=0.01, e=5.0) = 1 / (1 + exp((S - r * e * Smax) / (r * Smax)))
+export smoothlogistic_func
 
-function load_model(model_name::Symbol)
-    if model_name in AVAILABLE_MODELS
-        if !isdefined(HydroModels, model_name)
-            model_path = joinpath(@__DIR__, "models", "$(model_name).jl")
-            include(model_path)
-        end
-        return getfield(getfield(HydroModels, model_name), :model)
-    else
-        throw(ArgumentError("Model $model_name is not available"))
-    end
-end
-
-function load_router(router_name::Symbol)
-    if router_name in AVAILABLE_ROUTERS
-        if !isdefined(HydroModels, router_name)
-            router_path = joinpath(@__DIR__, "routers", "$(router_name).jl")
-            include(router_path)
-        end
-        return getfield(getfield(HydroModels, router_name), :router)
-    else
-        throw(ArgumentError("Router $router_name is not available"))
-    end
-end
-export load_model, load_router
 
 end # module HydroModels
