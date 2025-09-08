@@ -1,21 +1,11 @@
 """
-    HydroModel{CS,NT,VI,OI,DS} <: AbstractModel
+    HydroModel{CS, NT, VI, OI, DS} <: AbstractModel
 
-Represents a complete hydrological model by integrating a sequence of components. It manages the data flow between them automatically.
+Represents a complete hydrological model composed of a sequence of components (e.g., `HydroBucket`, `HydroRoute`).
 
-The model orchestrates how inputs and the outputs of preceding components are routed as inputs to subsequent components.
+It automatically manages the data flow between components, routing the outputs of one component as inputs to the next.
 
-# Arguments
-- `components::Tuple`: A tuple of computational components (e.g., `HydroBucket`, `UnitHydrograph`) that are executed in sequence.
-- `name::Optional{Symbol}=nothing`: An optional identifier for the model. A unique name is generated if not provided.
-
-# Fields
-- `name::Symbol`: The identifier for the model.
-- `components::Tuple`: The tuple of hydrological components that constitute the model.
-- `infos::NamedTuple`: Aggregated metadata from all components, including the names of all `inputs`, `outputs`, `states`, `params`, and `nns`.
-- `_varindices::Vector{Vector{Int}}`: Internal field. Stores the input variable indices for each component to manage data routing.
-- `_outputindices::Vector{Int}`: Internal field. Stores the indices used to select and order the final model outputs from all intermediate variables.
-- `_defaultstates::ComponentVector`: A `ComponentVector` holding the default initial values (zeros) for all state variables in the model.
+$(FIELDS)
 """
 struct HydroModel{CS,NT,VI,OI,DS} <: AbstractModel
     "hydrological mode name"
@@ -52,23 +42,7 @@ struct HydroModel{CS,NT,VI,OI,DS} <: AbstractModel
     end
 end
 
-"""
-    _prepare_indices(components::Vector{<:AbstractComponent}, 
-                    input_names::Vector{Symbol}, 
-                    vcat_names::Vector{Symbol}) -> Tuple{Vector{Vector{Int}}, Vector{Int}}
 
-Prepare input and output variable indices for connecting components in a hydrological model.
-
-# Arguments
-- `components::Vector{<:AbstractComponent}`: Vector of model components to process
-- `input_names::Vector{Symbol}`: Initial list of input variable names
-- `vcat_names::Vector{Symbol}`: Concatenated list of all variable names (inputs, states, outputs)
-
-# Returns
-- `Tuple{Vector{Vector{Int}}, Vector{Int}}`: A tuple containing:
-  - First element: Vector of input indices for each component
-  - Second element: Vector of output indices for all components
-"""
 function _prepare_indices(components::CT, input_names::Vector{Symbol}, var_names::Vector{Symbol}) where {CT}
     input_idx, output_idx = Vector{Int}[], Vector{Int}()
     for component in components
@@ -88,15 +62,20 @@ function _prepare_indices(components::CT, input_names::Vector{Symbol}, var_names
 end
 
 """
-    @hydromodel name begin ... end
+    @hydromodel [name] begin ... end
 
 A macro to conveniently create a `HydroModel` from a sequence of components.
 
-The components listed within the `begin...end` block are automatically collected into a tuple and passed to the `HydroModel` constructor.
+# Usage
+The macro takes an optional name and a `begin...end` block containing an ordered list of component instances.
 
-# Arguments
-- `name`: A `Symbol` that provides a name for the model.
-- The block should contain a list of pre-defined component instances (e.g., `HydroBucket` objects).
+```julia
+# Assuming bucket1 and route1 are pre-defined components
+@hydromodel :my_full_model begin
+    bucket1
+    route1
+end
+```
 """
 macro hydromodel(args...)
     name = length(args) == 1 ? nothing : args[1]
@@ -108,22 +87,13 @@ macro hydromodel(args...)
 end
 
 """
-    (model::HydroModel)(input::AbstractArray, params::ComponentVector; kwargs...)
+    (model::HydroModel)(input, params; kwargs...)
 
-Executes the hydrological model simulation.
+Executes the full hydrological model simulation. This is the functor implementation for `HydroModel`.
 
-This function sequentially runs each component in the model, handling the flow of data from inputs and previous components to the next.
+It sequentially runs each component in the model, automatically handling the routing of data between them. It supports both 2D (single-node) and 3D (multi-node) inputs.
 
-# Arguments
-- `input::AbstractArray`: The input data for the model. Must be a 2D array `(variables, timesteps)` for a single-node simulation or a 3D array `(variables, nodes, timesteps)` for a multi-node simulation.
-- `params::ComponentVector`: A `ComponentVector` containing all parameters required by the model's components.
-
-# Keyword Arguments
-- `initstates::AbstractVector=model._defaultstates`: A vector or `ComponentVector` specifying the initial states for any stateful components. Defaults to a zero vector for all states.
-- `config::NamedTuple=NamedTuple()`: Configuration options (e.g., ODE solver settings) to be passed down to the components.
-
-# Returns
-- `AbstractArray`: The final computed model output, with dimensions corresponding to the input `(output_variables, timesteps)` or `(output_variables, nodes, timesteps)`.
+Common `kwargs` include `initstates` and `config` (for component-specific settings).
 """
 function (model::HydroModel)(
     input::AbstractArray{T,D},

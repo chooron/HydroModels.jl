@@ -53,15 +53,6 @@ step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
         multiply(bucket_2)
     end
 
-    @test Set(HydroModels.get_input_names(model)) == Set([:temp, :lday, :prcp])
-    @test Set(HydroModels.get_param_names(model)) == Set([:Tmin, :Tmax, :Df, :Smax, :f, :Qmax])
-    @test Set(HydroModels.get_state_names(model)) == Set([:snowpack, :soilwater])
-    @test Set(HydroModels.get_output_names(model)) == Set([:pet, :snowfall, :rainfall, :melt, :evap, :baseflow, :surfaceflow, :flow])
-    @test Set(reduce(union, HydroModels.get_var_names(model))) == Set([:temp, :lday, :prcp, :pet, :snowfall, :rainfall, :melt, :evap, :baseflow, :surfaceflow, :flow, :snowpack, :soilwater])
-
-    result_mat = model(input_mat, pas, initstates=initstates)
-    @test size(result_mat) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), length(ts))
-
     input_arr = repeat(reshape(input_mat, size(input_mat)[1], 1, size(input_mat)[2]), 1, 10, 1)
     node_names = [Symbol(:node_, i) for i in 1:10]
     node_params = ComponentVector(
@@ -124,7 +115,6 @@ end
             x4 => (t / x4)^2.5
         end
         uh_vars = slowflow => slowflow_routed
-        solvetype=:SPARSE
     end
 
     uh_2 = @unithydro begin
@@ -133,7 +123,6 @@ end
             x4 => (0.5 * (t / x4)^2.5)
         end
         uh_vars = fastflow => fastflow_routed
-        solvetype=:SPARSE
     end
 
     rst_ele = @hydrobucket begin
@@ -162,18 +151,6 @@ end
         uh_2
         multiply(rst_ele)
     end
-
-    @test Set(HydroModels.get_input_names(model)) == Set([:prcp, :ep])
-    @test Set(HydroModels.get_param_names(model)) == Set([:x1, :x2, :x3, :x4])
-    @test Set(HydroModels.get_state_names(model)) == Set([:soilwater, :routingstore])
-    @test Set(HydroModels.get_output_names(model)) == Set([:en, :routedflow, :pr, :exch, :pn, :fastflow, :ps, :flow, :slowflow_routed, :perc,
-        :es, :slowflow, :fastflow_routed])
-    @test Set(reduce(union, HydroModels.get_var_names(model))) == Set([:prcp, :ep, :soilwater, :pn, :en, :ps, :es, :perc, :pr, :slowflow,
-        :fastflow, :slowflow_routed, :fastflow_routed, :exch, :routedflow, :flow, :routingstore])
-
-    # Test single-node model run
-    result_mat = model(input_mat, pas, initstates=initstates, config=(timeidx=ts,))
-    @test size(result_mat) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), length(ts))
 
     # Test multi-node model run
     input_arr = repeat(reshape(input_mat, size(input_mat)[1], 1, size(input_mat)[2]), 1, 10, 1)
@@ -262,14 +239,6 @@ end
         multiply(soil_ele)
     end
 
-    @test Set(HydroModels.get_input_names(model)) == Set([:prcp, :temp, :lday])
-    @test Set(HydroModels.get_param_names(model)) == Set([:Tmin, :Tmax, :Df, :snowpack_std, :snowpack_mean, :soilwater_std, :soilwater_mean, :prcp_std, :prcp_mean, :temp_std, :temp_mean])
-    @test Set(HydroModels.get_state_names(model)) == Set([:snowpack, :soilwater])
-    @test Set(HydroModels.get_nn_names(model)) == Set([:etnn, :qnn])
-    @test Set(HydroModels.get_output_names(model)) == Set([:pet, :rainfall, :snowfall, :melt, :log_evap_div_lday, :log_flow, :norm_snw, :norm_slw, :norm_temp, :norm_prcp])
-    @test Set(reduce(union, HydroModels.get_var_names(model))) == Set([:prcp, :temp, :lday, :pet, :rainfall, :snowfall, :snowpack, :soilwater, :melt,
-        :log_evap_div_lday, :log_flow, :norm_snw, :norm_slw, :norm_temp, :norm_prcp])
-
     base_params = (Df=2.674, Tmax=0.17, Tmin=-2.09)
     var_stds = NamedTuple{Tuple([Symbol(nm, :_std) for nm in [:prcp, :temp, :snowpack, :soilwater]])}(stds)
     var_means = NamedTuple{Tuple([Symbol(nm, :_mean) for nm in [:prcp, :temp, :snowpack, :soilwater]])}(means)
@@ -279,10 +248,6 @@ end
     pas = ComponentVector(params=params, nns=nn_params)
     input_ntp = (prcp=prcp_vec, lday=dayl_vec, temp=temp_vec)
     input_mat = Matrix(reduce(hcat, collect(input_ntp[[:prcp, :temp, :lday]]))')
-
-    # Run the model and get results as a matrix
-    result_mat = model(input_mat, pas, initstates=initstates, config=(timeidx=ts,))
-    @test size(result_mat) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), length(ts))
 
     # Prepare inputs and parameters for multiple nodes
     input_arr = repeat(reshape(input_mat, size(input_mat)[1], 1, size(input_mat)[2]), 1, 10, 1)

@@ -1,28 +1,11 @@
 """
-    HydroRoute{N} <: AbstractHydroRoute
+    HydroRoute{FF, OF, AF, HT, NT} <: AbstractHydroRoute
 
-Represents a hydrological routing component using customizable flux equations.
+Represents a hydrological routing component that combines flux calculations with an aggregation/distribution step.
 
-# Fields
-- `rfluxes::Vector{<:AbstractHydroFlux}`: Flux functions defining routing processes (e.g., outflow calculation).
-- `multi_flux_func::Function`: Compiled function to evaluate all non-state-derivative fluxes.
-- `multi_ode_func::Function`: Compiled function for state derivatives used by ODE solvers.
-- `aggr_func::Function`: Function to aggregate or distribute flows between connected elements (often identity or matrix multiplication).
-- `infos::NamedTuple`: Metadata (inputs, outputs, states, params, nns).
+It is designed for routing flows between connected nodes or grid cells in a spatial model. It compiles flux equations and an aggregation function into efficient callable functions.
 
-# Constructor
-```julia
-HydroRoute(; rfluxes, dfluxes, aggr_func, name=nothing)
-```
-- `rfluxes`: Vector of routing fluxes (e.g., `HydroFlux`, `NeuralFlux`).
-- `dfluxes`: Vector of state derivative fluxes (`StateFlux`).
-- `aggr_func`: Aggregation/distribution function.
-- `name`: Optional symbol identifier.
-
-# Notes
-- Builds specialized functions (`multi_flux_func`, `multi_ode_func`) for efficient computation.
-- Designed for use within a larger model (e.g., `HydroModel`).
-- Handles variable management and metadata tracking internally.
+$(FIELDS)
 """
 struct HydroRoute{FF,OF,AF,HT,NT} <: AbstractHydroRoute
     "route names"
@@ -45,9 +28,9 @@ struct HydroRoute{FF,OF,AF,HT,NT} <: AbstractHydroRoute
         aggr_func::AF,
         name::Optional{Symbol}=nothing,
     ) where AF
-        inputs, outputs, states = get_var_names(vcat(fluxes, dfluxes))
-        params = reduce(union, get_param_names.(vcat(fluxes, dfluxes)))
-        nns = reduce(union, get_nn_names.(fluxes))
+        inputs, outputs, states = get_var_names(vcat(rfluxes, dfluxes))
+        params = reduce(union, get_param_names.(vcat(rfluxes, dfluxes)))
+        nns = reduce(union, get_nn_names.(rfluxes))
         infos = HydroInfos(
             inputs=inputs, states=states, outputs=outputs,
             params=params, nns=nns
@@ -61,37 +44,32 @@ struct HydroRoute{FF,OF,AF,HT,NT} <: AbstractHydroRoute
 end
 
 """
-    @hydroroute name begin ... end
+    @hydroroute [name] begin ... end
 
-Macro to simplify the construction of a `HydroRoute` object.
+A macro to simplify the construction of a `HydroRoute` component.
 
 # Usage
+The macro takes an optional name and a `begin...end` block containing the definitions for fluxes, state derivatives, node types, and the aggregation function.
+
 ```julia
 @hydroroute :my_route begin
-    fluxes = [
+    fluxes = begin
         @hydroflux outflow ~ k * storage
-    ]
-    dfluxes = [
+    end
+    dfluxes = begin
         @stateflux storage ~ inflow - outflow
-    ]
-    aggr_func = identity # or other function
+    end
+    hru_types = [1, 2, 3]
+    aggr_func = identity # or a matrix, or a custom function
 end
 ```
-Defines a `HydroRoute` with the specified name (`:my_route`), fluxes, state derivatives (`dfluxes`), and aggregation function (`aggr_func`) within the `begin...end` block.
-
-# Arguments
-- `name`: (Optional) Symbol for the route name.
-- `block`: A `begin...end` block containing assignments for `fluxes`, `dfluxes`, and `aggr_func`.
-
-# Returns
-- A `HydroRoute` instance.
 """
 macro hydroroute(args...)
     name = length(args) == 1 ? nothing : args[1]
     expr = length(args) == 1 ? args[1] : args[2]
 
     @assert Meta.isexpr(expr, :block) "Expected a begin...end block after route name"
-    fluxes_expr, dfluxes_expr, aggr_func_expr = nothing, nothing, nothing
+    fluxes_expr, dfluxes_expr, aggr_func_expr, hru_types_expr = nothing, nothing, nothing, nothing
     for assign in filter(x -> !(x isa LineNumberNode), expr.args)
         @assert Meta.isexpr(assign, :(=)) "Expected assignments in the form 'fluxes = begin...end', 'dfluxes = begin...end', and 'aggr_func = f(x)'"
         lhs, rhs = assign.args
@@ -103,24 +81,29 @@ macro hydroroute(args...)
             dfluxes_expr = Expr(:vect, filter(x -> !(x isa LineNumberNode), rhs.args)...)
         elseif lhs == :aggr_func
             aggr_func_expr = rhs
+        elseif lhs == :hru_types
+            hru_types_expr = rhs
         else
-            error("Unknown assignment: $lhs. Expected 'fluxes', 'dfluxes', or 'aggr_func'")
+            error("Unknown assignment: $lhs. Expected 'fluxes', 'dfluxes', 'hru_types', or 'aggr_func'")
         end
     end
-    err_msg = "'fluxes', 'dfluxes', and 'aggr_func' must all be specified"
-    @assert !isnothing(fluxes_expr) && !isnothing(dfluxes_expr) && !isnothing(aggr_func_expr) err_msg
+    err_msg = "'fluxes', 'dfluxes', 'hru_types', and 'aggr_func' must all be specified"
+    @assert !isnothing(fluxes_expr) && !isnothing(dfluxes_expr) && !isnothing(aggr_func_expr) && !isnothing(hru_types_expr) err_msg
     return esc(quote
         HydroRoute(
             rfluxes=$fluxes_expr,
             dfluxes=$dfluxes_expr,
             aggr_func=$aggr_func_expr,
+            hru_types=$hru_types_expr,
             name=$(name)
         )
     end)
 end
 
 """
-    Build the aggregation function from a given graph
+$(TYPEDSIGNATURES)
+
+Builds an aggregation function from a `DiGraph`. The function performs routing by multiplying the outflow vector with the graph's adjacency matrix.
 """
 function build_aggr_func(graph::DiGraph)
     adjacency = adjacency_matrix(graph)'
@@ -129,7 +112,9 @@ function build_aggr_func(graph::DiGraph)
 end
 
 """
-    Build the aggregation function from a given flow direction matrix and positions
+$(TYPEDSIGNATURES)
+
+Builds an aggregation function for grid-based routing from a flow direction matrix (e.g., D8) and a vector of grid cell positions.
 """
 function build_aggr_func(flwdir::AbstractMatrix, positions::AbstractVector)
     d8_codes = [1, 2, 4, 8, 16, 32, 64, 128]
@@ -151,7 +136,7 @@ function build_aggr_func(flwdir::AbstractMatrix, positions::AbstractVector)
     return aggr_func
 end
 
-""" Helper to build multi-dimensional bucket and routing functions. """
+
 function build_route_func(fluxes::Vector{<:AbstractHydroFlux}, dfluxes::Vector{<:AbstractStateFlux}, infos::HydroModelCore.HydroInfos)
     nn_fluxes = filter(f -> f isa AbstractNeuralFlux, fluxes)
 
@@ -171,17 +156,17 @@ function build_route_func(fluxes::Vector{<:AbstractHydroFlux}, dfluxes::Vector{<
     multi_flux_func_expr = :(function (inputs, states, pas)
         Base.@_inline_meta
         $(define_calls_2...)
-        $(generate_compute_calls(fluxes, dims=2)...)
-        return [$(outputs...), vcat($(map(expr -> :(@. $(simplify_expr(toexpr(expr)))), reduce(vcat, get_exprs.(dfluxes)))...))]
+        $(generate_compute_calls(fluxes=fluxes, dims=1)...)
+        return [$(infos.outputs...)]
     end)
     generated_multi_flux_func = @RuntimeGeneratedFunction(multi_flux_func_expr)
 
-    if !isempty(names.state_names)
+    if !isempty(infos.states)
         multi_diff_func_expr = :(function (inputs, states, pas)
             Base.@_inline_meta
             $(define_calls_1...)
-            $(generate_compute_calls(fluxes, dims=1)...)
-            $(generate_states_expression(dfluxes=dfluxes, broadcast=true))
+            $(generate_compute_calls(fluxes=fluxes, dims=1)...)
+            [$(infos.outputs...), vcat($(map(expr -> :(@. $(simplify_expr(toexpr(expr)))), reduce(vcat, get_exprs.(dfluxes)))...))]
         end)
         generated_multi_diff_func = @RuntimeGeneratedFunction(multi_diff_func_expr)
         return generated_multi_flux_func, generated_multi_diff_func
@@ -192,36 +177,13 @@ end
 
 
 """
-    (route::HydroRoute)(input::AbstractArray{T,3}, params::ComponentVector; kwargs...)
+    (route::HydroRoute)(input, params; kwargs...)
 
-Runs the simulation for the `HydroRoute` component.
+Runs the simulation for the `HydroRoute` component. This is the functor implementation.
 
-# Arguments
-- `input::AbstractArray{T,3}`: Input data array with shape (variables, nodes, timesteps).
-- `params::ComponentVector`: Parameters for the routing fluxes.
+It expects 3D input `(variables, nodes, timesteps)`. The method integrates the state variables over time using a specified ODE solver, applying the `aggr_func` at each step to handle flow between nodes. It then computes the final output fluxes.
 
-# Keyword Arguments
-- `initstates`: Initial states for the component. Defaults to zeros.
-- `ptyidx`: Indices mapping parameters to nodes. Defaults to `1:num_nodes`.
-- `styidx`: Indices mapping states to nodes. Defaults to `1:num_nodes`.
-- `interp`: Interpolation method for time-varying inputs (e.g., `DirectInterpolation`).
-- `solver`: ODE solver instance (e.g., `ManualSolver`).
-- `timeidx`: Time indices for the simulation. Defaults to `1:time_len`.
-- `device`: Computing device (e.g., `identity` for CPU).
-
-# Returns
-- `AbstractArray`: Output array containing state evolution and calculated fluxes, shape (output_variables, nodes, timesteps).
-
-# Example
-```julia
-# Assuming 'route' is a HydroRoute instance
-output = route(input_data, parameters; solver=Tsit5())
-```
-
-# Notes
-- Expects 3D input (variables, nodes, timesteps).
-- Integrates state variables over time using the specified solver.
-- Applies the `multi_flux_func` to calculate outputs based on inputs and states.
+Common `kwargs` include `solver`, `interp`, `timeidx`, and `initstates`.
 """
 function (route::HydroRoute)(
     input::AbstractArray{T,3},
@@ -229,13 +191,12 @@ function (route::HydroRoute)(
     solver::S=ManualSolver(mutable=true),
     interp::I=DirectInterpolation,
     timeidx::AbstractVector=collect(1:size(input, 3)),
-    initstates::AbstractArray=zeros(eltype(params), length(get_state_names(route)), size(input, 2)),
+    initstates::AbstractArray=zeros(eltype(params), length(get_state_names(route)) * size(input, 2)),
     device=solver.dev,
     kwargs...
 ) where {T,S,I}
     input_dims, num_nodes, time_len = size(input)
-    initstates_expand = expand_component_initstates(initstates, styidx) |> device
-    new_pas = expand_component_params(params, get_param_names(route), ptyidx) |> device
+    new_pas = expand_component_params(params, get_param_names(route), route.hru_types) |> device
     params_vec, params_axes = Vector(new_pas) |> device, getaxes(new_pas)
 
     itpfunc = interp(reshape(input, input_dims * num_nodes, time_len), timeidx)
@@ -248,7 +209,7 @@ function (route::HydroRoute)(
             tmp_inflow_arr = route.aggr_func(tmp_outflow)
             tmp_states .+ tmp_inflow_arr
         end,
-        params_vec, initstates_expand, timeidx
+        params_vec, initstates, timeidx
     )
 
     solved_states_reshape = reshape(solved_states, length(get_state_names(route)), num_nodes, time_len)

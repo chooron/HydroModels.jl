@@ -1,20 +1,11 @@
 """
-    HydroBucket{S,MS,FF,OF,HT,NT} <: AbstractHydroBucket
+    HydroBucket{S, MS, FF, OF, HT, NT} <: AbstractHydroBucket
 
-A container for organizing and executing a collection of hydrological components (`fluxes` and `dfluxes`). It automatically compiles the components into efficient functions for single-node or multi-node simulations.
+A container that organizes and executes a collection of hydrological flux components (`fluxes` and `dfluxes`).
 
-# Arguments
-- `name::Union{Symbol,Nothing}=nothing`: An optional identifier for the bucket. A unique name is generated if not provided.
-- `fluxes::Vector{<:AbstractHydroFlux}`: A required vector of flux components (`HydroFlux`, `NeuralFlux`, etc.) that define the model's primary calculations.
-- `dfluxes::Vector{<:AbstractStateFlux}=StateFlux[]`: An optional vector of state-flux components (`StateFlux`) that define the model's differential equations.
-- `hru_types::Vector{Int}=Int[]`: An optional vector defining node types, used for multi-node simulations where different model structures might be applied to different nodes.
+It automatically compiles the components into efficient, callable functions for both single-node and multi-node simulations.
 
-# Fields
-- `name::Symbol`: The identifier for the bucket.
-- `flux_func::Function`: A compiled function for calculating all hydrological fluxes. It is optimized for both single-node and multi-node data structures.
-- `ode_func::Union{Function, Nothing}`: A compiled function for the Ordinary Differential Equations (ODEs) derived from `dfluxes`. It is `nothing` if no `dfluxes` are provided. This function is designed for single-node data structures.
-- `hru_types::Vector{Int}`: Stores the node types for multi-model configurations.
-- `infos::NamedTuple`: Metadata about the bucket, including aggregated names of all `inputs`, `outputs`, `states`, `params`, and neural networks (`nns`) from its components.
+$(FIELDS)
 """
 struct HydroBucket{S,MS,FF,OF,HT,NT} <: AbstractHydroBucket
     "bucket name"
@@ -51,17 +42,27 @@ struct HydroBucket{S,MS,FF,OF,HT,NT} <: AbstractHydroBucket
 end
 
 """
-    @hydrobucket name begin ... end
+    @hydrobucket [name] begin ... end
 
 A macro to conveniently create a `HydroBucket`.
 
-The block must contain an assignment to `fluxes` and can optionally contain assignments to `dfluxes` and `hru_types`.
+# Usage
+The macro takes an optional name and a `begin...end` block containing the component definitions.
 
-# Arguments
-- `name`: A `Symbol` to identify the bucket.
-- `fluxes`: A vector of flux components (`HydroFlux` or `NeuralFlux`).
-- `dfluxes`: An optional vector of state-flux components (`StateFlux`).
-- `hru_types`: An optional vector of integers defining node types.
+```julia
+@hydrobucket :my_bucket begin
+    fluxes = begin
+        # ... list of HydroFlux, NeuralFlux, etc.
+        flux1
+        flux2
+    end
+    dfluxes = begin
+        # ... list of StateFlux
+        state_flux1
+    end
+    hru_types = [1, 1, 2, 2] # Optional
+end
+```
 """
 macro hydrobucket(args...)
     name = length(args) == 1 ? nothing : args[1]
@@ -93,16 +94,11 @@ macro hydrobucket(args...)
 end
 
 """
-    multiply(bucket::HydroBucket, nmul=10)::HydroBucket
+$(TYPEDSIGNATURES)
 
-Multiplies a HydroBucket by a given number of nodes.
+Re-creates a `HydroBucket` with a new set of `hru_types`.
 
-# Arguments
-- `bucket`: HydroBucket to be multiplied
-- `nmul`: Number of nodes to multiply by
-
-# Returns
-- HydroBucket with the same fluxes and dfluxes as the input bucket, but with the specified number of nodes
+Note: This is not an in-place operation and returns a new `HydroBucket` instance.
 """
 function set_hru_types!(bucket::HydroBucket, hru_types::Vector{Int})::HydroBucket
     bucket = HydroBucket(bucket.name, bucket.flux_func, bucket.ode_func, hru_types, bucket.infos)
@@ -199,27 +195,13 @@ end
 
 
 """
-    (bucket::HydroBucket)(input::AbstractArray, params::ComponentVector; kwargs...)
+    (bucket::HydroBucket)(input, params; kwargs...)
 
-Executes the `HydroBucket` model using input data and parameters.
+Executes the `HydroBucket` model. This is the functor implementation for `HydroBucket`.
 
-The method dispatches based on the input data dimensions (2D for single-node, 3D for multi-node) and whether the bucket contains state variables.
+The method dispatches based on the input data dimensions (2D for single-node, 3D for multi-node) and whether the bucket contains state variables. It solves the ODEs for state variables (if any) and then computes the output fluxes.
 
-# Arguments
-- `input`: An array of input data. Should be 2D `(variables × time)` for a single node or 3D `(variables × nodes × time)` for multiple nodes.
-- `params::ComponentVector`: A `ComponentVector` containing the model parameters and, if applicable, initial state values.
-- `kwargs`: Optional keyword arguments passed to the solver and underlying functions. Common arguments include `solver`, `interp`, `timeidx`, `initstates`, `ptyidx`, and `device`.
-
-# Returns
-- An output array containing the computed states (if any) and fluxes. The dimensions will be `(outputs × time)` for a 2D input or `(outputs × nodes × time)` for a 3D input.
-
-# Description
-The function orchestrates the simulation by:
-1.  Preparing parameters and initial states, expanding them for multi-node runs if necessary.
-2.  Setting up interpolation for the input time series to handle arbitrary time steps in the ODE solver.
-3.  Solving the system of ODEs defined by `dfluxes` if the model includes state variables.
-4.  Executing the `flux_func` to compute the output fluxes, using the solved states as inputs if applicable.
-5.  Combining and returning the results.
+Common `kwargs` include `solver`, `interp`, `timeidx`, and `initstates`.
 """
 function (bucket::HydroBucket{true,false})(
     input::AbstractArray{T,2}, params::ComponentVector;

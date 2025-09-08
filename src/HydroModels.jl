@@ -4,8 +4,6 @@ module HydroModels
 # common packages
 using Random
 using Reexport
-using LinearAlgebra
-using SparseArrays
 using SpecialFunctions
 using ComponentArrays
 using DocStringExtensions
@@ -26,10 +24,6 @@ using Graphs
 # deep learning
 using Lux
 using NNlib
-
-@reexport using OrdinaryDiffEq
-@reexport using SciMLSensitivity
-@reexport using DataInterpolations
 
 # define Optional type
 const Optional{T} = Union{T, Nothing}

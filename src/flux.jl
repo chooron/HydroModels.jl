@@ -1,32 +1,28 @@
 """
-    HydroFlux{E,F,I} <: AbstractHydroFlux
+    HydroFlux{MS, E, F, HT, I} <: AbstractHydroFlux
 
-Represents a simple flux component with mathematical formulas in a hydrological model.
+Represents a simple flux component defined by mathematical expressions.
 
-The component automatically determines inputs, outputs, and parameters from the provided expressions. It then builds a callable function to perform the calculations efficiently.
+It automatically parses expressions to determine inputs, outputs, and parameters, and compiles them into a callable function for efficient computation.
 
-# Arguments
-- `exprs::Vector{Equation}`: A vector of equations defining the flux calculations. The left-hand side of each equation is treated as an output variable, and the right-hand side is the expression used to compute it.
-- `name::Union{Symbol,Nothing}=nothing`: An optional identifier for the flux component. If not provided, a unique name is generated automatically.
-
-# Fields
-- `name::Symbol`: The identifier for the flux.
-- `exprs::Vector{Num}`: Vector of the right-hand-side mathematical expressions from the input equations.
-- `func::Function`: A compiled function generated from the expressions for efficient computation. The function is designed to work with arrays of input data.
-- `infos::NamedTuple`: Metadata about the component, containing the derived names of `inputs`, `outputs`, and `params`.
+$(FIELDS)
 """
-struct HydroFlux{E,F,I} <: AbstractHydroFlux
+struct HydroFlux{MS,E,F,HT,I} <: AbstractHydroFlux
     "flux name"
     name::Symbol
     "Vector of expressions describing the formulas for output variables"
     exprs::E
     "Compiled function that calculates the flux"
     func::F
+    "nodes type"
+    hru_types::HT
     "Metadata about the flux, including input, output, and parameter names"
     infos::I
 
     function HydroFlux(;
-        exprs::E, name::Optional{Symbol}=nothing,
+        exprs::E,
+        hru_types::Vector{Int}=Int[],
+        name::Optional{Symbol}=nothing,
     ) where {E}
         # parse expressions and extract variables
         outputs = Num.([eq.lhs for eq in exprs])
@@ -47,8 +43,8 @@ struct HydroFlux{E,F,I} <: AbstractHydroFlux
         flux_func = build_flux_func(eqs, infos)
         flux_name = isnothing(name) ? Symbol("##hydro_flux#", hash(infos)) : name
 
-        return new{typeof(eqs),typeof(flux_func),typeof(infos)}(
-            flux_name, eqs, flux_func, infos
+        return new{length(hru_types) > 1,typeof(eqs),typeof(flux_func),typeof(hru_types),typeof(infos)}(
+            flux_name, eqs, flux_func, hru_types, infos
         )
     end
 end
@@ -68,35 +64,20 @@ macro hydroflux(args...)
     name = length(args) == 1 ? nothing : args[1]
     eqs_expr = length(args) == 1 ? args[1] : args[2]
     vect_eqs_expr = if Meta.isexpr(eqs_expr, :block)
-        Expr(:tuple, filter(arg -> !(arg isa LineNumberNode) && !Meta.isexpr(arg, :line), eqs_expr.args)...)
-    elseif Meta.isexpr(eqs_expr, :for)
-        loop_var = eqs_expr.args[1].args[1]
-        range_expr = eqs_expr.args[1].args[2]
-        range_val = if Meta.isexpr(range_expr, :call) && range_expr.args[1] == :(:)
-            if length(range_expr.args) == 3
-                range_expr.args[2]:range_expr.args[3]
-            elseif length(range_expr.args) == 4
-                range_expr.args[2]:range_expr.args[3]:range_expr.args[4]
-            end
-        else
-            eval(range_expr)
-        end
-        loop_body = eqs_expr.args[2]
-        if !Meta.isexpr(loop_body, :block)
-            loop_body = Expr(:block, loop_body)
-        end
-        equations = filter(x -> !(x isa LineNumberNode) && !Meta.isexpr(x, :line), loop_body.args)
-        all_equations = []
-        for i_val in range_val
-            for eq in equations
-                new_eq = deepcopy(eq)
-                replace_loop_var!(new_eq, loop_var, i_val)
-                push!(all_equations, new_eq)
-            end
-        end
-        Expr(:tuple, all_equations...)
+        Expr(:tuple, filter(arg -> !(arg isa LineNumberNode) && !Meta.isexpr(arg, :line) && !Meta.isexpr(arg, :(=)), eqs_expr.args)...)
     else
         Expr(:tuple, eqs_expr)
+    end
+
+    hru_types_val = :(Int[])
+    if Meta.isexpr(eqs_expr, :block)
+        for assign in filter(x -> Meta.isexpr(x, :(=)), eqs_expr.args)
+            # @assert Meta.isexpr(assign, :(=)) "Expected assignments in the form 'fluxes = begin...end'"
+            lhs, rhs = assign.args
+            if lhs == :hru_types
+                hru_types_val = rhs
+            end
+        end
     end
 
     for var_name in extract_variables(vect_eqs_expr)
@@ -105,7 +86,7 @@ macro hydroflux(args...)
             return :(error("Undefined variable '", $(string(var_name)), "' detected in expression: `", $expr_str, "`"))
         end
     end
-    return esc(:(HydroFlux(exprs=$vect_eqs_expr, name=$name)))
+    return esc(:(HydroFlux(exprs=$vect_eqs_expr, name=$name, hru_types=$hru_types_val)))
 end
 
 function replace_loop_var!(expr, var_name, value)
@@ -121,9 +102,10 @@ function replace_loop_var!(expr, var_name, value)
 end
 
 """
-    build_flux_func(inputs::Vector{Num}, outputs::Vector{Num}, params::Vector{Num}, exprs::Vector{Num})
+$(TYPEDSIGNATURES)
 
 Generates a runtime function for flux calculations based on symbolic expressions.
+The function is specialized for the given expressions and variable names in `infos`.
 """
 function build_flux_func(exprs::Vector{Num}, infos::HydroModelCore.HydroInfos)
     flux_exprs = map(expr -> :(@. $(simplify_expr(toexpr(expr)))), exprs)
@@ -142,49 +124,30 @@ function build_flux_func(exprs::Vector{Num}, infos::HydroModelCore.HydroInfos)
 end
 
 
-"""
-    StateFlux{N,E,I} <: AbstractStateFlux
 
-Represents a state flux component that symbolically defines the rate of change for a state variable in a hydrological model. The component's name is encoded in the type parameter `N` for enhanced type stability.
-
-This component is primarily a declarative structure used within a larger model (like a `HydroBucket`) to define the system's differential equations. It does not perform calculations directly.
-
-# Arguments
-- `exprs::Vector{Equation}`: A vector of equations defining the state change. The left-hand side represents the state variable, and the right-hand side is the expression for its derivative (rate of change).
-- `name::Union{Symbol,Nothing}=nothing`: An optional identifier for the state flux. If not provided, a name is generated based on the state variable.
-
-# Fields
-- `exprs::Vector{Num}`: A vector containing the right-hand-side expressions from the input equations, which define the state's rate of change.
-- `infos::NamedTuple`: Metadata about the component, including the derived names of `inputs`, `states`, and `params` extracted from the expressions.
-"""
-function (flux::HydroFlux)(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T}
+function (flux::HydroFlux{false})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T}
     stack(flux.func(eachslice(input, dims=1), params), dims=1)
 end
 
-function (flux::HydroFlux)(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T}
-    ptyidx = get(kwargs, :ptyidx, collect(1:size(input, 2)))
-    expand_params = expand_component_params(params, get_param_names(flux), ptyidx)
+function (flux::HydroFlux{true})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T}
+    expand_params = expand_component_params(params, get_param_names(flux), flux.hru_types)
     output = flux.func(eachslice(input, dims=1), expand_params)
     stack(output, dims=1)
 end
 
 """
-    @stateflux(name, eq)
+    StateFlux{N, E, I} <: AbstractStateFlux
 
-A macro to conveniently create a `StateFlux` component from a single equation.
+Represents a state flux, defining the rate of change (derivative) for a state variable.
 
-The left side of the equation is interpreted as the state variable, and the right side is the expression defining its rate of change.
+This is a declarative component used within a `HydroBucket` or `HydroRoute` to define the system's differential equations. It does not perform calculations itself.
 
-The standard convention is to use `~` to define the relationship (e.g., `S ~ P - E`), consistent with `ModelingToolkit` for differential equations.
-
-# Arguments
-- `name`: An optional `Symbol` to name the state flux component.
-- `eq`: A single equation that defines the change in a state variable.
+$(FIELDS)
 """
 struct StateFlux{N,E,I} <: AbstractStateFlux
-    "flux expressions to descripe the formula of the state variable"
+    "Vector of expressions defining the state's rate of change."
     exprs::E
-    "bucket information: keys contains: input, output, param, state"
+    "Metadata about the component, including input, state, and parameter names."
     infos::I
 
     function StateFlux(;
@@ -206,20 +169,19 @@ struct StateFlux{N,E,I} <: AbstractStateFlux
 end
 
 """
-    @stateflux(name, eq)
+    @stateflux [name] eq
 
 A macro to conveniently create a `StateFlux` component from a single equation.
 
-The left side of the equation is interpreted as the state variable, and the right side is the expression defining its rate of change.
+# Usage
+The left side of the equation is the state variable, and the right side is the expression for its rate of change. The `~` operator is typically used.
 
-The standard convention is to use `~` to define the relationship (e.g., `S ~ P - E`), consistent with `ModelingToolkit` for differential equations.
-
-# Arguments
-- `name`: An optional `Symbol` to name the state flux component.
-- `eq`: A single equation that defines the change in a state variable.
+```julia
+@variables S, P, Q
+@stateflux :storage_change S ~ P - Q
+```
 """
 macro stateflux(args...)
-    # Process arguments
     name = length(args) == 1 ? nothing : args[1]
     eq_expr = length(args) == 1 ? args[1] : args[2]
     for var_name in extract_variables(eq_expr)
@@ -232,3 +194,109 @@ macro stateflux(args...)
 end
 
 (::StateFlux)(::AbstractArray, ::ComponentVector; kwargs...) = @error "State Flux cannot run directly, please using HydroFlux to run"
+
+"""
+    NeuralFlux{C, F, NT} <: AbstractNeuralFlux
+
+Represents a flux component driven by a neural network.
+
+It wraps a `Lux.AbstractLuxLayer` and connects it to symbolic variables for integration into a hydrological model.
+
+$(FIELDS)
+"""
+struct NeuralFlux{C,F,NT} <: AbstractNeuralFlux
+    "neural flux name"
+    name::Symbol
+    "chain of the neural network"
+    chain::C
+    "Compiled function that calculates the flux using the neural network"
+    func::F
+    "Information about the neural network's input and output structure"
+    infos::NT
+
+    function NeuralFlux(
+        inputs::Vector{T},
+        outputs::Vector{T},
+        chain::LuxCore.AbstractLuxLayer;
+        name::Optional{Symbol}=nothing,
+        st=LuxCore.initialstates(Random.default_rng(), chain),
+        chain_name::Optional{Symbol}=nothing,
+    ) where {T<:Num}
+        chain_name = chain_name === nothing ? chain.name : chain_name
+        @assert !isnothing(chain_name) "`chain_name` must be provided for NeuralFlux, or set `name` in chain"
+        ps = LuxCore.initialparameters(Random.default_rng(), chain)
+        ps_axes = getaxes(ComponentVector(ps))
+        nn_func = (x, p) -> LuxCore.apply(chain, x, ComponentVector(p, ps_axes), st)[1]
+        infos = HydroInfos(
+            inputs=!isempty(inputs) ? tosymbol.(inputs) : Symbol[],
+            outputs=!isempty(outputs) ? tosymbol.(outputs) : Symbol[],
+            nns=[chain_name]
+        )
+        flux_name = isnothing(name) ? Symbol("##neural_flux#", hash(infos)) : name
+        new{typeof(chain),typeof(nn_func),typeof(infos)}(flux_name, chain, nn_func, infos)
+    end
+
+    #* construct neural flux with input fluxes and output fluxes
+    function NeuralFlux(fluxes::Pair{Vector{Num},Vector{Num}}, chain, name::Union{Symbol,Nothing}=nothing)
+        return NeuralFlux(fluxes[1], fluxes[2], chain, name=name)
+    end
+end
+
+"""
+    @neuralflux [name] eq
+
+A macro to conveniently create a `NeuralFlux` from an equation.
+
+# Usage
+
+The macro takes an optional name and an equation of the form `output ~ chain(inputs)`.
+
+# Examples
+
+```julia
+@variables x, y, z, z₁, z₂
+chain = Chain(Dense(2 => 10, relu), Dense(10 => 1), name=:my_net)
+
+# Single output
+flux1 = @neuralflux z ~ chain([x, y])
+
+# With an optional name
+flux2 = @neuralflux :my_flux z ~ chain([x, y])
+
+# Multiple outputs
+chain2 = Chain(Dense(2 => 16, relu), Dense(16 => 2), name=:multi_net)
+flux3 = @neuralflux [z₁, z₂] ~ chain2([x, y])
+```
+"""
+macro neuralflux(args...)
+    name = length(args) == 1 ? nothing : args[1]
+    eq_expr = length(args) == 1 ? args[1] : args[2]
+
+    for var_name in extract_variables(eq_expr)
+        if !@isdefined(var_name)
+            expr_str = string(eq_expr)
+            return :(error("Undefined variable '", $(string(var_name)), "' detected in expression: `", $expr_str, "`"))
+        end
+    end
+
+    @assert eq_expr.head == :call && eq_expr.args[1] == :~ "Expected equation in the form: outputs ~ chain(inputs)"
+    lhs, rhs = eq_expr.args[2], eq_expr.args[3]  # Output variable(s) and Chain info expression
+    @assert rhs.head == :call "The right-hand side of `~` must be a function call, e.g., my_chain([x, y])"
+    @assert length(rhs.args) >= 2 "The chain call must have at least one argument for the inputs."
+
+    chain_expr, inputs_expr = rhs.args[1], rhs.args[2]
+    return esc(quote
+        local outputs = $lhs isa AbstractVector ? $lhs : [$lhs]
+        NeuralFlux($inputs_expr, outputs, $chain_expr; name=$(name))
+    end)
+end
+
+function (flux::NeuralFlux{N})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T,N}
+    nn_params = params[:nns][get_nn_names(flux)[1]]
+    flux.func(input, nn_params)
+end
+
+function (flux::NeuralFlux{N})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T,N}
+    nn_params = params[:nns][get_nn_names(flux)[1]]
+    stack(ntuple(i -> flux.func(input[:, i, :], nn_params), size(input)[2]), dims=2)
+end

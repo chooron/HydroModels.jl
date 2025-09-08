@@ -15,7 +15,7 @@ snow_ele = @hydrobucket :surface begin
     dfluxes = begin
         @stateflux snowpack ~ snowfall - melt
     end
-    nmul = 9
+    hru_types = collect(1:9)
 end
 
 soil_ele = @hydrobucket :soil begin
@@ -28,7 +28,7 @@ soil_ele = @hydrobucket :soil begin
     dfluxes = begin
         @stateflux soilwater ~ (rainfall + melt) - (evap + flow)
     end
-    nmul = 9
+    hru_types = collect(1:9)
 end
 
 convertflux = @hydroflux q ~ flow * area_coef
@@ -56,6 +56,7 @@ convertflux = @hydroflux q ~ flow * area_coef
             @stateflux s_river ~ q - q_routed
         end
         aggr_func = HydroModels.build_aggr_func(flwdir, positions)
+        hru_types = collect(1:9)
     end
     #! define the Exp-Hydro model
     model = @hydromodel :exphydro begin
@@ -122,6 +123,7 @@ end
             @stateflux s_river ~ q - q_routed
         end
         aggr_func = HydroModels.build_aggr_func(network)
+        hru_types = collect(1:9)
     end
 
     #! define the Exp-Hydro model
