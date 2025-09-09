@@ -4,7 +4,7 @@ This document explains the core concepts of the HydroModels.jl framework, focusi
 
 ## Framework Architecture
 
-DeepFlex.jl is built on a modular architecture with three core components:
+HydroModels.jl is built on a modular architecture with three core components:
 
 1. **Flux**: Basic computational units that define mathematical relationships
 2. **Bucket**: Storage components that integrate fluxes and manage state variables
@@ -15,7 +15,7 @@ This architecture allows you to build models ranging from simple conceptual mode
 
 ## Flux Components
 
-Fluxes are the fundamental building blocks in DeepFlex.jl. They define the mathematical relationships between variables in your hydrological system.
+Fluxes are the fundamental building blocks in HydroModels.jl. They define the mathematical relationships between variables in your hydrological system.
 
 ### HydroFlux
 
@@ -131,7 +131,7 @@ StateFlux components are essential for water balance calculations and form the b
 
 ## Bucket Components
 
-Elements are higher-level components that integrate multiple fluxes and manage state variables. The primary type of element in DeepFlex.jl is the `Bucket`.
+Elements are higher-level components that integrate multiple fluxes and manage state variables. The primary type of element in HydroModels.jl is the `Bucket`.
 
 ### HydroBucket
 
@@ -288,7 +288,7 @@ results = exphydro_model(
 
 ## How Components Work Together
 
-The power of DeepFlex.jl comes from how these components work together:
+The power of HydroModels.jl comes from how these components work together:
 
 1. **Fluxes** define the mathematical relationships and processes
 2. **Buckets/Elements** integrate these fluxes and manage state variables
@@ -305,7 +305,7 @@ The framework automatically handles the connections between components. For exam
 
 ## Execution Process
 
-When running a model in DeepFlex.jl, the following steps occur:
+When running a model in HydroModels.jl, the following steps occur:
 
 1. **Data Preparation**:
 
