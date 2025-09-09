@@ -31,7 +31,10 @@ soil_ele = @hydrobucket :soil begin
     hru_types = collect(1:9)
 end
 
-convertflux = @hydroflux q ~ flow * area_coef
+convertflux = @hydroflux begin
+    q ~ flow * area_coef
+    hru_types = collect(1:9)
+end
 
 @testset "test grid route hydro model (multiple hydrology nodes based on exp-hydro)" begin
 

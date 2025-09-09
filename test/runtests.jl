@@ -24,11 +24,6 @@ using Zygote, ForwardDiff
     include("base/run_multi_bucket.jl")
     include("base/run_multi_lumped.jl")
     include("base/run_spatial_model.jl")
-#     # include("base/run_neural.jl")
-#     include("base/run_uh.jl")
-#     include("base/run_route.jl")
-#     include("base/run_lumped_model_single.jl")
-#     include("base/run_spatial_model.jl")
 end
 
 # @testset "test cuda support" begin

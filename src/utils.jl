@@ -36,13 +36,33 @@ Generate flux computation expressions, dispatching on flux type and dimensionali
 """
 @inline generate_flux_expression(flux::AbstractHydroFlux, ::Val{0}) = [:($nm = $(toexpr(expr))) for (nm, expr) in zip(get_output_names(flux), flux.exprs)]
 @inline generate_flux_expression(flux::AbstractHydroFlux, ::Val{1}) = [:($nm = @. $(simplify_expr(toexpr(expr)))) for (nm, expr) in zip(get_output_names(flux), flux.exprs)]
-@inline generate_flux_expression(flux::AbstractNeuralFlux, ::Val{dims}) where dims = begin
+@inline generate_flux_expression(flux::AbstractHydroFlux, ::Val{2}) = @inline generate_flux_expression(flux, Val(1))
+@inline generate_flux_expression(flux::AbstractNeuralFlux, ::Val{0}) = begin
     nn_names = get_nn_names(flux)[1]
     nn_inputs, nn_outputs = Symbol(nn_names, "_input"), Symbol(nn_names, "_output")
     [
-        :($(nn_inputs) = [$(flux.infos[:inputs]...)]),
-        :($(nn_outputs) = $(flux.func)($(nn_inputs), $(nn_names))),
-        [:($(nm) = $(nn_outputs)[$i, ntuple(_ -> Colon(), $(dims))...]) for (i, nm) in enumerate(get_output_names(flux))]...
+        :($(nn_inputs) = [$(flux.infos.inputs...)] |> $(flux.norm_func)),
+        :($(nn_outputs) = $(flux.chain_func)($(nn_inputs), $(nn_names))),
+        [:($(nm) = $(nn_outputs)[$i]) for (i, nm) in enumerate(get_output_names(flux))]...
+    ]
+end
+@inline generate_flux_expression(flux::AbstractNeuralFlux, ::Val{1}) = begin
+    nn_names = get_nn_names(flux)[1]
+    nn_inputs, nn_outputs = Symbol(nn_names, "_input"), Symbol(nn_names, "_output")
+    [
+        :($(nn_inputs) = stack([$(flux.infos.inputs...)], dims=1) |> $(flux.norm_func)),
+        :($(nn_outputs) = $(flux.chain_func)($(nn_inputs), $(nn_names))),
+        [:($(nm) = $(nn_outputs)[$i, :]) for (i, nm) in enumerate(get_output_names(flux))]...
+    ]
+end
+
+@inline generate_flux_expression(flux::AbstractNeuralFlux, ::Val{2}) = begin
+    nn_names = get_nn_names(flux)[1]
+    nn_inputs, nn_outputs = Symbol(nn_names, "_input"), Symbol(nn_names, "_output")
+    [
+        :($(nn_inputs) = stack([$(flux.infos.inputs...)], dims=1) |> $(flux.norm_func)),
+        :($(nn_outputs) = $(flux.chain_func)($(nn_inputs), $(nn_names))),
+        [:($(nm) = $(nn_outputs)[$i, :, :]) for (i, nm) in enumerate(get_output_names(flux))]...
     ]
 end
 

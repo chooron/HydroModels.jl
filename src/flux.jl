@@ -125,7 +125,7 @@ end
 
 
 
-function (flux::HydroFlux{false})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T}
+function (flux::HydroFlux)(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T}
     stack(flux.func(eachslice(input, dims=1), params), dims=1)
 end
 
@@ -204,13 +204,15 @@ It wraps a `Lux.AbstractLuxLayer` and connects it to symbolic variables for inte
 
 $(FIELDS)
 """
-struct NeuralFlux{C,F,NT} <: AbstractNeuralFlux
+struct NeuralFlux{C,CF,NF,NT} <: AbstractNeuralFlux
     "neural flux name"
     name::Symbol
     "chain of the neural network"
     chain::C
     "Compiled function that calculates the flux using the neural network"
-    func::F
+    chain_func::CF
+    "input normalizatio functions"
+    norm_func::NF
     "Information about the neural network's input and output structure"
     infos::NT
 
@@ -218,6 +220,7 @@ struct NeuralFlux{C,F,NT} <: AbstractNeuralFlux
         inputs::Vector{T},
         outputs::Vector{T},
         chain::LuxCore.AbstractLuxLayer;
+        norm::Function=(x) -> x,
         name::Optional{Symbol}=nothing,
         st=LuxCore.initialstates(Random.default_rng(), chain),
         chain_name::Optional{Symbol}=nothing,
@@ -233,12 +236,7 @@ struct NeuralFlux{C,F,NT} <: AbstractNeuralFlux
             nns=[chain_name]
         )
         flux_name = isnothing(name) ? Symbol("##neural_flux#", hash(infos)) : name
-        new{typeof(chain),typeof(nn_func),typeof(infos)}(flux_name, chain, nn_func, infos)
-    end
-
-    #* construct neural flux with input fluxes and output fluxes
-    function NeuralFlux(fluxes::Pair{Vector{Num},Vector{Num}}, chain, name::Union{Symbol,Nothing}=nothing)
-        return NeuralFlux(fluxes[1], fluxes[2], chain, name=name)
+        new{typeof(chain),typeof(nn_func),typeof(norm),typeof(infos)}(flux_name, chain, nn_func, norm, infos)
     end
 end
 
@@ -291,12 +289,13 @@ macro neuralflux(args...)
     end)
 end
 
-function (flux::NeuralFlux{N})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T,N}
+function (flux::NeuralFlux)(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T}
     nn_params = params[:nns][get_nn_names(flux)[1]]
-    flux.func(input, nn_params)
+    flux.chain_func(flux.norm_func(input), nn_params)
 end
 
-function (flux::NeuralFlux{N})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T,N}
+function (flux::NeuralFlux)(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T}
     nn_params = params[:nns][get_nn_names(flux)[1]]
-    stack(ntuple(i -> flux.func(input[:, i, :], nn_params), size(input)[2]), dims=2)
+    norm_input = flux.norm_func(input)
+    stack(ntuple(i -> flux.chain_func(norm_input[:, i, :], nn_params), size(input)[2]), dims=2)
 end

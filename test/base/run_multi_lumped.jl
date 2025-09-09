@@ -29,6 +29,7 @@ step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
         dfluxes = begin
             @stateflux snowpack ~ snowfall - melt
         end
+        hru_types = collect(1:10)
     end
 
     bucket_2 = @hydrobucket :soil begin
@@ -41,16 +42,12 @@ step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
         dfluxes = begin
             @stateflux soilwater ~ (rainfall + melt) - (evap + flow)
         end
-    end
-
-    model = @hydromodel :exphydro begin
-        bucket_1
-        bucket_2
+        hru_types = collect(1:10)
     end
 
     multi_model = @hydromodel :multi_exphydro begin
-        multiply(bucket_1)
-        multiply(bucket_2)
+        bucket_1
+        bucket_2
     end
 
     input_arr = repeat(reshape(input_mat, size(input_mat)[1], 1, size(input_mat)[2]), 1, 10, 1)
@@ -64,7 +61,7 @@ step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
     node_pas = ComponentVector(params=node_params)
     config = (timeidx=ts, ptyidx=1:10, styidx=1:10)
     result_arr = multi_model(input_arr, node_pas; initstates=node_initstates, config=config)
-    @test size(result_arr) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), 10, length(ts))
+    @test size(result_arr) == (length(HydroModels.get_state_names(multi_model)) + length(HydroModels.get_output_names(multi_model)), 10, length(ts))
 end
 
 @testset "test lumped hydro model (gr4j with unit hydrograph)" begin
@@ -107,6 +104,7 @@ end
         dfluxes = begin
             @stateflux soilwater ~ ps - es - perc
         end
+        hru_types = collect(1:10)
     end
 
 
@@ -115,6 +113,7 @@ end
             x4 => (t / x4)^2.5
         end
         uh_vars = slowflow => slowflow_routed
+        hru_types = collect(1:10)
     end
 
     uh_2 = @unithydro begin
@@ -123,6 +122,7 @@ end
             x4 => (0.5 * (t / x4)^2.5)
         end
         uh_vars = fastflow => fastflow_routed
+        hru_types = collect(1:10)
     end
 
     rst_ele = @hydrobucket begin
@@ -134,22 +134,14 @@ end
         dfluxes = begin
             @stateflux routingstore ~ slowflow_routed + exch - routedflow
         end
+        hru_types = collect(1:10)
     end
 
-    #* define the gr4j model
-    model = @hydromodel :gr4j begin
+    multi_model = @hydromodel :multi_exphydro begin
         prod_ele
         uh_1
         uh_2
         rst_ele
-    end
-
-
-    multi_model = @hydromodel :multi_exphydro begin
-        multiply(prod_ele)
-        uh_1
-        uh_2
-        multiply(rst_ele)
     end
 
     # Test multi-node model run
@@ -161,7 +153,7 @@ end
 
     # Test output as 3D array
     result_mat_vec = multi_model(input_arr, node_pas, initstates=node_initstates, config=(timeidx=ts, ptyidx=1:10, styidx=1:10))
-    @test size(result_mat_vec) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), 10, length(ts))
+    @test size(result_mat_vec) == (length(HydroModels.get_state_names(multi_model)) + length(HydroModels.get_output_names(multi_model)), 10, length(ts))
 end
 
 
@@ -205,6 +197,7 @@ end
         dfluxes = begin
             @stateflux snowpack ~ snowfall - melt
         end
+        hru_types = collect(1:10)
     end
 
     #! define the ET NN and Q NN
@@ -226,6 +219,7 @@ end
         dfluxes = begin
             @stateflux soilwater ~ rainfall + melt - step_func(soilwater) * lday * log_evap_div_lday - step_func(soilwater) * exp(log_flow)
         end
+        hru_types = collect(1:10)
     end
 
     #! define the Exp-Hydro model
@@ -235,8 +229,8 @@ end
     end
 
     multi_model = @hydromodel :m50 begin
-        multiply(snow_ele)
-        multiply(soil_ele)
+        snow_ele
+        soil_ele
     end
 
     base_params = (Df=2.674, Tmax=0.17, Tmin=-2.09)

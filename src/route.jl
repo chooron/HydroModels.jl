@@ -116,26 +116,44 @@ $(TYPEDSIGNATURES)
 
 Builds an aggregation function for grid-based routing from a flow direction matrix (e.g., D8) and a vector of grid cell positions.
 """
+# function build_aggr_func(flwdir::AbstractMatrix, positions::AbstractVector)
+#     d8_codes = [1, 2, 4, 8, 16, 32, 64, 128]
+#     d8_nn_pads = [(1, 1, 2, 0), (2, 0, 2, 0), (2, 0, 1, 1), (2, 0, 0, 2), (1, 1, 0, 2), (0, 2, 0, 2), (0, 2, 1, 1), (0, 2, 2, 0)]
+
+#     # input dims: node_num * ts_len
+#     function grid_routing(input::AbstractVector, positions::AbstractVector, flwdir::AbstractMatrix)
+#         # Convert input to sparse matrix
+#         input_arr = Array(sparse([pos[1] for pos in positions], [pos[2] for pos in positions], input, size(flwdir)[1], size(flwdir)[2]))
+#         # Calculate weighted summation
+#         input_routed = sum(collect([pad_zeros(input_arr .* (flwdir .== code), arg) for (code, arg) in zip(d8_codes, d8_nn_pads)]))
+#         # Clip input matrix border
+#         clip_arr = input_routed[2:size(input_arr)[1]+1, 2:size(input_arr)[2]+1]
+#         # Convert input matrix to vector
+#         collect([clip_arr[pos[1], pos[2]] for pos in positions])
+#     end
+#     #* build the outflow projection function
+#     aggr_func = (outflow) -> grid_routing(outflow, positions, flwdir)
+#     return aggr_func
+# end
 function build_aggr_func(flwdir::AbstractMatrix, positions::AbstractVector)
     d8_codes = [1, 2, 4, 8, 16, 32, 64, 128]
-    d8_nn_pads = [(1, 1, 2, 0), (2, 0, 2, 0), (2, 0, 1, 1), (2, 0, 0, 2), (1, 1, 0, 2), (0, 2, 0, 2), (0, 2, 1, 1), (0, 2, 2, 0)]
-
-    # input dims: node_num * ts_len
+    d8_nn_pads = [
+        (1, 1, 2, 0), (2, 0, 2, 0), (2, 0, 1, 1), (2, 0, 0, 2),
+        (1, 1, 0, 2), (0, 2, 0, 2), (0, 2, 1, 1), (0, 2, 2, 0)
+    ]
     function grid_routing(input::AbstractVector, positions::AbstractVector, flwdir::AbstractMatrix)
-        # Convert input to sparse matrix
-        input_arr = Array(sparse([pos[1] for pos in positions], [pos[2] for pos in positions], input, size(flwdir)[1], size(flwdir)[2]))
-        # Calculate weighted summation
-        input_routed = sum(collect([pad_zeros(input_arr .* (flwdir .== code), arg) for (code, arg) in zip(d8_codes, d8_nn_pads)]))
-        # Clip input matrix border
-        clip_arr = input_routed[2:size(input_arr)[1]+1, 2:size(input_arr)[2]+1]
-        # Convert input matrix to vector
-        collect([clip_arr[pos[1], pos[2]] for pos in positions])
+        rows, cols = size(flwdir)
+        input_arr = zeros(eltype(input), rows, cols)
+        cartesian_positions = (p -> CartesianIndex(p...)).(positions)
+        input_arr[cartesian_positions] = input
+        input_routed = sum(pad_zeros(input_arr .* (flwdir .== code), arg) for (code, arg) in zip(d8_codes, d8_nn_pads))
+        clip_arr = input_routed[2:rows+1, 2:cols+1]
+        return clip_arr[cartesian_positions]
     end
-    #* build the outflow projection function
+
     aggr_func = (outflow) -> grid_routing(outflow, positions, flwdir)
     return aggr_func
 end
-
 
 function build_route_func(fluxes::Vector{<:AbstractHydroFlux}, dfluxes::Vector{<:AbstractStateFlux}, infos::HydroModelCore.HydroInfos)
     nn_fluxes = filter(f -> f isa AbstractNeuralFlux, fluxes)

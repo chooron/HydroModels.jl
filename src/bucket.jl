@@ -21,7 +21,7 @@ struct HydroBucket{S,MS,FF,OF,HT,NT} <: AbstractHydroBucket
 
     function HydroBucket(;
         name::Optional{Symbol}=nothing,
-        fluxes::Vector{<:AbstractHydroFlux},
+        fluxes::Vector{<:AbstractFlux},
         dfluxes::Vector{<:AbstractStateFlux}=StateFlux[],
         hru_types::Vector{Int}=Int[]
     )
@@ -105,7 +105,7 @@ function set_hru_types!(bucket::HydroBucket, hru_types::Vector{Int})::HydroBucke
 end
 
 build_bucket_func(
-    fluxes::Vector{<:AbstractHydroFlux}, dfluxes::Vector{<:AbstractStateFlux},
+    fluxes::Vector{<:AbstractFlux}, dfluxes::Vector{<:AbstractStateFlux},
     infos::HydroModelCore.HydroInfos, multiply::Bool
 ) = begin
     _build_bucket_func(fluxes, dfluxes, infos, Val(multiply))
@@ -113,7 +113,7 @@ end
 
 
 function _build_bucket_func(
-    fluxes::Vector{<:AbstractHydroFlux}, dfluxes::Vector{<:AbstractStateFlux},
+    fluxes::Vector{<:AbstractFlux}, dfluxes::Vector{<:AbstractStateFlux},
     infos::HydroModelCore.HydroInfos, ::Val{false}
 )
     nn_fluxes = filter(f -> f isa AbstractNeuralFlux, fluxes)
@@ -153,7 +153,7 @@ function _build_bucket_func(
 end
 
 function _build_bucket_func(
-    fluxes::Vector{<:AbstractHydroFlux}, dfluxes::Vector{<:AbstractStateFlux},
+    fluxes::Vector{<:AbstractFlux}, dfluxes::Vector{<:AbstractStateFlux},
     infos::HydroModelCore.HydroInfos, ::Val{true}
 )
     nn_fluxes = filter(f -> f isa AbstractNeuralFlux, fluxes)
@@ -174,7 +174,7 @@ function _build_bucket_func(
     multi_flux_func_expr = :(function (inputs, states, pas)
         Base.@_inline_meta
         $(define_calls_2...)
-        $(generate_compute_calls(fluxes=fluxes, dims=1)...)
+        $(generate_compute_calls(fluxes=fluxes, dims=2)...)
         return [$((infos.outputs)...)]
     end)
     generated_multi_flux_func = @RuntimeGeneratedFunction(multi_flux_func_expr)
