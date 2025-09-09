@@ -14,7 +14,7 @@ RuntimeGeneratedFunctions.init(@__MODULE__)
 
 # Symbolic building
 using Symbolics
-using Symbolics: tosymbol, unwrap, wrap, Num, Symbolic, @variables, get_variables
+using Symbolics: tosymbol, Num, @variables, get_variables
 using SymbolicUtils.Code
 import SymbolicUtils: symtype, term, hasmetadata, issym
 
@@ -40,13 +40,11 @@ include("tools.jl")
 export ManualSolver, DirectInterpolation, FunctionElement, SummationElement
 # framework build
 include("flux.jl")
-export HydroFlux, StateFlux, @hydroflux, @stateflux
+export HydroFlux, StateFlux, @hydroflux, @stateflux, NeuralFlux, @neuralflux
 include("bucket.jl")
-export HydroBucket, @hydrobucket, multiply
-include("nn.jl")
-export NeuralFlux, NeuralBucket, @neuralflux, @neuralbucket
+export HydroBucket, @hydrobucket
 include("route.jl")
-export HydroRoute, RapidRoute, @hydroroute
+export HydroRoute, @hydroroute
 include("uh.jl")
 export UnitHydrograph, @unithydro
 include("model.jl")
