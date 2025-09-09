@@ -7,8 +7,9 @@ This document explains the core concepts of the DeepFlex.jl framework, focusing 
 DeepFlex.jl is built on a modular architecture with three core components:
 
 1. **Flux**: Basic computational units that define mathematical relationships
-2. **Element/Bucket**: Storage components that integrate fluxes and manage state variables
-3. **Model**: The top-level structure that combines all components into a complete system
+2. **Bucket**: Storage components that integrate fluxes and manage state variables
+3. **Route**: 
+4. **Model**: The top-level structure that combines all components into a complete system
 
 This architecture allows you to build models ranging from simple conceptual models to complex physically-based or hybrid models using the same framework.
 
@@ -128,7 +129,7 @@ These expressions define:
 
 StateFlux components are essential for water balance calculations and form the basis of the ordinary differential equations (ODEs) that are solved during simulation.
 
-## Element/Bucket Components
+## Bucket Components
 
 Elements are higher-level components that integrate multiple fluxes and manage state variables. The primary type of element in DeepFlex.jl is the `Bucket`.
 
@@ -160,17 +161,7 @@ end
 │ States:  [snowpack]
 │ Outputs: [pet, snowfall, rainfall, melt]
 │ Params:  []
-│ NNs:     []
-│
-│ Fluxes:
-│   Num[pet] ~ (436.98720000000003lday*exp((17.3temp) / (237.3 + temp))) / (273.2 + temp)
-│   Num[snowfall] ~ 0.5prcp*(1.0 + tanh(5.0(-2.092959084 - temp)))
-│   Num[rainfall] ~ 0.5prcp*(1.0 + tanh(5.0(2.092959084 + temp)))
-│   Num[melt] ~ 0.25(1.0 + tanh(5.0snowpack))*min(snowpack, 2.674548848(-0.175739196 + temp))*(1.0 + tanh(5.0(-0.175739196 + temp)))
-│
-│ State Fluxes:
-│   snowpack ~ -melt + snowfall
-└─
+└─ NNs:     []
 ```
 
 2. **Soil Water Bucket**: Manages soil moisture, evapotranspiration, and runoff generation
@@ -195,17 +186,7 @@ end
 │ States:  [soilwater]
 │ Outputs: [evap, baseflow, surfaceflow, flow]
 │ Params:  [Smax, f, Qmax]
-│ NNs:     []
-│
-│ Fluxes:
-│   Num[evap] ~ 0.5pet*min(1.0, 0.0005849797048457405soilwater)*(1.0 + tanh(5.0soilwater))
-│   Num[baseflow] ~ 9.234980875exp(-0.01674478max(0.0, 1709.461015 - soilwater))*(1.0 + tanh(5.0soilwater)) 
-│   Num[surfaceflow] ~ max(0.0, -1709.461015 + soilwater)
-│   Num[flow] ~ baseflow + surfaceflow
-│
-│ State Fluxes:
-│   soilwater ~ -evap - flow + melt + rainfall
-└─
+└─NNs:     []
 ```
 
 Each bucket:
@@ -255,8 +236,7 @@ uh = @unithydro :maxbas_uh begin
         2lag => (1 - 0.5 * (2 - t / lag)^2.5)
         lag => (0.5 * (t / lag)^2.5)
     end
-    uh_vars = [q]
-    configs = (solvetype=:DISCRETE, suffix=:_lag)
+    uh_vars = q => q_lag
 end
 ```
 
