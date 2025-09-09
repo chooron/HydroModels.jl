@@ -1,4 +1,4 @@
-# Understanding DeepFlex.jl Core Concepts
+# Understanding HydroModels.jl Core Concepts
 
 This document explains the core concepts of the DeepFlex.jl framework, focusing on the three fundamental components: Flux, Element/Bucket, and Model. We'll use examples from the ExpHydro model to illustrate these concepts in practice.
 
