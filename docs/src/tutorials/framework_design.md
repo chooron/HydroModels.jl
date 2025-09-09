@@ -8,7 +8,7 @@ DeepFlex.jl is built on a modular architecture with three core components:
 
 1. **Flux**: Basic computational units that define mathematical relationships
 2. **Bucket**: Storage components that integrate fluxes and manage state variables
-3. **Route**: 
+3. **Route**: responsible for calculating how runoff is generated and moves through a watershed to produce an outflow hydrograph.
 4. **Model**: The top-level structure that combines all components into a complete system
 
 This architecture allows you to build models ranging from simple conceptual models to complex physically-based or hybrid models using the same framework.
