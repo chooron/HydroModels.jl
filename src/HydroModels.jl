@@ -7,7 +7,6 @@ using Reexport
 using SpecialFunctions
 using ComponentArrays
 using DocStringExtensions
-
 # runtime generated functions
 using RuntimeGeneratedFunctions
 RuntimeGeneratedFunctions.init(@__MODULE__)
@@ -26,7 +25,7 @@ using Lux
 using NNlib
 
 # define Optional type
-const Optional{T} = Union{T, Nothing}
+const Optional{T} = Union{T,Nothing}
 
 using HydroModelCore
 
@@ -37,7 +36,14 @@ include("utils.jl")
 export sort_components, sort_fluxes
 #! When constructing an ODE problem to solve, use DataInterpolations.jl
 include("tools.jl")
-export ManualSolver, DirectInterpolation, FunctionElement, SummationElement
+export ManualSolver, DirectInterpolation
+# default hydro config
+DEFAULT_CONFIG = (
+    solver=ManualSolver(mutable=true),
+    interpolator=DirectInterpolation,
+    timeidx=Int[],
+    device=identity
+)
 # framework build
 include("flux.jl")
 export HydroFlux, StateFlux, @hydroflux, @stateflux, NeuralFlux, @neuralflux

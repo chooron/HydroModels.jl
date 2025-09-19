@@ -20,7 +20,7 @@ struct UnitHydrograph{MS,UF,MF,HT,NT} <: AbstractHydrograph
 
     function UnitHydrograph(
         inputs::AbstractVector, outputs::AbstractVector, params::AbstractVector,
-        uh_func::Function, max_lag::Function;
+        uh_func::Function, max_lag_func::Function;
         name::Optional{Symbol}=nothing, hru_types::Vector{Int}=Int[],
         kwargs...
     )
@@ -31,7 +31,7 @@ struct UnitHydrograph{MS,UF,MF,HT,NT} <: AbstractHydrograph
         )
         uh_name = isnothing(name) ? Symbol("##uh#", hash(infos)) : name
         return new{length(hru_types) > 1,typeof(uh_func),typeof(max_lag_func),typeof(hru_types),typeof(infos)}(
-            uh_name, uh_func, max_lag, hru_types, infos
+            uh_name, uh_func, max_lag_func, hru_types, infos
         )
     end
 
@@ -126,11 +126,12 @@ macro unithydro(args...)
 
     @assert Meta.isexpr(uh_vars_expr, :call) && uh_vars_expr.args[1] == :(=>) "uh_vars must be a single Pair, e.g., P => Q"
     uh_inputs_expr, uh_outputs_expr = Expr(:vect, uh_vars_expr.args[2]), Expr(:vect, uh_vars_expr.args[3])
-    uh_conds, cond_values = Pair[], []
+    uh_conds_pair, cond_values = Pair[], []
     for uh_expr in uh_func_expr.args
         uh_expr isa LineNumberNode && continue
         if Meta.isexpr(uh_expr, :call) && uh_expr.args[1] == :(=>)
-            push!(uh_conds, uh_expr.args[2] => uh_expr.args[3])
+            push!(uh_conds_pair, uh_expr.args[2] => uh_expr.args[3])
+            push!(cond_values, uh_expr.args[2])
             push!(cond_values, uh_expr.args[3])
         end
     end
@@ -138,11 +139,11 @@ macro unithydro(args...)
     return esc(quote
         params_val = reduce(union, map(
             val -> filter(x -> HydroModels.isparameter(x), HydroModels.get_variables(val)),
-            [$(cond_values...)]
-        ))
+            [$(cond_values...)])
+        )
         UnitHydrograph(
             $uh_inputs_expr, $uh_outputs_expr, params_val;
-            uh_conds=$uh_conds, max_lag=$(uh_conds[1][1]), name=$(name),
+            uh_conds=$uh_conds_pair, max_lag=$(uh_conds_pair[1][1]), name=$(name),
             $(kwargs_vec...)
         )
     end)
@@ -202,7 +203,10 @@ This method is dispatched based on the dimensionality of the `input` array and t
 
 A method for 1D `AbstractVector` input is defined to throw an error, as single time points are not supported.
 """
-function (uh::UnitHydrograph)(input::AbstractArray{T,2}, pas::ComponentVector; kwargs...) where {T}
+function (uh::UnitHydrograph)(
+    input::AbstractArray{T,2}, pas::ComponentVector, config::NamedTuple=DEFAULT_CONFIG;
+    kwargs...
+)::AbstractArray{T,2} where {T}
     solver = ManualSolver(mutable=true)
     timeidx = collect(1:size(input, 2))
     interp_func = DirectInterpolation(input, timeidx)
@@ -221,7 +225,10 @@ function (uh::UnitHydrograph)(input::AbstractArray{T,2}, pas::ComponentVector; k
     end
 end
 
-function (uh::UnitHydrograph{true})(input::AbstractArray{T,3}, pas::ComponentVector; kwargs...) where {T}
+function (uh::UnitHydrograph{true})(
+    input::AbstractArray{T,3}, pas::ComponentVector, config::NamedTuple=DEFAULT_CONFIG;
+    kwargs...
+)::AbstractArray{T,3} where {T}
     ptyidx = uh.hru_types
     uh_param_names = get_param_names(uh)
     extract_params = eachrow(reshape(reduce(vcat, pas[:params][uh_param_names]), :, length(uh_param_names))[ptyidx, :])

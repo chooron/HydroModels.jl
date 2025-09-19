@@ -1,5 +1,3 @@
-step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
-
 @parameters Tmin Tmax Df Smax f Qmax area_coef lag
 @variables prcp temp lday pet snowpack soilwater rainfall snowfall evap melt baseflow surfaceflow flow q q_gen q_routed s_river
 
@@ -85,8 +83,7 @@ end
     )
     node_pas = ComponentVector(params=node_params)
 
-    config = (timeidx=ts, ptyidx=1:9, styidx=1:9)
-    result_mat_vec = model(input_arr, node_pas; initstates=node_initstates, config=config)
+    result_mat_vec = model(input_arr, node_pas; initstates=node_initstates, timeidx=ts)
     @test size(result_mat_vec) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), 9, length(ts))
 end
 
@@ -155,7 +152,6 @@ end
     )
     node_pas = ComponentVector(params=node_params)
 
-    config = (timeidx=ts,)
-    result_mat_vec = model(input_arr, node_pas; initstates=node_initstates, config=config)
+    result_mat_vec = model(input_arr, node_pas; initstates=node_initstates, timeidx=ts)
     @test size(result_mat_vec) == (length(HydroModels.get_state_names(model)) + length(HydroModels.get_output_names(model)), 9, length(ts))
 end

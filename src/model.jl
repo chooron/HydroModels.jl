@@ -97,15 +97,17 @@ Common `kwargs` include `initstates` and `config` (for component-specific settin
 """
 function (model::HydroModel)(
     input::AbstractArray{T,D},
-    params::ComponentVector;
-    initstates::AbstractVector=model._defaultstates,
-    config::NamedTuple=NamedTuple(),
-) where {T,D}
-    comp_configs = config isa NamedTuple ? fill(config, length(model.components)) : config
+    params::ComponentVector,
+    config::C=DEFAULT_CONFIG;
+    kwargs...
+) where {T,D,C}
+    comp_configs = !(C == NamedTuple) ? fill(config, length(model.components)) : config
     @assert D in (2, 3) "input array dimension must be 2 or 3"
     @assert length(comp_configs) == length(model.components) "component configs length must be equal to components length"
     @assert size(input, 1) == length(get_input_names(model)) "input variables length must be equal to input variables length"
+    
     outputs = input
+    initstates = get(kwargs, :initstates, model._defaultstates)
     for (idx_, comp_, config_) in zip(model._varindices, model.components, comp_configs)
         tmp_input = copy(view(outputs, idx_, ntuple(_ -> Colon(), D - 1)...))
         tmp_output = comp_(

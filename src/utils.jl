@@ -36,7 +36,7 @@ Generate flux computation expressions, dispatching on flux type and dimensionali
 """
 @inline generate_flux_expression(flux::AbstractHydroFlux, ::Val{0}) = [:($nm = $(toexpr(expr))) for (nm, expr) in zip(get_output_names(flux), flux.exprs)]
 @inline generate_flux_expression(flux::AbstractHydroFlux, ::Val{1}) = [:($nm = @. $(simplify_expr(toexpr(expr)))) for (nm, expr) in zip(get_output_names(flux), flux.exprs)]
-@inline generate_flux_expression(flux::AbstractHydroFlux, ::Val{2}) = @inline generate_flux_expression(flux, Val(1))
+@inline generate_flux_expression(flux::AbstractHydroFlux, ::Val{2}) = generate_flux_expression(flux, Val(1))
 @inline generate_flux_expression(flux::AbstractNeuralFlux, ::Val{0}) = begin
     nn_names = get_nn_names(flux)[1]
     nn_inputs, nn_outputs = Symbol(nn_names, "_input"), Symbol(nn_names, "_output")

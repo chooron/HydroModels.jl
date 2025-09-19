@@ -1,10 +1,3 @@
-@kwdef struct HydroConfig{S,I}
-    solver::S=ManualSolver(mutable=true)
-    interpolater::I=DirectInterpolation
-    ptyidx::Vector{Int}=Int[]
-    styidx::Vector{Int}=Int[]
-end
-
 """
     DirectInterpolation{D}(data::AbstractArray, ts::AbstractVector{<:Integer})
 
@@ -34,7 +27,7 @@ struct DirectInterpolation{D}
     data::AbstractArray
     ts::AbstractVector
 
-    function DirectInterpolation(data::AbstractArray, ts::AbstractVector{<:Integer})
+    function DirectInterpolation(data::AbstractArray, ts::AbstractVector{<:Integer}; kwargs...)
         @assert size(data)[end] == length(ts) "The last dimension of data must match the length of ts"
         return new{length(size(data))}(data, ts)
     end
@@ -73,57 +66,43 @@ where stability and computational efficiency are prioritized over high-order acc
     - Creates new arrays at each step
 
 """
-struct ManualSolver{M,D,NZ}
+struct ManualSolver{M,D}
     dev::D
-    nearzero::NZ
 
-    function ManualSolver(; dev=identity, nearzero=1e-6, mutable::Bool=false)
-        return new{mutable,typeof(dev),typeof(nearzero)}(dev, nearzero)
+    function ManualSolver(; dev=identity,  mutable::Bool=false)
+        return new{mutable,typeof(dev)}(dev)
     end
 end
 
-function (solver::ManualSolver{true,D,NZ})(
+function (solver::ManualSolver{true})(
     du_func::Function,
     pas::AbstractVector,
     initstates::AbstractArray{T,N},
     timeidx::AbstractVector;
     kwargs...
-) where {T,D,N,NZ}
+) where {T,N}
     T1 = promote_type(eltype(pas), eltype(initstates))
     states_results = zeros(T1, size(initstates)..., length(timeidx)) |> solver.dev
     tmp_initstates = copy(initstates)
-    nearzero = solver.nearzero |> eltype(initstates)
     for (i, t) in enumerate(timeidx)
         tmp_du = du_func(tmp_initstates, pas, t)
-        tmp_initstates = max.(nearzero, tmp_initstates .+ tmp_du)
+        # todo custom the near zero value
+        tmp_initstates = max.(1e-6, tmp_initstates .+ tmp_du)
         states_results[ntuple(Returns(Colon()), N)..., i] .= tmp_initstates
     end
     states_results
 end
 
-function (solver::ManualSolver{false,D,NZ})(
+function (solver::ManualSolver{false})(
     du_func::Function,
     pas::AbstractVector,
     initstates::AbstractArray{T,N},
     timeidx::AbstractVector;
     kwargs...
-) where {T,D,N,NZ}
-    nearzero = solver.nearzero |> eltype(initstates)
+) where {T,N}
+    # todo custom the near zero value
     states_vec = accumulate(timeidx; init=initstates) do last_state, t
-        max.(nearzero, du_func(last_state, pas, t) .+ last_state)
+        max.(1e-6, du_func(last_state, pas, t) .+ last_state)
     end
     return stack(states_vec; dims=N + 1)
-end
-
-struct FunctionElement <: AbstractElement
-    inputs::Vector{Num}
-    func::Function
-end
-
-function (ele::FunctionElement)(input::AbstractArray, params::ComponentVector; kwargs...)
-    ele.func(input, params; kwargs...)
-end
-
-function SummationElement(inputs::Vector{Num})
-    return FunctionElement(inputs, (input, params) -> sum(input, dims=2))
 end

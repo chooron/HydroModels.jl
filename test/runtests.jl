@@ -14,6 +14,8 @@ using DifferentialEquations
 using SciMLSensitivity
 using Zygote, ForwardDiff
 
+step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
+
 @testset "HydroModels.jl" begin
     include("base/run_hydro_flux.jl")
     include("base/run_neural_flux.jl")

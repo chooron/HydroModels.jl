@@ -1,5 +1,3 @@
-step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
-
 @testset "test lumped hydro model (exp-hydro with no neural network and no unit hydrograph)" begin
     @parameters Tmin Tmax Df Smax f Qmax
     @variables prcp temp lday pet snowpack soilwater rainfall snowfall evap melt baseflow surfaceflow flow

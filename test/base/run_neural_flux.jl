@@ -14,7 +14,7 @@
     @test Set(HydroModels.get_nn_names(nn_flux_1)) == Set([:testnn])
     @test Set(HydroModels.get_output_names(nn_flux_1)) == Set([:d])
     # @test nn_flux_1([1, 2, 3], ComponentVector(nns=(testnn=nn_ps_vec,))) ≈ func_1([1, 2, 3], nn_ps)
-    test_input = [1 3 3; 2 2 2; 1 2 1; 3 1 2]'
+    test_input = Float64[1 3 3; 2 2 2; 1 2 1; 3 1 2]'
     expected_output = func_1(test_input, nn_ps)
 
     @test nn_flux_1(test_input, ComponentVector(nns=(testnn=nn_ps,))) ≈ expected_output
@@ -39,7 +39,7 @@ end
     @test Set(HydroModels.get_param_names(nn_flux)) == Set(Symbol[])
     @test Set(HydroModels.get_nn_names(nn_flux)) == Set([:testnn])
     @test Set(HydroModels.get_output_names(nn_flux)) == Set([:d, :e])
-    test_input = [1 3 3; 2 2 2; 1 2 1; 3 1 2]'
+    test_input = Float64[1 3 3; 2 2 2; 1 2 1; 3 1 2]'
     test_output = func(test_input, nn_ps)
     @test nn_flux(test_input, ComponentVector(nns=(testnn=nn_ps,))) ≈ test_output
     # test with multiple nodes

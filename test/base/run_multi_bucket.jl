@@ -7,7 +7,6 @@ df = DataFrame(CSV.File("../data/exphydro/01013500.csv"))
 input_ntp = (lday=df[ts, "dayl(day)"], temp=df[ts, "tmean(C)"], prcp=df[ts, "prcp(mm/day)"])
 
 input = Matrix(reduce(hcat, collect(input_ntp[[:temp, :lday, :prcp]]))')
-step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
 
 @variables temp lday prcp pet snowfall rainfall melt snowpack
 @parameters Tmin Tmax Df
@@ -62,7 +61,7 @@ step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
         node_input = reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([input_arr], length(node_names)))
         node_input = permutedims(node_input, (2, 3, 1))
         node_output = snow_multi_ele1(node_input, ComponentVector(params=node_params); initstates=node_states)
-        single_output = snow_single_ele(input, ComponentVector(params=(Df=Df_v, Tmax=Tmax_v, Tmin=Tmin_v)), initstates=init_states, timeidx=ts, solver=ManualSolver(mutable=true))
+        single_output = snow_single_ele(input, ComponentVector(params=(Df=Df_v, Tmax=Tmax_v, Tmin=Tmin_v)), initstates=init_states, timeidx=ts)
         target_output = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([single_output], 10)), (1, 3, 2))
         @test node_output == target_output
     end
@@ -79,7 +78,7 @@ step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
         node_input = reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([input_arr], 10))
         node_input = permutedims(node_input, (2, 3, 1))
         node_output = snow_multi_ele2(node_input, node_pas; initstates=node_states)
-        single_output = snow_single_ele(input, ComponentVector(params=(Df=Df_v, Tmax=Tmax_v, Tmin=Tmin_v)), initstates=init_states, timeidx=ts, solver=ManualSolver(mutable=true))
+        single_output = snow_single_ele(input, ComponentVector(params=(Df=Df_v, Tmax=Tmax_v, Tmin=Tmin_v)), initstates=init_states, timeidx=ts)
         target_output = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([single_output], 10)), (1, 3, 2))
         @test node_output == target_output
     end
@@ -128,7 +127,7 @@ end
         node_input = reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([input_arr], length(node_names)))
         node_input = permutedims(node_input, (2, 3, 1))
         node_output = snow_multi_ele1(node_input, node_pas; initstates=node_states)
-        single_output = snow_single_ele(input, pas, initstates=init_states, timeidx=ts, solver=ManualSolver(mutable=true))
+        single_output = snow_single_ele(input, pas; initstates=init_states, timeidx=ts)
         target_output = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([single_output], 10)), (1, 3, 2))
         @test node_output == target_output
     end
@@ -145,7 +144,7 @@ end
         node_input = reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([input_arr], 10))
         node_input = permutedims(node_input, (2, 3, 1))
         node_output = snow_multi_ele2(node_input, node_pas; initstates=node_states)
-        single_output = snow_single_ele(input, pas, initstates=init_states, timeidx=ts, solver=ManualSolver(mutable=true))
+        single_output = snow_single_ele(input, pas; initstates=init_states, timeidx=ts)
         target_output = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([single_output], 10)), (1, 3, 2))
         @test node_output == target_output
     end

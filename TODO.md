@@ -34,10 +34,11 @@
 - [ ] bucket中优化参数超过100个时会使用ReverseDiffAdjoint这个敏感性算法，这时候优化会出现错误，难以解决
 
 ## BUG
-- [ ] bucket 中如果有neuralflux,打印的时候会报错
-- [ ] neuralbucket仍有问题
-- [ ] 还是得拆分开, 把DifferentialEquations独立出来
-- [ ] unit hydro 也存在问题
-- [ ] @neuralfux 构建时可以接收一个归一化的参数
-- [ ] styidx这个参数可能重要性不大
-- [ ] HydroBucket用于多节点计算过少,考虑抛弃这个功能,将多节点计算主要放在Lux-based的基础上
+- [X] bucket 中如果有neuralflux,打印的时候会报错
+- [X] neuralbucket仍有问题
+- [X] 还是得拆分开, 把DifferentialEquations独立出来
+- [X] unit hydro 也存在问题
+- [X] @neuralfux 构建时可以接收一个归一化的参数
+- [X] styidx这个参数可能重要性不大
+- [X] HydroBucket用于多节点计算过少,考虑抛弃这个功能,将多节点计算主要放在Lux-based的基础上
+- [ ] 统一接口为 input, params, config; input, params两种

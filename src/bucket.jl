@@ -204,14 +204,16 @@ The method dispatches based on the input data dimensions (2D for single-node, 3D
 Common `kwargs` include `solver`, `interp`, `timeidx`, and `initstates`.
 """
 function (bucket::HydroBucket{true,false})(
-    input::AbstractArray{T,2}, params::ComponentVector;
-    solver::S=ManualSolver(mutable=true),
-    interp::I=DirectInterpolation,
-    timeidx::AbstractVector=collect(1:size(input, 2)),
-    initstates::AbstractArray=zeros(eltype(params), length(get_state_names(bucket))),
+    input::AbstractArray{T,2}, params::ComponentVector, config::NamedTuple=DEFAULT_CONFIG;
     kwargs...
-) where {T,S,I}
+)::AbstractArray{T,2} where {T}
+    solver = get(config, :solver, ManualSolver(mutable=true))
+    interp = get(config, :interpolator, DirectInterpolation)
+
     param_vec, params_axes = Vector(params), getaxes(params)
+    initstates = get(kwargs, :initstates, zeros(eltype(params), length(get_state_names(bucket))))
+    timeidx = get(kwargs, :timeidx, collect(1:size(input, 2)))
+
     itpfuncs = interp(input, timeidx)
     solved_states = solver(
         (u, p, t) -> bucket.ode_func(itpfuncs(t), u, ComponentVector(p, params_axes)),
@@ -222,17 +224,18 @@ function (bucket::HydroBucket{true,false})(
 end
 
 function (bucket::HydroBucket{true,true})(
-    input::AbstractArray{T,3}, params::ComponentVector;
-    solver::S=ManualSolver(mutable=true),
-    interp::I=DirectInterpolation,
-    timeidx::AbstractVector=collect(1:size(input, 3)),
-    initstates::AbstractArray=zeros(eltype(params), length(get_state_names(bucket)) * size(input, 2)),
-    device=solver.dev,
+    input::AbstractArray{T,3}, params::ComponentVector, config::NamedTuple=DEFAULT_CONFIG;
     kwargs...
-) where {T,S,I}
+)::AbstractArray{T,3} where {T}
+    solver = get(config, :solver, ManualSolver(mutable=true))
+    interp = get(config, :interpolator, DirectInterpolation)
+    device = get(config, :device, identity)
+
     input_dims, num_nodes, time_len = size(input)
     new_params = expand_component_params(params, get_param_names(bucket), bucket.hru_types)
     params_vec, params_axes = Vector(new_params) |> device, getaxes(new_params)
+    initstates = get(kwargs, :initstates, zeros(eltype(params), length(get_state_names(bucket)) * size(input, 2)))
+    timeidx = get(kwargs, :timeidx, collect(1:size(input, 3)))
 
     num_states = length(get_state_names(bucket))
     itpfuncs = interp(reshape(input, input_dims * num_nodes, :), timeidx)
@@ -248,11 +251,15 @@ function (bucket::HydroBucket{true,true})(
     cat(solved_states_reshape, stack(output, dims=1), dims=1)
 end
 
-(bucket::HydroBucket{false,MS})(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T,MS} = begin
+function (bucket::HydroBucket{false,false})(
+    input::AbstractArray{T,2}, params::ComponentVector, config::NamedTuple=DEFAULT_CONFIG; kwargs...
+)::AbstractArray{T,2} where {T}
     stack(bucket.flux_func(input, nothing, params), dims=1)
 end
 
-(bucket::HydroBucket{false,MS})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T,MS} = begin
+function (bucket::HydroBucket{false,true})(
+    input::AbstractArray{T,3}, params::ComponentVector, config::NamedTuple=DEFAULT_CONFIG; kwargs...
+)::AbstractArray{T,3} where {T}
     new_params = expand_component_params(params, get_param_names(bucket), bucket.hru_types)
     stack(bucket.flux_func(input, nothing, new_params), dims=1)
 end

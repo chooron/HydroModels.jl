@@ -205,17 +205,19 @@ Common `kwargs` include `solver`, `interp`, `timeidx`, and `initstates`.
 """
 function (route::HydroRoute)(
     input::AbstractArray{T,3},
-    params::ComponentVector;
-    solver::S=ManualSolver(mutable=true),
-    interp::I=DirectInterpolation,
-    timeidx::AbstractVector=collect(1:size(input, 3)),
-    initstates::AbstractArray=zeros(eltype(params), length(get_state_names(route)) * size(input, 2)),
-    device=solver.dev,
+    params::ComponentVector,
+    config::NamedTuple=DEFAULT_CONFIG;
     kwargs...
-) where {T,S,I}
+) where {T}
+    solver = get(config, :solver, ManualSolver(mutable=true))
+    interp = get(config, :interpolator, DirectInterpolation)
+    device = get(config, :device, identity)
+
     input_dims, num_nodes, time_len = size(input)
     new_pas = expand_component_params(params, get_param_names(route), route.hru_types) |> device
     params_vec, params_axes = Vector(new_pas) |> device, getaxes(new_pas)
+    initstates = get(kwargs, :initstates, zeros(eltype(params), length(get_state_names(route)) * size(input, 2)))
+    timeidx = get(kwargs, :timeidx, collect(1:time_len))
 
     itpfunc = interp(reshape(input, input_dims * num_nodes, time_len), timeidx)
     solved_states = solver(

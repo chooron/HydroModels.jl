@@ -7,7 +7,6 @@ df = DataFrame(CSV.File("../data/exphydro/01013500.csv"))
 input_ntp = (lday=df[ts, "dayl(day)"], temp=df[ts, "tmean(C)"], prcp=df[ts, "prcp(mm/day)"])
 
 input = Matrix(reduce(hcat, collect(input_ntp[[:temp, :lday, :prcp]]))')
-step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
 
 @variables temp lday prcp pet snowfall rainfall melt snowpack
 @parameters Tmin Tmax Df
@@ -36,7 +35,8 @@ step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
 
     @testset "test run with single node input" begin
         pas = ComponentVector(params=ComponentVector(Df=Df_v, Tmax=Tmax_v, Tmin=Tmin_v))
-        result = snow_single_ele(input, pas; initstates=init_states, timeidx=ts, solver=ManualSolver(mutable=true))
+        config = (; solver=ManualSolver(mutable=true))
+        result = snow_single_ele(input, pas, config; initstates=init_states, timeidx=ts)
         ele_state_and_output_names = vcat(HydroModels.get_state_names(snow_single_ele), HydroModels.get_output_names(snow_single_ele))
         result = NamedTuple{Tuple(ele_state_and_output_names)}(eachslice(result, dims=1))
     end
@@ -63,7 +63,8 @@ end
 
     pas = ComponentVector(params=(Df=Df_v, Tmax=Tmax_v, Tmin=Tmin_v))
     @testset "test run with single node input" begin
-        result = snow_single_ele(input, pas; initstates=init_states, timeidx=ts, solver=ManualSolver(mutable=true))
+        config = (; solver=ManualSolver(mutable=true))
+        result = snow_single_ele(input, pas, config; initstates=init_states, timeidx=ts)
         ele_state_and_output_names = vcat(HydroModels.get_state_names(snow_single_ele), HydroModels.get_output_names(snow_single_ele))
         result = NamedTuple{Tuple(ele_state_and_output_names)}(eachslice(result, dims=1))
     end

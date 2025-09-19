@@ -124,12 +124,17 @@ function build_flux_func(exprs::Vector{Num}, infos::HydroModelCore.HydroInfos)
 end
 
 
-
-function (flux::HydroFlux)(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T}
+function (flux::HydroFlux)(
+    input::AbstractArray{T,2}, params::ComponentVector, config::NamedTuple=DEFAULT_CONFIG;
+    kwargs...
+)::AbstractArray{T,2} where {T}
     stack(flux.func(eachslice(input, dims=1), params), dims=1)
 end
 
-function (flux::HydroFlux{true})(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T}
+function (flux::HydroFlux{true})(
+    input::AbstractArray{T,3}, params::ComponentVector, config::NamedTuple=DEFAULT_CONFIG;
+    kwargs...
+)::AbstractArray{T,3} where {T}
     expand_params = expand_component_params(params, get_param_names(flux), flux.hru_types)
     output = flux.func(eachslice(input, dims=1), expand_params)
     stack(output, dims=1)
@@ -289,12 +294,18 @@ macro neuralflux(args...)
     end)
 end
 
-function (flux::NeuralFlux)(input::AbstractArray{T,2}, params::ComponentVector; kwargs...) where {T}
+function (flux::NeuralFlux)(
+    input::AbstractArray{T,2}, params::ComponentVector, config::NamedTuple=DEFAULT_CONFIG;
+    kwargs...
+)::AbstractArray{T,2} where {T}
     nn_params = params[:nns][get_nn_names(flux)[1]]
     flux.chain_func(flux.norm_func(input), nn_params)
 end
 
-function (flux::NeuralFlux)(input::AbstractArray{T,3}, params::ComponentVector; kwargs...) where {T}
+function (flux::NeuralFlux)(
+    input::AbstractArray{T,3}, params::ComponentVector, config::NamedTuple=DEFAULT_CONFIG;
+    kwargs...
+)::AbstractArray{T,3} where {T}
     nn_params = params[:nns][get_nn_names(flux)[1]]
     norm_input = flux.norm_func(input)
     stack(ntuple(i -> flux.chain_func(norm_input[:, i, :], nn_params), size(input)[2]), dims=2)
