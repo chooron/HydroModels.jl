@@ -15,9 +15,9 @@ function SciMLBase.OptimizationProblem(
     loss_func = get(kwargs, :loss_func, (y, y_hat) -> sum((y .- y_hat) .^ 2) ./ length(y))
     warm_up = get(kwargs, :warm_up, 0)
     adtype = get(kwargs, :adtype, nothing)
-    interp = get(kwargs, :interpolator, Val(DirectInterpolation))
+    interp = get(kwargs, :interpolator, Val(HydroModels.DirectInterpolation))
     timeidx = get(kwargs, :timeidx, collect(1:size(input, 2)))
-    solver = get(kwargs, :solver, HydroModels.ManualSolver(mutable=true))
+    solver = get(kwargs, :solver, HydroModels.MutableSolver)
 
     param_names, state_names = HydroModels.get_param_names(component), HydroModels.get_state_names(component)
     default_initstates = get(kwargs, :default_initstates, ComponentVector(NamedTuple{Tuple(state_names)}(zeros(eltype(input), length(state_names)))))
