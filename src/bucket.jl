@@ -101,6 +101,7 @@ Re-creates a `HydroBucket` with a new set of `hru_types`.
 Note: This is not an in-place operation and returns a new `HydroBucket` instance.
 """
 function set_hru_types!(bucket::HydroBucket, hru_types::Vector{Int})::HydroBucket
+    # todo 这里有问题,bucket.flux_func, bucket.ode_func在新增hru types后不会重新构建
     bucket = HydroBucket(bucket.name, bucket.flux_func, bucket.ode_func, hru_types, bucket.infos)
 end
 
@@ -207,28 +208,30 @@ function (bucket::HydroBucket{true,false})(
     input::AbstractArray{T,2}, params::ComponentVector, config::NamedTuple=DEFAULT_CONFIG;
     kwargs...
 )::AbstractArray{T,2} where {T}
-    solver = get(config, :solver, ManualSolver(mutable=true))
-    interp = get(config, :interpolator, DirectInterpolation)
+    solve_type = get(config, :solver, MutableSolver)
+    interp_type = get(config, :interpolator, Val(DirectInterpolation))
 
     param_vec, params_axes = Vector(params), getaxes(params)
     initstates = get(kwargs, :initstates, zeros(eltype(params), length(get_state_names(bucket))))
     timeidx = get(kwargs, :timeidx, collect(1:size(input, 2)))
 
-    itpfuncs = interp(input, timeidx)
-    solved_states = solver(
+    itpfuncs = hydrointerp(interp_type, input, timeidx)
+    solved_states = hydrosolve(
+        solve_type,
         (u, p, t) -> bucket.ode_func(itpfuncs(t), u, ComponentVector(p, params_axes)),
-        param_vec, Vector(initstates), timeidx
+        param_vec, Vector(initstates), timeidx, config
     )
     flux_output = bucket.flux_func(input, solved_states, params)
-    vcat(solved_states, stack(flux_output, dims=1))
+    flux_output_arr = stack(flux_output, dims=1)
+    vcat(solved_states, flux_output_arr)
 end
 
 function (bucket::HydroBucket{true,true})(
     input::AbstractArray{T,3}, params::ComponentVector, config::NamedTuple=DEFAULT_CONFIG;
     kwargs...
 )::AbstractArray{T,3} where {T}
-    solver = get(config, :solver, ManualSolver(mutable=true))
-    interp = get(config, :interpolator, DirectInterpolation)
+    solve_type = get(config, :solver, MutableSolver)
+    interp_type = get(config, :interpolator, Val(DirectInterpolation))
     device = get(config, :device, identity)
 
     input_dims, num_nodes, time_len = size(input)
@@ -238,13 +241,13 @@ function (bucket::HydroBucket{true,true})(
     timeidx = get(kwargs, :timeidx, collect(1:size(input, 3)))
 
     num_states = length(get_state_names(bucket))
-    itpfuncs = interp(reshape(input, input_dims * num_nodes, :), timeidx)
-    solved_states = solver(
+    itpfuncs = hydrointerp(interp_type, reshape(input, input_dims * num_nodes, :), timeidx)
+    solved_states = hydrosolve(solve_type,
         (u, p, t) -> bucket.ode_func(
             reshape(itpfuncs(t), input_dims, num_nodes),
             reshape(u, num_nodes, num_states)', ComponentVector(p, params_axes),
         ),
-        params_vec, initstates, timeidx
+        params_vec, initstates, timeidx, config
     )
     solved_states_reshape = permutedims(reshape(solved_states, num_nodes, num_states, time_len), (2, 1, 3))
     output = bucket.flux_func(input, solved_states_reshape, new_params)

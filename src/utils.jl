@@ -5,14 +5,17 @@ Simplify a Julia expression. For example, convert `:((+)(x, (tanh)(y)))` to `:(x
 """
 @inline simplify_expr(expr) = Meta.parse(string(expr))
 
+
+
 """
 $(SIGNATURES)
 
 Generate variable assignment expressions from a target array.
 """
-@inline generate_var_assignments(; vars, target, dims=0, prefix="") = begin
-    [:($(Symbol(prefix, i)) = $(target)[$idx, ntuple(_ -> Colon(), $dims)...]) for (idx, i) in enumerate(vars)]
-end
+@inline generate_var_assignments(; vars, target, dims=0, prefix="") = _generate_var_assignments(vars, target, Val(dims), prefix)
+@inline _generate_var_assignments(vars, target, ::Val{0}, prefix) = [:($(Symbol(prefix, i)) = $(target)[$idx]) for (idx, i) in enumerate(vars)]
+@inline _generate_var_assignments(vars, target, ::Val{1}, prefix) = [:($(Symbol(prefix, i)) = $(target)[$idx, :]) for (idx, i) in enumerate(vars)]
+@inline _generate_var_assignments(vars, target, ::Val{2}, prefix) = [:($(Symbol(prefix, i)) = $(target)[$idx, :, :]) for (idx, i) in enumerate(vars)]
 
 """
 $(SIGNATURES)

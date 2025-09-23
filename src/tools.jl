@@ -1,4 +1,11 @@
 """
+$(SIGNATURES)
+
+A lightweight interpolation type that provides the same interface as DataInterpolations.jl but uses direct indexing instead of interpolation algorithms.
+"""
+@inline hydrointerp(::Val{I}, input, timeidx) where {I} = I(input, timeidx)
+
+"""
     DirectInterpolation{D}(data::AbstractArray, ts::AbstractVector{<:Integer})
 
 A lightweight interpolation type that provides the same interface as DataInterpolations.jl but uses direct indexing instead of interpolation algorithms.
@@ -39,50 +46,16 @@ end
 @inline (interpolater::DirectInterpolation{2})(t::Number) = interpolater.data[:, ceil(Int, t)]
 
 """
-    ManualSolver{mutable} <: AbstractHydroSolver
+$(SIGNATURES)
 
-A lightweight, type-stable ODE solver optimized for hydrological modeling.
-
-# Type Parameters
-- `mutable::Bool`: Controls array mutability and performance characteristics
-    - `true`: Uses mutable arrays for in-place updates (30% faster)
-    - `false`: Uses immutable arrays for functional programming style
-
-# Description
-ManualSolver implements a fixed-step explicit Euler method for solving ordinary 
-differential equations (ODEs). It is specifically designed for hydrological models 
-where stability and computational efficiency are prioritized over high-order accuracy.
-
-## Performance Characteristics
-- Type-stable implementation for predictable performance
-- Optional in-place operations via the `mutable` parameter
-- Linear time complexity with respect to simulation length
-- Constant space complexity when `mutable=true`
-
-## Memory Management
-- `mutable=true`: 
-    - Modifies arrays in-place
-- `mutable=false`:
-    - Creates new arrays at each step
-
+Solve the ODEs for the states.
 """
-struct ManualSolver{M,D}
-    dev::D
+hydrosolve(solver::SolverType, du_func, pas, initstates, timeidx, config) = hydrosolve(Val(solver), du_func, pas, initstates, timeidx, config)
 
-    function ManualSolver(; dev=identity,  mutable::Bool=false)
-        return new{mutable,typeof(dev)}(dev)
-    end
-end
-
-function (solver::ManualSolver{true})(
-    du_func::Function,
-    pas::AbstractVector,
-    initstates::AbstractArray{T,N},
-    timeidx::AbstractVector;
-    kwargs...
-) where {T,N}
+function hydrosolve(::Val{MutableSolver}, du_func, pas, initstates::AbstractArray{T,N}, timeidx, config) where {T,N}
+    dev = get(config, :device, identity)
     T1 = promote_type(eltype(pas), eltype(initstates))
-    states_results = zeros(T1, size(initstates)..., length(timeidx)) |> solver.dev
+    states_results = zeros(T1, size(initstates)..., length(timeidx)) |> dev
     tmp_initstates = copy(initstates)
     for (i, t) in enumerate(timeidx)
         tmp_du = du_func(tmp_initstates, pas, t)
@@ -93,16 +66,10 @@ function (solver::ManualSolver{true})(
     states_results
 end
 
-function (solver::ManualSolver{false})(
-    du_func::Function,
-    pas::AbstractVector,
-    initstates::AbstractArray{T,N},
-    timeidx::AbstractVector;
-    kwargs...
-) where {T,N}
-    # todo custom the near zero value
+function hydrosolve(::Val{ImmutableSolver}, du_func, pas, initstates, timeidx, config)
+    dev = get(config, :device, identity)
     states_vec = accumulate(timeidx; init=initstates) do last_state, t
         max.(1e-6, du_func(last_state, pas, t) .+ last_state)
     end
-    return stack(states_vec; dims=N + 1)
+    return stack(states_vec; dims=N + 1) |> dev
 end

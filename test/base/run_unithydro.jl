@@ -29,7 +29,6 @@
     input_arr = repeat(reshape(input_flow, 1, 1, length(input_flow)), 1, 10, 1)
     ndtypes = [Symbol("node_$i") for i in 1:10]
     input_pas = ComponentVector(params=(lag=fill(3.5, 10),),)
-    config = Dict(:ptypes => ndtypes, :solver => ManualSolver(mutable=true))
     expected_output_arr = repeat(reshape(expected_output, 1, 1, length(expected_output)), 1, 10, 1)
     # @test uh1(input_arr, input_pas; config...) ≈ expected_output_arr atol = 1e-3
 end

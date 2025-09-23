@@ -111,9 +111,8 @@ function (model::HydroModel)(
     for (idx_, comp_, config_) in zip(model._varindices, model.components, comp_configs)
         tmp_input = copy(view(outputs, idx_, ntuple(_ -> Colon(), D - 1)...))
         tmp_output = comp_(
-            tmp_input, params;
+            tmp_input, params, config_;
             initstates=initstates[get_state_names(comp_)],
-            config=config_
         )
         outputs = vcat(outputs, tmp_output)
     end

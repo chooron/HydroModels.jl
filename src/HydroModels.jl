@@ -35,15 +35,25 @@ export @variables, @parameters
 include("utils.jl")
 export sort_components, sort_fluxes
 #! When constructing an ODE problem to solve, use DataInterpolations.jl
+
+Base.@enum SolverType begin
+    MutableSolver
+    ImmutableSolver
+    ODESolver
+    DiscreteSolver
+end
+
 include("tools.jl")
-export ManualSolver, DirectInterpolation
+export SolverType, MutableSolver, ImmutableSolver, ODESolver, DiscreteSolver, DirectInterpolation, hydrointerp, hydrosolve
+
 # default hydro config
 DEFAULT_CONFIG = (
-    solver=ManualSolver(mutable=true),
-    interpolator=DirectInterpolation,
+    solver=MutableSolver,
+    interpolator=Val(DirectInterpolation),
     timeidx=Int[],
     device=identity
 )
+
 # framework build
 include("flux.jl")
 export HydroFlux, StateFlux, @hydroflux, @stateflux, NeuralFlux, @neuralflux

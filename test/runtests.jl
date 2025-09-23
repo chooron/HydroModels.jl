@@ -12,7 +12,6 @@ using HydroModels
 using Test
 using DifferentialEquations
 using SciMLSensitivity
-using Zygote, ForwardDiff
 
 step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
 

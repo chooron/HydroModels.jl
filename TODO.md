@@ -42,3 +42,4 @@
 - [X] styidx这个参数可能重要性不大
 - [X] HydroBucket用于多节点计算过少,考虑抛弃这个功能,将多节点计算主要放在Lux-based的基础上
 - [ ] 统一接口为 input, params, config; input, params两种
+- [ ] HydroModel 打印的时候没有显示nn有几个

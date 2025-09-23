@@ -26,7 +26,7 @@
     params = ComponentVector(lag=fill(0.2, 3))
     initstates = ComponentVector(s_river=fill(0.0, length(positions)))
     pas = ComponentVector(params=params)
-    config = (solver=ManualSolver(mutable=true), interp=LinearInterpolation)
+    config = (solver=MutableSolver, interp=LinearInterpolation)
     output_arr = route(input_arr, pas, config, initstates=initstates, timeidx=timeidx)
     @test size(output_arr) == size(ones(2, 9, 20))
 end
@@ -62,7 +62,7 @@ end
 
     input_arr = rand(1, 9, 20)
     timeidx = collect(1:20)
-    config = (solver=ManualSolver(mutable=true), interp=LinearInterpolation)
+    config = (solver=MutableSolver, interp=LinearInterpolation)
     sol_2 = route(input_arr, pas, config, initstates=initstates, timeidx=timeidx)
     @test size(sol_2) == size(ones(2, 9, 20))
 end

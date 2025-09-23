@@ -209,8 +209,8 @@ function (route::HydroRoute)(
     config::NamedTuple=DEFAULT_CONFIG;
     kwargs...
 ) where {T}
-    solver = get(config, :solver, ManualSolver(mutable=true))
-    interp = get(config, :interpolator, DirectInterpolation)
+    solve_type = get(config, :solver, MutableSolver)
+    interp_type = get(config, :interpolator, Val(DirectInterpolation))
     device = get(config, :device, identity)
 
     input_dims, num_nodes, time_len = size(input)
@@ -219,8 +219,8 @@ function (route::HydroRoute)(
     initstates = get(kwargs, :initstates, zeros(eltype(params), length(get_state_names(route)) * size(input, 2)))
     timeidx = get(kwargs, :timeidx, collect(1:time_len))
 
-    itpfunc = interp(reshape(input, input_dims * num_nodes, time_len), timeidx)
-    solved_states = solver(
+    itpfunc = hydrointerp(interp_type, reshape(input, input_dims * num_nodes, time_len), timeidx)
+    solved_states = hydrosolve(solve_type,
         (u, p, t) -> begin
             tmp_outflow, tmp_states = route.ode_func(
                 reshape(itpfunc(t), input_dims, num_nodes), u,
@@ -229,7 +229,7 @@ function (route::HydroRoute)(
             tmp_inflow_arr = route.aggr_func(tmp_outflow)
             tmp_states .+ tmp_inflow_arr
         end,
-        params_vec, initstates, timeidx
+        params_vec, initstates, timeidx, config
     )
 
     solved_states_reshape = reshape(solved_states, length(get_state_names(route)), num_nodes, time_len)

@@ -207,7 +207,8 @@ function (uh::UnitHydrograph)(
     input::AbstractArray{T,2}, pas::ComponentVector, config::NamedTuple=DEFAULT_CONFIG;
     kwargs...
 )::AbstractArray{T,2} where {T}
-    solver = ManualSolver(mutable=true)
+    # todo uh is not avaiable for zygote gradient for the mutable solver
+    solve_type = MutableSolver
     timeidx = collect(1:size(input, 2))
     interp_func = DirectInterpolation(input, timeidx)
     lag_weights = [uh.uh_func(t, pas) for t in 1:uh.max_lag(pas)]
@@ -217,9 +218,10 @@ function (uh::UnitHydrograph)(
         return input
     else
         update_func(i, u, p) = i .* p .+ [diff(u, dims=1); -u[end]]
-        sol = solver((u, p, t) -> stack(update_func.(interp_func(t), eachslice(u, dims=1), Ref(p)), dims=1),
+        sol = hydrosolve(solve_type,
+            (u, p, t) -> stack(update_func.(interp_func(t), eachslice(u, dims=1), Ref(p)), dims=1),
             uh_weight ./ sum(uh_weight),
-            zeros(size(input, 1), length(uh_weight)), timeidx
+            zeros(size(input, 1), length(uh_weight)), timeidx, config
         )
         return sol[:, 1, :]
     end
