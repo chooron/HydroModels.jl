@@ -30,7 +30,7 @@ using the algorithms specified in the `config`.
 function HydroModels.hydrosolve(::Val{HydroModels.ODESolver}, du_func, pas, initstates, timeidx, config)
     device = get(config, :device, identity)
     solve_alg = get(config, :solve_alg, Tsit5())
-    sense_alg = get(config, :sense_alg, nothing)
+    sense_alg = get(config, :sense_alg, GaussAdjoint())
     solve_cb = get(config, :solve_cb, nothing)
 
     function ode_func!(du, u, p, t)
@@ -41,7 +41,6 @@ function HydroModels.hydrosolve(::Val{HydroModels.ODESolver}, du_func, pas, init
     prob = ODEProblem{true}(ode_func!, initstates, (timeidx[1], timeidx[end]), pas)
     sol = solve(
         prob, solve_alg;
-        callback=solve_cb,
         saveat=timeidx,
         sensealg=sense_alg,
     )
@@ -74,7 +73,7 @@ function HydroModels.hydrosolve(::Val{HydroModels.DiscreteSolver}, du_func, pas,
     device = get(config, :device, identity)
     solve_alg = get(config, :solve_alg, FunctionMap{true}())
     sense_alg = get(config, :sense_alg, ReverseDiffAdjoint())
-    solve_cb = get(config, :solve_cb, nothing)
+    # solve_cb = get(config, :solve_cb, nothing)
 
     function ode_func!(du, u, p, t)
         du[:] = du_func(u, p, t)
@@ -84,7 +83,7 @@ function HydroModels.hydrosolve(::Val{HydroModels.DiscreteSolver}, du_func, pas,
     prob = DiscreteProblem(ode_func!, initstates, (timeidx[1], timeidx[end]), pas)
     sol = solve(
         prob, solve_alg;
-        callback=solve_cb,
+        # callback=solve_cb,
         saveat=timeidx,
         sensealg=sense_alg,
     )

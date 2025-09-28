@@ -7,12 +7,6 @@
 - [ ] Multi-Nodes在支持多节点梯度计算时存在问题,仅能使用ZygoteVJP,无法利用EnzymeVJP,但是Multi-Nodes的应用是绝对必要的,因此需要其他的解决方法
 - [ ] 添加gradient的test
 
-## Changes
-
-1. Added macro-based construction methods to reduce the complexity of hydrological model development
-2. Added CUDA support for multi-node computations
-3. Implemented neural network structures based on the Recurrence computation process from Lux.jl, making it easier to support multi-node hydrological model calculations (still under development)
-
 ## Upcoming Features and Improvements
 
 - [ ] Add test files for model optimization and solving
@@ -30,16 +24,5 @@
 - [X] 如何实现在hydroflux中同时定义多个计算公式并权重相加
 - [ ] 如何实现同级的hydrobucket权重叠加，考虑将bucket的func进行拼接
 - [ ] 集成计算，bucket与model
-- [ ] bucket需要分为多维和单维的
-- [ ] bucket中优化参数超过100个时会使用ReverseDiffAdjoint这个敏感性算法，这时候优化会出现错误，难以解决
-
-## BUG
-- [X] bucket 中如果有neuralflux,打印的时候会报错
-- [X] neuralbucket仍有问题
-- [X] 还是得拆分开, 把DifferentialEquations独立出来
-- [X] unit hydro 也存在问题
-- [X] @neuralfux 构建时可以接收一个归一化的参数
-- [X] styidx这个参数可能重要性不大
-- [X] HydroBucket用于多节点计算过少,考虑抛弃这个功能,将多节点计算主要放在Lux-based的基础上
-- [ ] 统一接口为 input, params, config; input, params两种
-- [ ] HydroModel 打印的时候没有显示nn有几个
+- [X] bucket需要分为多维和单维的
+- [X] bucket中优化参数超过100个时会使用ReverseDiffAdjoint这个敏感性算法，这时候优化会出现错误，难以解决
