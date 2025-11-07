@@ -1,7 +1,7 @@
 name = "HydroModels"
 uuid = "7e3cde01-c141-467b-bff6-5350a0af19fc"
-authors = ["jingx <50790703+chooron@users.noreply.github.com>"]
 version = "0.4.3"
+authors = ["jingx <50790703+chooron@users.noreply.github.com>"]
 
 [deps]
 ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
@@ -55,7 +55,7 @@ SpecialFunctions = "2"
 StableRNGs = "1"
 Statistics = "1"
 SymbolicUtils = "3, 4"
-Symbolics = "6"
+Symbolics = "6, 7"
 TOML = "1"
 Test = "1"
 Zygote = "0.7"
