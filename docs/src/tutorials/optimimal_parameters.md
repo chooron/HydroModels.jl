@@ -100,9 +100,16 @@ Before optimization, we need to prepare model input data and run configuration:
 input = (P=prcp_vec, Ep=pet_vec, T=temp_vec)
 input_matrix = Matrix(reduce(hcat, collect(input[HydroModels.get_input_names(model)])'))
 
-# Set model run configuration
-config = (solver=HydroModelTools.DiscreteSolver(), interp=LinearInterpolation)
-run_kwargs = (config=config, initstates=init_states)
+# Set model run configuration (NEW in v2.0: use HydroConfig)
+config = HydroConfig(
+    solver = DiscreteSolver,                    # Or MutableSolver, ImmutableSolver, ODESolver
+    interpolator = Val(LinearInterpolation),    # Wrapped in Val for type stability
+    timeidx = 1:length(ts),                     # Time indices for simulation
+    min_value = 1e-6                            # Minimum value threshold
+)
+
+# Package configuration and initial states for model calls
+run_kwargs = (initstates=init_states,)
 ```
 
 ## Objective Function Definition
@@ -123,10 +130,12 @@ kge_func(y, y_hat) = sqrt((r2_func(y, y_hat))^2 + (std(y_hat) / std(y) - 1)^2 + 
 function obj_func(p, _)
     return kge_func(
         flow_vec[warm_up:end],  # Observed values after warm-up period
-        model(input_matrix, ComponentVector(p, ps_axes); run_kwargs...)[end, warm_up:end]  # Model predictions
+        model(input_matrix, ComponentVector(p, ps_axes), config; run_kwargs...)[end, warm_up:end]  # Model predictions
     )
 end
 ```
+
+> **Note**: In v2.0+, the configuration must be passed as the third positional argument (after input and parameters).
 
 ## Optimization Progress Tracking
 
@@ -199,8 +208,8 @@ After optimization is complete, we can run the model with the optimal parameters
 # Convert optimization results to ComponentVector format
 params = ComponentVector(sol.u, ps_axes)
 
-# Run model with optimal parameters
-output = model(input_matrix, params; run_kwargs...)
+# Run model with optimal parameters (using config as positional argument)
+output = model(input_matrix, params, config; run_kwargs...)
 
 # Extract model outputs
 model_output_names = vcat(get_state_names(model), get_output_names(model)) |> Tuple
@@ -213,6 +222,11 @@ output_df = DataFrame(NamedTuple{model_output_names}(eachslice(output, dims=1)))
 plot(output_df[!, :q_routed], label="Simulated Flow")
 plot!(flow_vec, label="Observed Flow")
 ```
+
+> **Key Changes in v2.0**:
+> - `config` is now a `HydroConfig` object instead of a `NamedTuple`
+> - `config` must be passed as a positional argument (3rd position) instead of a keyword argument
+> - For backward compatibility, `NamedTuple` configs are still supported but will be automatically converted
 
 ## Choosing Different Optimization Algorithms
 
@@ -273,8 +287,8 @@ function sensitivity_analysis(model, optimal_params, param_names)
             test_params = copy(optimal_params)
             test_params[i] = val
             
-            # Run model and evaluate performance
-            model_output = model(input_matrix, ComponentVector(test_params, ps_axes); run_kwargs...)[end, warm_up:end]
+            # Run model and evaluate performance (config as positional argument)
+            model_output = model(input_matrix, ComponentVector(test_params, ps_axes), config; run_kwargs...)[end, warm_up:end]
             kge_val = kge_func(flow_vec[warm_up:end], model_output)
             
             push!(results, (param=param_name, value=val, kge=kge_val))

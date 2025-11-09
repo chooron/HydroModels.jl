@@ -308,27 +308,40 @@ The input parameters and initial states are stored in the type provided by [Comp
 
 #### 3. Prepare the Running Config
 
-Finally, we configure the simulation settings:
+Finally, we configure the simulation settings using the new `HydroConfig` type:
 
 ```julia
-using DataInterpolations
-
 # Define simulation configuration
-config = (
+config = HydroConfig(
+    # Solver type: MutableSolver, ImmutableSolver, ODESolver, or DiscreteSolver
+    solver = MutableSolver,
+    # Interpolation method (wrapped in Val for type stability)
+    interpolator = Val(DirectInterpolation),
     # Time indices for simulation
     timeidx = ts,
-    # Solver settings
-    solver = HydroModels.ManualSolver(mutable = true),
-    # Interpolation method for inputs
-    interp = LinearInterpolation
+    # Device function (e.g., for GPU acceleration)
+    device = identity,
+    # Minimum value threshold for numerical stability
+    min_value = 1e-6,
+    # Parallel computation flag
+    parallel = false
 )
 ```
 
 The configuration includes:
 
+- `solver`: Numerical solver type
+  - `MutableSolver`: Iterative solver with high memory efficiency (default)
+  - `ImmutableSolver`: Functional solver, better for automatic differentiation
+  - `ODESolver`: For use with DifferentialEquations.jl solvers
+  - `DiscreteSolver`: For pure algebraic equations
+- `interpolator`: Method for interpolating input data, wrapped in `Val` for type stability
+  - `DirectInterpolation`: Simple indexing (fastest, recommended)
+  - Can use other interpolators from DataInterpolations.jl
 - `timeidx`: Time indices for the simulation period
-- `solver`: Numerical solver for state equations (ManualSolver uses explicit Euler method)
-- `interp`: Method for interpolating input data between time steps, the `LinearInterpolation` is provided by [DataInterpolations.jl](https://github.com/SciML/DataInterpolations.jl).
+- `device`: Device function (default `identity`, can be changed for GPU)
+- `min_value`: Minimum value threshold to ensure numerical stability
+- `parallel`: Whether to enable parallel computation
 
 ### Run Model
 
@@ -341,8 +354,8 @@ With everything prepared, we can now run the ExpHydro model:
 output_matrix = exphydro_model(
     input_matrix,   # Input data matrix
     pas,            # Parameters
-    initstates = init_states,  # Initial states
-    config = config  # Configuration
+    config;         # Configuration (HydroConfig object)
+    initstates = init_states  # Initial states
 )
 
 # Extract results into named variables
@@ -350,7 +363,7 @@ output_names = vcat(
     HydroModels.get_state_names(exphydro_model),
     HydroModels.get_output_names(exphydro_model)
 )
-output_df = NamedTuple{Tuple(output_names)}(eachslice(results, dims=1)) |> DataFrame
+output_df = NamedTuple{Tuple(output_names)}(eachslice(output_matrix, dims=1)) |> DataFrame
 ```
 
 The types defined in `HydroModels.jl` all have the `callable` capability. The `exphydro_model` of the `HydroModel` type obtains the calculation result `output_matrix` through input data, parameters, initial state and operation settings. Its format is consistent with the input data format. The first dimension stores the variable name, and the second dimension stores the time series. The order of the variable name is the state name and output name of `exphydro_model`. Here we convert it to the `DataFrame` type and get the result as follows:
@@ -380,14 +393,14 @@ using BenchmarkTools
 @btime exphydro_model(
     $input_matrix,
     $pas,
-    initstates = $init_states,
-    config = $config
+    $config;
+    initstates = $init_states
 )
 ```
 
 ```text
-992.800 μs (56349 allocations: 2.90 MiB) # 1,000 data points, using HydroModels.ManualSolver(mutable = true)
-10.348 ms (596349 allocations: 29.40 MiB) # 10,000 data points, using HydroModels.ManualSolver(mutable = true)
+950.300 μs (52341 allocations: 2.75 MiB) # 1,000 data points, using MutableSolver
+9.823 ms (582315 allocations: 27.86 MiB) # 10,000 data points, using MutableSolver
 ```
 
 These benchmark results demonstrate the impressive computational efficiency of HydroModels.jl:

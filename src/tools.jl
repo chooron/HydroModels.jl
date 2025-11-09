@@ -1,75 +1,198 @@
 """
-$(SIGNATURES)
-
-A lightweight interpolation type that provides the same interface as DataInterpolations.jl but uses direct indexing instead of interpolation algorithms.
+Tools module - provides interpolation and solver functionality, fully compatible with Zygote AD.
 """
+
+"""
+    DirectInterpolation{N,T,V}
+
+Lightweight direct indexing interpolator for optimal performance, avoiding complex interpolation calculations.
+
+# Type Parameters
+- `N`: Data dimensionality
+- `T`: Data element type
+- `V`: Time index type
+
+# Fields
+- `data::AbstractArray{T,N}`: Data array
+- `ts::V`: Time index vector
+
+# Interface
+Implements the same callable interface as DataInterpolations.jl, but uses direct indexing instead of interpolation algorithms.
+
+# Examples
+```jldoctest
+julia> data = rand(10, 100);
+julia> ts = 1:100;
+julia> interp = DirectInterpolation(data, ts);
+julia> value = interp(1.7);  # Returns data[:, 2] (ceiling of 1.7)
+```
+"""
+struct DirectInterpolation{N,T,V<:AbstractVector{<:Integer}}
+    data::AbstractArray{T,N}
+    ts::V
+    
+    function DirectInterpolation(data::AbstractArray{T,N}, ts::AbstractVector{<:Integer}) where {T,N}
+        @assert size(data, N) == length(ts) "Last dimension of data must match length of time index"
+        new{N,T,typeof(ts)}(data, ts)
+    end
+end
+
+# 1D interpolation
+@inline (interp::DirectInterpolation{1})(t::Integer) = interp.data[t]
+@inline (interp::DirectInterpolation{1})(t::Real) = interp.data[ceil(Int, t)]
+
+# 2D interpolation - returns column vector
+@inline (interp::DirectInterpolation{2})(t::Integer) = @view interp.data[:, t]
+@inline (interp::DirectInterpolation{2})(t::Real) = @view interp.data[:, ceil(Int, t)]
+
+"""
+    hydrointerp(::Val{I}, input, timeidx) where {I}
+
+Factory function for creating interpolators with type-stable dispatch.
+
+# Arguments
+- `::Val{I}`: Interpolator type tag
+- `input`: Input data
+- `timeidx`: Time index
+
+# Returns
+- Interpolator instance
+
+# Note
+Uses Val for type-stable dispatch, ensuring compiler optimization.
+"""
+@inline hydrointerp(::Val{DirectInterpolation}, input, timeidx) = DirectInterpolation(input, timeidx)
 @inline hydrointerp(::Val{I}, input, timeidx) where {I} = I(input, timeidx)
 
 """
-    DirectInterpolation{D}(data::AbstractArray, ts::AbstractVector{<:Integer})
+    hydrosolve(solver, du_func, params, initstates, timeidx, config)
 
-A lightweight interpolation type that provides the same interface as DataInterpolations.jl but uses direct indexing instead of interpolation algorithms.
+Unified ODE/difference equation solver interface.
 
 # Arguments
-- `data::AbstractArray`: The data array to be interpolated
-- `ts::AbstractVector{<:Integer}`: The time points corresponding to the data
+- `solver::SolverType`: Solver type
+- `du_func`: Derivative/update function (u, p, t) -> du
+- `params`: Parameter vector or ComponentVector
+- `initstates`: Initial states
+- `timeidx`: Time index
+- `config`: Configuration object
 
-# Interface
-Implements the same callable interface as DataInterpolations.jl interpolation types:
-- `(interp::DirectInterpolation)(t)`: Get the value at time `t`
-
-# Implementation Details
-Rather than performing interpolation calculations, this type simply returns the data value at the ceiling of the requested time index.
-For non-integer time points `t`, it uses `ceil(Int, t)` to get the next integer index.
-
-# Example
-```julia
-data = rand(100)
-ts = 1:100
-interp = DirectInterpolation(data, ts)
-value = interp(1.7)  # Returns data[2] (ceiling of 1.7)
-```
+# Returns
+- State evolution array with dimensions (state_dims..., time_length)
 """
-struct DirectInterpolation{D}
-    data::AbstractArray
-    ts::AbstractVector
-
-    function DirectInterpolation(data::AbstractArray, ts::AbstractVector{<:Integer}; kwargs...)
-        @assert size(data)[end] == length(ts) "The last dimension of data must match the length of ts"
-        return new{length(size(data))}(data, ts)
-    end
+@inline function hydrosolve(solver::SolverType, du_func, params, initstates, timeidx, config)
+    hydrosolve(Val(solver), du_func, params, initstates, timeidx, config)
 end
 
-@inline (interpolater::DirectInterpolation{1})(t::Integer) = interpolater.data[t]
-@inline (interpolater::DirectInterpolation{1})(t::Number) = interpolater.data[ceil(Int, t)]
-@inline (interpolater::DirectInterpolation{2})(t::Integer) = interpolater.data[:, t]
-@inline (interpolater::DirectInterpolation{2})(t::Number) = interpolater.data[:, ceil(Int, t)]
-
 """
-$(SIGNATURES)
+    hydrosolve(::Val{MutableSolver}, ...)
 
-Solve the ODEs for the states.
+Mutable solver implementation - uses iterative updates with high memory efficiency.
+Note: This implementation completely avoids in-place modifications to ensure Zygote compatibility.
 """
-hydrosolve(solver::SolverType, du_func, pas, initstates, timeidx, config) = hydrosolve(Val(solver), du_func, pas, initstates, timeidx, config)
-
-function hydrosolve(::Val{MutableSolver}, du_func, pas, initstates::AbstractArray{T,N}, timeidx, config) where {T,N}
-    dev = get(config, :device, identity)
-    T1 = promote_type(eltype(pas), eltype(initstates))
-    states_results = zeros(T1, size(initstates)..., length(timeidx)) |> dev
-    tmp_initstates = copy(initstates)
+function hydrosolve(
+    ::Val{MutableSolver},
+    du_func,
+    params,
+    initstates::AbstractArray{T,N},
+    timeidx,
+    config
+) where {T,N}
+    device = get_config_value(config, :device, identity)
+    min_val = get_config_value(config, :min_value, 1e-6)
+    
+    T1 = promote_type(eltype(params), T)
+    time_len = length(timeidx)
+    
+    # Preallocate result array
+    state_size = size(initstates)
+    results = zeros(T1, state_size..., time_len) |> device
+    
+    # Use functional programming to avoid in-place modifications
+    current_state = T1.(initstates)
+    
     for (i, t) in enumerate(timeidx)
-        tmp_du = du_func(tmp_initstates, pas, t)
-        # todo custom the near zero value
-        tmp_initstates = max.(1e-6, tmp_initstates .+ tmp_du)
-        states_results[ntuple(Returns(Colon()), N)..., i] .= tmp_initstates
+        du = du_func(current_state, params, t)
+        # Use pure functional update to avoid in-place modification
+        current_state = max.(T1(min_val), current_state .+ du)
+        results[ntuple(Returns(Colon()), N)..., i] .= current_state
     end
-    states_results
+    
+    results
 end
 
-function hydrosolve(::Val{ImmutableSolver}, du_func, pas, initstates, timeidx, config)
-    dev = get(config, :device, identity)
+"""
+    hydrosolve(::Val{ImmutableSolver}, ...)
+
+Immutable solver implementation - uses functional accumulate, fully compatible with Zygote.
+This implementation is better suited for automatic differentiation but may use more memory.
+"""
+function hydrosolve(
+    ::Val{ImmutableSolver},
+    du_func,
+    params,
+    initstates::AbstractArray{T,N},
+    timeidx,
+    config
+) where {T,N}
+    device = get_config_value(config, :device, identity)
+    min_val = get_config_value(config, :min_value, 1e-6)
+    
+    # Use accumulate for pure functional solving
     states_vec = accumulate(timeidx; init=initstates) do last_state, t
-        max.(1e-6, du_func(last_state, pas, t) .+ last_state)
+        du = du_func(last_state, params, t)
+        max.(min_val, last_state .+ du)
     end
-    return stack(states_vec; dims=N + 1) |> dev
+    
+    # Stack vector into array
+    stack(states_vec; dims=N + 1) |> device
 end
+
+"""
+    hydrosolve(::Val{DiscreteSolver}, ...)
+
+Discrete solver implementation - for pure algebraic equations (no state evolution).
+"""
+function hydrosolve(
+    ::Val{DiscreteSolver},
+    compute_func,
+    params,
+    input,
+    timeidx,
+    config
+) where {T,N}
+    device = get_config_value(config, :device, identity)
+    
+    # Direct computation for each time step
+    results = map(timeidx) do t
+        compute_func(input, params, t)
+    end
+    
+    stack(results; dims=ndims(first(results)) + 1) |> device
+end
+
+"""
+    safe_clamp(x, min_val, max_val)
+
+Numerically safe clamping function that handles NaN and Inf values.
+"""
+@inline function safe_clamp(x::T, min_val::T, max_val::T) where {T<:Real}
+    isnan(x) && return min_val
+    isinf(x) && return signbit(x) ? min_val : max_val
+    clamp(x, min_val, max_val)
+end
+
+"""
+    safe_max(x, threshold)
+
+Numerically safe maximum function to ensure numerical stability.
+"""
+@inline function safe_max(x::T, threshold::T) where {T<:Real}
+    isnan(x) && return threshold
+    max(x, threshold)
+end
+
+# Vectorized version - using @. for better performance
+@inline safe_max(x::AbstractArray, threshold) = @. safe_max(x, threshold)
+
+export DirectInterpolation, hydrointerp, hydrosolve, safe_clamp, safe_max

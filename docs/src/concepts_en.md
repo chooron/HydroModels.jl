@@ -59,6 +59,52 @@ The Model class serves as the central management component, orchestrating the in
 - Systematic parameter optimization and sensitivity analysis
 - Efficient computation through metadata-driven approaches
 
+## Configuration System
+
+HydroModels.jl v0.5 introduces a type-stable configuration system using the `HydroConfig` struct:
+
+### Key Components
+
+```julia
+struct HydroConfig{S<:SolverType, I, D}
+    solver::S                    # Solver type
+    interpolator::I              # Interpolator (wrapped in Val)
+    timeidx::Vector{Int}         # Time indices
+    device::D                    # Device function
+    min_value::Float64           # Minimum threshold
+    parallel::Bool               # Parallel flag
+end
+```
+
+### Solver Types
+
+- **MutableSolver**: Iterative updates, memory-efficient (default)
+- **ImmutableSolver**: Functional accumulate, best for Zygote AD
+- **ODESolver**: For DifferentialEquations.jl integration
+- **DiscreteSolver**: For algebraic equations only
+
+### Usage Example
+
+```julia
+# Create configuration
+config = HydroConfig(
+    solver = ImmutableSolver,
+    interpolator = Val(DirectInterpolation),
+    timeidx = 1:1000,
+    min_value = 1e-6
+)
+
+# Run model
+output = model(input, params, config; initstates = states)
+```
+
+### Performance Benefits
+
+- **Type stability**: 100% type-stable for compiler optimization
+- **Validation**: Automatic parameter checking (e.g., min_value > 0)
+- **Flexibility**: Easy configuration merging and modification
+- **Backward compatible**: NamedTuple configs still work
+
 ## Wrapper Class: Enhanced Component Capabilities
 
 The Wrapper class extends component customization capabilities while maintaining interface uniformity. Key features include:

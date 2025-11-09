@@ -277,12 +277,40 @@ The model automatically:
 The model provides a unified interface for simulation, allowing you to run the model with different input data, parameters, and configuration options:
 
 ```julia
+using ComponentArrays
+
+# Prepare parameters
+params = ComponentVector(
+    params = (
+        Tmin = -2.09,
+        Tmax = 0.17,
+        Df = 2.674,
+        Smax = 1709.46,
+        Qmax = 18.47,
+        f = 0.0167
+    )
+)
+
+# Prepare initial states
+init_states = ComponentVector(
+    snowpack = 0.0,
+    soilwater = 1303.0
+)
+
+# Configure model execution (NEW in v2.0)
+config = HydroConfig(
+    solver = MutableSolver,
+    interpolator = Val(DirectInterpolation),
+    timeidx = 1:1000,
+    min_value = 1e-6
+)
+
 # Run the model
 results = exphydro_model(
-    input_matrix,   # Input data matrix
-    params,         # Parameters
-    initstates = init_states,  # Initial states
-    config = config  # Configuration
+    input_matrix,   # Input data matrix (variables × time)
+    params,         # Parameters (ComponentVector)
+    config;         # Configuration (HydroConfig)
+    initstates = init_states  # Initial states (ComponentVector)
 )
 ```
 
@@ -309,24 +337,40 @@ When running a model in HydroModels.jl, the following steps occur:
 
 1. **Data Preparation**:
 
-   - Input data is organized as a matrix (features × time)
-   - Parameters are provided as a ComponentVector
-   - Initial states are specified
-2. **Configuration**:
+   - Input data is organized as a matrix (variables × time)
+   - Parameters are provided as a `ComponentVector`
+   - Initial states are specified as a `ComponentVector`
 
-   - Solver selection (e.g., ManualSolver for explicit Euler method)
-   - Interpolation method (e.g., LinearInterpolation)
+2. **Configuration** (NEW in v2.0):
+
+   - Create a `HydroConfig` object with type-stable settings
+   - Solver selection: `MutableSolver`, `ImmutableSolver`, `ODESolver`, or `DiscreteSolver`
+   - Interpolation method (wrapped in `Val()` for type stability)
    - Time indices for output
+   - Other options (min_value, parallel, device)
+
+   ```julia
+   config = HydroConfig(
+       solver = MutableSolver,
+       interpolator = Val(DirectInterpolation),
+       timeidx = 1:1000,
+       min_value = 1e-6,
+       parallel = false
+   )
+   ```
+
 3. **Execution**:
 
    - Components are executed in dependency order
-   - State variables are integrated over time
+   - State variables are integrated over time using the selected solver
    - Fluxes are calculated at each time step
    - Results are collected and organized
+
 4. **Output**:
 
    - Time series of state variables (e.g., snowpack, soil moisture)
    - Time series of output fluxes (e.g., streamflow)
+   - Output shape matches: (n_outputs × n_nodes × n_timesteps) for multi-node models
 
 ## Conclusion
 

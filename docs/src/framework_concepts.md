@@ -1,10 +1,10 @@
-# Understanding DeepFlex.jl Framework Concepts
+# Understanding HydroModels.jl Framework Concepts
 
-This document aims to clarify the core concepts of the DeepFlex.jl framework, focusing on the three fundamental components: Flux, Element/Bucket, and Model. Understanding these components and their relationships is essential for effectively using the framework to build hydrological models.
+This document clarifies the core concepts of the HydroModels.jl framework, focusing on the three fundamental components: Flux, Bucket, and Model. Understanding these components and their relationships is essential for effectively using the framework to build hydrological models.
 
 ## Framework Architecture Overview
 
-DeepFlex.jl is built on a modular architecture that enables flexible hydrological model construction. The framework is designed around three core components that work together to create comprehensive hydrological simulations:
+HydroModels.jl is built on a modular architecture that enables flexible hydrological model construction. The framework is designed around three core components that work together to create comprehensive hydrological simulations:
 
 1. **Flux**: The basic computational units that define mathematical relationships
 2. **Element/Bucket**: Storage components that integrate multiple fluxes and manage state variables
@@ -14,7 +14,7 @@ This hierarchical design allows for both simple conceptual models and complex ph
 
 ## Flux: The Building Blocks
 
-Fluxes are the fundamental computational units in DeepFlex.jl. They define the mathematical relationships between variables in a hydrological system. There are three main types of flux components:
+Fluxes are the fundamental computational units in HydroModels.jl. They define the mathematical relationships between variables in a hydrological system. There are three main types of flux components:
 
 ### 1. HydroFlux
 
@@ -67,7 +67,7 @@ evap_flux = @neuralflux evaporation ~ evap_nn([temperature, humidity, radiation]
 
 ## Element/Bucket: The Storage Components
 
-Elements are higher-level components that integrate multiple fluxes and manage state variables. The primary type of element in DeepFlex.jl is the `Bucket`.
+Elements are higher-level components that integrate multiple fluxes and manage state variables. The primary type of element in HydroModels.jl is the `Bucket`.
 
 ### HydroBucket
 
@@ -153,21 +153,31 @@ This hierarchical structure allows for:
 
 ## Execution Process
 
-When running a model in DeepFlex.jl, the following steps occur:
+When running a model in HydroModels.jl, the following steps occur:
 
 1. **Data Preparation**:
    - Input data is organized as a matrix (features × time)
    - Parameters are provided as a ComponentVector
    - Initial states are specified
 
-2. **Configuration**:
-   - Solver selection (e.g., from DifferentialEquations.jl)
-   - Interpolation method (e.g., from DataInterpolations.jl)
-   - Time indices for output
+2. **Configuration** (New in v0.5):
+   - Use `HydroConfig` for type-stable configuration
+   - Select solver type: `MutableSolver`, `ImmutableSolver`, `ODESolver`, or `DiscreteSolver`
+   - Specify interpolation method (wrapped in `Val()` for type stability)
+   - Set time indices and other options
+
+   ```julia
+   config = HydroConfig(
+       solver = MutableSolver,
+       interpolator = Val(DirectInterpolation),
+       timeidx = 1:1000,
+       min_value = 1e-6
+   )
+   ```
 
 3. **Execution**:
    - Components are executed in dependency order
-   - State variables are integrated over time
+   - State variables are integrated over time using the selected solver
    - Fluxes are calculated at each time step
    - Results are collected and organized
 
@@ -226,14 +236,58 @@ In this example:
 
 The framework automatically handles the connections between components, such as using the rainfall and melt outputs from the snow bucket as inputs to the soil bucket.
 
+## New Features in v0.5
+
+### Type-Stable Configuration
+
+The new `HydroConfig` system provides compile-time type stability for better performance:
+
+```julia
+# Type-stable configuration
+config = HydroConfig(solver = MutableSolver)
+typeof(config.solver)  # MutableSolver - concrete type!
+```
+
+### Functional Flux Construction
+
+In addition to symbolic construction, you can now define fluxes using pure Julia functions:
+
+```julia
+# Functional approach
+function my_flux(inputs, params)
+    temp, prcp = inputs
+    return [params.k * prcp * (1 + params.c * temp)]
+end
+
+flux = HydroFlux(
+    my_flux;
+    inputs = [:temp, :prcp],
+    outputs = [:flow],
+    params = [:k, :c]
+)
+```
+
+### Multiple Solver Types
+
+Choose the best solver for your needs:
+
+- **MutableSolver**: Fast, memory-efficient (default)
+- **ImmutableSolver**: Best for automatic differentiation
+- **ODESolver**: For use with DifferentialEquations.jl
+- **DiscreteSolver**: For pure algebraic equations
+
 ## Conclusion
 
-Understanding the relationships between Flux, Element/Bucket, and Model components is essential for effectively using the DeepFlex.jl framework. These components provide a flexible and powerful system for building hydrological models of varying complexity, from simple conceptual models to complex physically-based or hybrid models.
+Understanding the relationships between Flux, Element/Bucket, and Model components is essential for effectively using the HydroModels.jl framework. These components provide a flexible and powerful system for building hydrological models of varying complexity, from simple conceptual models to complex physically-based or hybrid models.
 
 By leveraging this modular architecture, modelers can:
 - Build models from reusable components
 - Combine process-based and data-driven approaches
 - Create efficient and type-stable implementations
 - Support both single-node and distributed simulations
+- Choose between symbolic and functional construction approaches
+- Optimize for either speed or automatic differentiation
 
 This framework design enables a wide range of hydrological modeling applications while maintaining computational efficiency and scientific rigor.
+
+For migration from older versions, see the [Configuration Migration Guide](CONFIGURATION_MIGRATION_GUIDE.md).

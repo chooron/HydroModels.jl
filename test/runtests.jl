@@ -9,22 +9,36 @@ using ComponentArrays
 using DataInterpolations
 using Graphs
 using HydroModels
-using Test
 using DifferentialEquations
 using SciMLSensitivity
 
+# Smooth step function for tests
 step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
 
+# Include test helpers
+include("test_helpers.jl")
+
 @testset "HydroModels.jl" begin
-    include("base/run_hydro_flux.jl")
-    include("base/run_neural_flux.jl")
-    include("base/run_single_bucket.jl")
-    include("base/run_single_lumped.jl")
-    include("base/run_unithydro.jl")
-    include("base/run_hydro_route.jl")
-    include("base/run_multi_bucket.jl")
-    include("base/run_multi_lumped.jl")
-    include("base/run_spatial_model.jl")
+    @testset "Basic Components" begin
+        include("base/run_hydro_flux.jl")
+        include("base/run_neural_flux.jl")
+    end
+    
+    @testset "Single Node Models" begin
+        include("base/run_single_bucket.jl")
+        include("base/run_single_lumped.jl")
+    end
+    
+    @testset "Routing Components" begin
+        include("base/run_unithydro.jl")
+        include("base/run_hydro_route.jl")
+    end
+    
+    @testset "Multi Node Models" begin
+        include("base/run_multi_bucket.jl")
+        include("base/run_multi_lumped.jl")
+        include("base/run_spatial_model.jl")
+    end
 end
 
 # @testset "test cuda support" begin

@@ -15,13 +15,13 @@ All types constructed in HydroModels.jl (Flux, Bucket, Route, Model) support mul
 HBV-maxbas uses HBV as its foundation and a unit hydrograph model for routing. The unit hydrograph parameters are determined by the distance from the computational grid to the outlet node. The implementation is as follows:
 
 ```julia
+# Define unit hydrograph using macro
 uh = @unithydro :maxbas_uh begin
     uh_func = begin
         2lag => (1 - 0.5 * (2 - t / lag)^2.5)
         lag => (0.5 * (t / lag)^2.5)
     end
-    uh_vars = [q]
-    configs = (solvetype=:DISCRETE, suffix=:_lag)
+    uh_vars = q => q_uh  # Input => Output
 end
 ```
 
@@ -30,6 +30,7 @@ Both semi-distributed routing based on river network topology and distributed ro
 Semi-distributed hydrological models typically describe the connectivity of sub-watersheds using directed graphs. This allows for the integration of runoff results from different sub-watersheds based on the connection relationships provided by the network:
 
 ```julia
+# Define routing component with aggregation function
 discharge_route = @hydroroute :exphydro_routed begin
     fluxes = begin
         @hydroflux q_routed ~ s_river / (1 + lag) + q
@@ -37,6 +38,7 @@ discharge_route = @hydroroute :exphydro_routed begin
     dfluxes = begin
         @stateflux s_river ~ q - q_routed
     end
+    hru_types = collect(1:9)  # 9 nodes
     aggr_func = HydroModels.build_aggr_func(network)
 end
 ```
@@ -122,28 +124,62 @@ initstates = ComponentVector(
 
 ### 3. Runtime Configuration
 
-In multi-node computation, there are new settings: `ptyidx` (parameter type index) and `styidx` (state type index).
-In distributed hydrological models, some computational units have highly similar natural attributes, so it's reasonable to share parameters and initial states. This can be achieved using `ptyidx` and `styidx`:
+#### HydroConfig for Multi-Node Models (NEW in v2.0)
 
-In the multi-node input parameters, each parameter corresponds to a parameter array. For example, parameter p1:
-
-```julia
-p1 = [3, 7, 2, 4]
-```
-
-The parameter array stores 4 types of parameters. If we assume there are 10 computational nodes, we can set `ptyidx` as:
+For multi-node models, you use the same `HydroConfig` system as single-node models:
 
 ```julia
-ptyidx = [1, 1, 1, 2, 2, 2, 3, 3, 3, 4]
+# Create configuration for multi-node model
+config = HydroConfig(
+    solver = MutableSolver,          # or ImmutableSolver for AD
+    interpolator = Val(DirectInterpolation),
+    timeidx = 1:365,                 # Time steps
+    min_value = 1e-6,
+    parallel = false                  # Future: enable parallel computation
+)
 ```
 
-Each index in `ptyidx` represents a node, and each value indicates the parameter type to which the node belongs. Expanding parameter p1 using `ptyidx`:
+#### Parameter Type Index (hru_types)
+
+In distributed hydrological models, some computational units have highly similar natural attributes, so it's reasonable to share parameters. This is achieved using `hru_types` during bucket/route construction:
 
 ```julia
-new_p1 = p1[ptyidx]
+# Define parameter types for each node
+# Suppose we have 10 nodes falling into 4 terrain types
+hru_types = [1, 1, 1, 2, 2, 2, 3, 3, 3, 4]
+
+# Define bucket with hru_types
+snow_bucket = @hydrobucket :snow begin
+    fluxes = begin
+        @hydroflux pet ~ 29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)
+        # ... other fluxes
+    end
+    dfluxes = begin
+        @stateflux snowpack ~ snowfall - melt
+    end
+    hru_types = [1, 1, 1, 2, 2, 2, 3, 3, 3, 4]  # Specify node types
+end
 ```
 
-This gives us the corresponding value for each node.
+In the multi-node input parameters, each parameter corresponds to a parameter array with one value per terrain type:
+
+```julia
+# Parameters for 4 terrain types
+params = ComponentVector(
+    params = (
+        Df = [2.5, 3.0, 2.0, 2.8],      # 4 values for 4 types
+        Tmax = [0.5, 0.3, 0.7, 0.4],
+        # ... other parameters
+    )
+)
+```
+
+The framework automatically expands parameters based on `hru_types` during computation:
+```julia
+# Internally expands: Df[hru_types] = [2.5, 2.5, 2.5, 3.0, 3.0, 3.0, 2.0, 2.0, 2.0, 2.8]
+```
+
+This significantly reduces the number of parameters to calibrate while maintaining spatial heterogeneity.
 
 ## Real-World Example (Based on HBV+maxbas/route Model)
 
@@ -190,32 +226,39 @@ input_data = zeros(3, 9, 365)  # Example: 3 variables, 9 nodes, 365 days
 
 # Define parameter types (4 types of terrain)
 params = ComponentVector(
-    params=(
-        FC=[150.0, 200.0, 100.0, 180.0],  # Field capacity for each terrain type
-        LP=[0.7, 0.8, 0.6, 0.75],
-        BETA=[2.0, 3.0, 1.5, 2.5],
+    params = (
+        FC = [150.0, 200.0, 100.0, 180.0],    # Field capacity for each terrain type
+        LP = [0.7, 0.8, 0.6, 0.75],
+        BETA = [2.0, 3.0, 1.5, 2.5],
         # Other HBV parameters...
-        lag=[1.5, 2.0, 1.0, 1.8]  # Routing lag parameter
+        lag = [1.5, 2.0, 1.0, 1.8]             # Routing lag parameter
     )
 )
 
-# Define which terrain type each node belongs to
-ptyidx = [1, 1, 2, 2, 3, 3, 4, 4, 4]
-
-# Initial states for each node
+# Initial states for each node (9 nodes total)
 initstates = ComponentVector(
-    snowpack=zeros(9),
-    soilwater=zeros(9),
-    s_river=zeros(9)
+    snowpack = zeros(9),
+    soilwater = zeros(9),
+    s_river = zeros(9)
+)
+
+# Configure model execution (NEW in v2.0)
+config = HydroConfig(
+    solver = MutableSolver,
+    interpolator = Val(DirectInterpolation),
+    timeidx = 1:365,
+    min_value = 1e-6
 )
 
 # Run the distributed model
 results = hbv_distributed(
     input_data,
     params,
-    initstates=inititstates,
-    ptyidx=ptyidx
+    config;
+    initstates = initstates
 )
 ```
+
+> **Note**: The `hru_types` parameter is now specified during model construction (in the bucket definition), not at runtime. This allows for better type stability and compiler optimization.
 
 This example demonstrates how HydroModels.jl can efficiently handle multi-node hydrological modeling with parameter sharing across similar terrain types, significantly reducing the number of parameters that need to be calibrated while maintaining the spatial heterogeneity of the watershed.

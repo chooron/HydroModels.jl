@@ -1,20 +1,20 @@
-Df_v, Tmax_v, Tmin_v = 2.674548848, 0.175739196, -2.092959084
-params = ComponentVector(Df=Df_v, Tmax=Tmax_v, Tmin=Tmin_v)
-init_states = ComponentVector(snowpack=0.0)
+# Test single-node bucket components
 
+# Load test data
 ts = collect(1:10)
-df = DataFrame(CSV.File("../data/exphydro/01013500.csv"))
-input_ntp = (lday=df[ts, "dayl(day)"], temp=df[ts, "tmean(C)"], prcp=df[ts, "prcp(mm/day)"])
+input_ntp, input, df = load_test_data(:exphydro, ts)
 
-input = Matrix(reduce(hcat, collect(input_ntp[[:temp, :lday, :prcp]]))')
-
+# Define variables and parameters
 @variables temp lday prcp pet snowfall rainfall melt snowpack
 @parameters Tmin Tmax Df
 
+# Setup test parameters and states
+params = ComponentVector(params = ComponentVector(Df = EXPHYDRO_PARAMS.Df, Tmax = EXPHYDRO_PARAMS.Tmax, Tmin = EXPHYDRO_PARAMS.Tmin))
+init_states = ComponentVector(snowpack = 0.0)
 
-@testset "test single hydro element (with state)" begin
-
-    snow_single_ele = @hydrobucket :snow begin
+@testset "Single hydro bucket with state" begin
+    # Define snow bucket
+    snow_bucket = @hydrobucket :snow begin
         fluxes = begin
             @hydroflux pet ~ 29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)
             @hydroflux snowfall ~ step_func(Tmin - temp) * prcp
@@ -26,27 +26,47 @@ input = Matrix(reduce(hcat, collect(input_ntp[[:temp, :lday, :prcp]]))')
         end
     end
 
-    @testset "test hydro element info" begin
-        @test Set(HydroModels.get_input_names(snow_single_ele)) == Set([:temp, :lday, :prcp])
-        @test Set(HydroModels.get_param_names(snow_single_ele)) == Set([:Tmin, :Tmax, :Df])
-        @test Set(HydroModels.get_output_names(snow_single_ele)) == Set([:pet, :snowfall, :rainfall, :melt])
-        @test Set(HydroModels.get_state_names(snow_single_ele)) == Set([:snowpack])
+    @testset "Bucket interface" begin
+        @test Set(HydroModels.get_input_names(snow_bucket)) == Set([:temp, :lday, :prcp])
+        @test Set(HydroModels.get_param_names(snow_bucket)) == Set([:Tmin, :Tmax, :Df])
+        @test Set(HydroModels.get_output_names(snow_bucket)) == Set([:pet, :snowfall, :rainfall, :melt])
+        @test Set(HydroModels.get_state_names(snow_bucket)) == Set([:snowpack])
     end
 
-    @testset "test run with single node input" begin
-        pas = ComponentVector(params=ComponentVector(Df=Df_v, Tmax=Tmax_v, Tmin=Tmin_v))
-        config = (; solver=MutableSolver)
-        result = snow_single_ele(input, pas, config; initstates=init_states, timeidx=ts)
-        ele_state_and_output_names = vcat(HydroModels.get_state_names(snow_single_ele), HydroModels.get_output_names(snow_single_ele))
-        result = NamedTuple{Tuple(ele_state_and_output_names)}(eachslice(result, dims=1))
+    @testset "Run with MutableSolver" begin
+        config = create_test_config(solver = MutableSolver, timeidx = ts)
+        result = snow_bucket(input, params, config; initstates = init_states)
+        
+        @test size(result) == (
+            length(HydroModels.get_state_names(snow_bucket)) + 
+            length(HydroModels.get_output_names(snow_bucket)), 
+            length(ts)
+        )
+        
+        # Convert to NamedTuple for easier inspection
+        output_names = vcat(HydroModels.get_state_names(snow_bucket), HydroModels.get_output_names(snow_bucket))
+        result_nt = NamedTuple{Tuple(output_names)}(eachslice(result, dims=1))
+        
+        # Basic sanity checks
+        @test all(result_nt.snowpack .>= 0)  # Snowpack should be non-negative
+        @test all(result_nt.pet .>= 0)  # PET should be non-negative
+    end
+    
+    @testset "Run with ImmutableSolver" begin
+        config = create_test_config(solver = ImmutableSolver, timeidx = ts)
+        result = snow_bucket(input, params, config; initstates = init_states)
+        
+        @test size(result) == (
+            length(HydroModels.get_state_names(snow_bucket)) + 
+            length(HydroModels.get_output_names(snow_bucket)), 
+            length(ts)
+        )
     end
 end
 
-@testset "test single hydro element (without state)" begin
-    @variables temp lday prcp pet snowfall rainfall melt snowpack
-    @parameters Tmin Tmax Df
-
-    snow_single_ele = @hydrobucket :snow begin
+@testset "Single hydro bucket without state" begin
+    # Define bucket without state
+    snow_bucket_no_state = @hydrobucket :snow begin
         fluxes = begin
             @hydroflux pet ~ 29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)
             @hydroflux snowfall ~ step_func(Tmin - temp) * prcp
@@ -54,18 +74,30 @@ end
         end
     end
 
-    @testset "test hydro element info" begin
-        @test Set(HydroModels.get_input_names(snow_single_ele)) == Set((:temp, :lday, :prcp))
-        @test Set(HydroModels.get_param_names(snow_single_ele)) == Set((:Tmin,))
-        @test Set(HydroModels.get_output_names(snow_single_ele)) == Set((:pet, :snowfall, :rainfall))
-        @test Set(HydroModels.get_state_names(snow_single_ele)) == Set()
+    @testset "Bucket interface" begin
+        @test Set(HydroModels.get_input_names(snow_bucket_no_state)) == Set([:temp, :lday, :prcp])
+        @test Set(HydroModels.get_param_names(snow_bucket_no_state)) == Set([:Tmin])
+        @test Set(HydroModels.get_output_names(snow_bucket_no_state)) == Set([:pet, :snowfall, :rainfall])
+        @test isempty(HydroModels.get_state_names(snow_bucket_no_state))
     end
 
-    pas = ComponentVector(params=(Df=Df_v, Tmax=Tmax_v, Tmin=Tmin_v))
-    @testset "test run with single node input" begin
-        config = (; solver=MutableSolver)
-        result = snow_single_ele(input, pas, config; initstates=init_states, timeidx=ts)
-        ele_state_and_output_names = vcat(HydroModels.get_state_names(snow_single_ele), HydroModels.get_output_names(snow_single_ele))
-        result = NamedTuple{Tuple(ele_state_and_output_names)}(eachslice(result, dims=1))
+    @testset "Run without config timeidx" begin
+        config = create_test_config(solver = MutableSolver)
+        result = snow_bucket_no_state(input, params, config; initstates = init_states)
+        
+        @test size(result) == (
+            length(HydroModels.get_output_names(snow_bucket_no_state)), 
+            size(input, 2)
+        )
+    end
+    
+    @testset "Run with config timeidx" begin
+        config = create_test_config(solver = MutableSolver, timeidx = ts)
+        result = snow_bucket_no_state(input, params, config; initstates = init_states)
+        
+        @test size(result) == (
+            length(HydroModels.get_output_names(snow_bucket_no_state)), 
+            length(ts)
+        )
     end
 end

@@ -1,26 +1,39 @@
 """
+Route module - defines hydrological routing components, supporting both symbolic and functional construction approaches.
+"""
+
+"""
     HydroRoute{FF, OF, AF, HT, NT} <: AbstractHydroRoute
 
 Represents a hydrological routing component that combines flux calculations with an aggregation/distribution step.
 
-It is designed for routing flows between connected nodes or grid cells in a spatial model. It compiles flux equations and an aggregation function into efficient callable functions.
+It is designed for routing flows between connected nodes or grid cells in a spatial model. 
+It compiles flux equations and an aggregation function into efficient callable functions.
 
 $(FIELDS)
+
+# Type Parameters
+- `FF`: flux function type
+- `OF`: ODE function type
+- `AF`: aggregation function type
+- `HT`: HRU type vector type
+- `NT`: Metadata type
 """
 struct HydroRoute{FF,OF,AF,HT,NT} <: AbstractHydroRoute
-    "route names"
+    "route name"
     name::Symbol
-    "Generated function for calculating all hydrological fluxes."
+    "Generated function for calculating all hydrological fluxes"
     flux_func::FF
-    "Generated function for ordinary differential equations (ODE) calculations, or nothing if no ODE calculations are needed."
+    "Generated function for ODE calculations, or nothing if no ODE calculations needed"
     ode_func::OF
-    "Outflow projection function"
+    "Outflow projection/aggregation function"
     aggr_func::AF
     "nodes type"
     hru_types::HT
     "Metadata: contains keys for input, output, param, state, and nn"
     infos::NT
-
+    
+    # Symbolic constructor
     function HydroRoute(;
         rfluxes::Vector{<:AbstractHydroFlux},
         dfluxes::Vector{<:AbstractStateFlux},
@@ -29,16 +42,40 @@ struct HydroRoute{FF,OF,AF,HT,NT} <: AbstractHydroRoute
         name::Optional{Symbol}=nothing,
     ) where AF
         inputs, outputs, states = get_var_names(vcat(rfluxes, dfluxes))
-        params = reduce(union, get_param_names.(vcat(rfluxes, dfluxes)))
-        nns = reduce(union, get_nn_names.(rfluxes))
+        params = reduce(union, get_param_names.(vcat(rfluxes, dfluxes)); init=Symbol[])
+        nns = reduce(union, get_nn_names.(rfluxes); init=Symbol[])
+        
         infos = HydroInfos(
             inputs=inputs, states=states, outputs=outputs,
             params=params, nns=nns
         )
         route_name = isnothing(name) ? Symbol("##route#", hash(infos)) : name
         flux_func, ode_func = build_route_func(rfluxes, dfluxes, infos)
+        
         return new{typeof(flux_func),typeof(ode_func),AF,typeof(hru_types),typeof(infos)}(
             route_name, flux_func, ode_func, aggr_func, hru_types, infos
+        )
+    end
+    
+    # Functional constructor
+    function HydroRoute(
+        flux_func::Function,
+        ode_func::Function,
+        aggr_func::AF;
+        name::Symbol,
+        inputs::Vector{Symbol},
+        outputs::Vector{Symbol},
+        states::Vector{Symbol},
+        params::Vector{Symbol}=Symbol[],
+        hru_types::Vector{Int}
+    ) where AF
+        infos = HydroInfos(
+            inputs=inputs, states=states, outputs=outputs,
+            params=params, nns=Symbol[]
+        )
+        
+        return new{typeof(flux_func),typeof(ode_func),AF,typeof(hru_types),typeof(infos)}(
+            name, flux_func, ode_func, aggr_func, hru_types, infos
         )
     end
 end
@@ -46,33 +83,37 @@ end
 """
     @hydroroute [name] begin ... end
 
-A macro to simplify the construction of a `HydroRoute` component.
+Macro to simplify the construction of a HydroRoute component.
 
 # Usage
-The macro takes an optional name and a `begin...end` block containing the definitions for fluxes, state derivatives, node types, and the aggregation function.
+The macro takes an optional name and a begin...end block containing definitions for fluxes, 
+state derivatives, node types, and the aggregation function.
 
-```julia
-@hydroroute :my_route begin
-    fluxes = begin
-        @hydroflux outflow ~ k * storage
-    end
-    dfluxes = begin
-        @stateflux storage ~ inflow - outflow
-    end
-    hru_types = [1, 2, 3]
-    aggr_func = identity # or a matrix, or a custom function
-end
+```jldoctest
+julia> @hydroroute :my_route begin
+           fluxes = begin
+               @hydroflux outflow ~ k * storage
+           end
+           dfluxes = begin
+               @stateflux storage ~ inflow - outflow
+           end
+           hru_types = [1, 2, 3]
+           aggr_func = identity  # or a matrix, or a custom function
+       end
 ```
 """
 macro hydroroute(args...)
     name = length(args) == 1 ? nothing : args[1]
     expr = length(args) == 1 ? args[1] : args[2]
-
+    
     @assert Meta.isexpr(expr, :block) "Expected a begin...end block after route name"
+    
     fluxes_expr, dfluxes_expr, aggr_func_expr, hru_types_expr = nothing, nothing, nothing, nothing
+    
     for assign in filter(x -> !(x isa LineNumberNode), expr.args)
-        @assert Meta.isexpr(assign, :(=)) "Expected assignments in the form 'fluxes = begin...end', 'dfluxes = begin...end', and 'aggr_func = f(x)'"
+        @assert Meta.isexpr(assign, :(=)) "Expected assignments in the form 'fluxes = begin...end', etc."
         lhs, rhs = assign.args
+        
         if lhs == :fluxes
             @assert Meta.isexpr(rhs, :block) "Expected 'fluxes' to be defined in a begin...end block"
             fluxes_expr = Expr(:vect, filter(x -> !(x isa LineNumberNode), rhs.args)...)
@@ -84,11 +125,14 @@ macro hydroroute(args...)
         elseif lhs == :hru_types
             hru_types_expr = rhs
         else
-            error("Unknown assignment: $lhs. Expected 'fluxes', 'dfluxes', 'hru_types', or 'aggr_func'")
+            error("Unknown assignment: $(lhs). Expected 'fluxes', 'dfluxes', 'hru_types', or 'aggr_func'")
         end
     end
+    
     err_msg = "'fluxes', 'dfluxes', 'hru_types', and 'aggr_func' must all be specified"
-    @assert !isnothing(fluxes_expr) && !isnothing(dfluxes_expr) && !isnothing(aggr_func_expr) && !isnothing(hru_types_expr) err_msg
+    @assert !isnothing(fluxes_expr) && !isnothing(dfluxes_expr) && 
+            !isnothing(aggr_func_expr) && !isnothing(hru_types_expr) err_msg
+    
     return esc(quote
         HydroRoute(
             rfluxes=$fluxes_expr,
@@ -101,9 +145,17 @@ macro hydroroute(args...)
 end
 
 """
-$(TYPEDSIGNATURES)
+    build_aggr_func(graph::DiGraph)
 
-Builds an aggregation function from a `DiGraph`. The function performs routing by multiplying the outflow vector with the graph's adjacency matrix.
+Build an aggregation function from a directed graph. 
+
+The function performs routing by multiplying the outflow vector with the graph's adjacency matrix.
+
+# Arguments
+- `graph`: Directed graph representing connections between nodes
+
+# Returns
+- Aggregation function that accepts an outflow vector and returns a routed inflow vector
 """
 function build_aggr_func(graph::DiGraph)
     adjacency = adjacency_matrix(graph)'
@@ -112,127 +164,112 @@ function build_aggr_func(graph::DiGraph)
 end
 
 """
-$(TYPEDSIGNATURES)
+    build_aggr_func(flwdir::AbstractMatrix, positions::AbstractVector)
 
-Builds an aggregation function for grid-based routing from a flow direction matrix (e.g., D8) and a vector of grid cell positions.
+Build a grid-based routing aggregation function from a flow direction matrix (e.g., D8) 
+and a vector of grid cell positions.
+
+# Arguments
+- `flwdir`: Flow direction matrix (D8 encoding)
+- `positions`: Vector of grid cell positions
+
+# Returns
+- Aggregation function that accepts an outflow vector and returns a routed inflow vector
+
+# Note
+This implementation avoids in-place modifications and is fully compatible with Zygote automatic differentiation.
 """
-# function build_aggr_func(flwdir::AbstractMatrix, positions::AbstractVector)
-#     d8_codes = [1, 2, 4, 8, 16, 32, 64, 128]
-#     d8_nn_pads = [(1, 1, 2, 0), (2, 0, 2, 0), (2, 0, 1, 1), (2, 0, 0, 2), (1, 1, 0, 2), (0, 2, 0, 2), (0, 2, 1, 1), (0, 2, 2, 0)]
-
-#     # input dims: node_num * ts_len
-#     function grid_routing(input::AbstractVector, positions::AbstractVector, flwdir::AbstractMatrix)
-#         # Convert input to sparse matrix
-#         input_arr = Array(sparse([pos[1] for pos in positions], [pos[2] for pos in positions], input, size(flwdir)[1], size(flwdir)[2]))
-#         # Calculate weighted summation
-#         input_routed = sum(collect([pad_zeros(input_arr .* (flwdir .== code), arg) for (code, arg) in zip(d8_codes, d8_nn_pads)]))
-#         # Clip input matrix border
-#         clip_arr = input_routed[2:size(input_arr)[1]+1, 2:size(input_arr)[2]+1]
-#         # Convert input matrix to vector
-#         collect([clip_arr[pos[1], pos[2]] for pos in positions])
-#     end
-#     #* build the outflow projection function
-#     aggr_func = (outflow) -> grid_routing(outflow, positions, flwdir)
-#     return aggr_func
-# end
 function build_aggr_func(flwdir::AbstractMatrix, positions::AbstractVector)
     d8_codes = [1, 2, 4, 8, 16, 32, 64, 128]
     d8_nn_pads = [
         (1, 1, 2, 0), (2, 0, 2, 0), (2, 0, 1, 1), (2, 0, 0, 2),
         (1, 1, 0, 2), (0, 2, 0, 2), (0, 2, 1, 1), (0, 2, 2, 0)
     ]
-    function grid_routing(input::AbstractVector, positions::AbstractVector, flwdir::AbstractMatrix)
+    
+    # Precompute CartesianIndex for performance
+    cartesian_positions = [CartesianIndex(p...) for p in positions]
+    
+    function grid_routing(input::AbstractVector)
         rows, cols = size(flwdir)
-        input_arr = zeros(eltype(input), rows, cols)
-        cartesian_positions = (p -> CartesianIndex(p...)).(positions)
+        T = eltype(input)
+        
+        # Create input array (avoiding in-place modification)
+        input_arr = zeros(T, rows, cols)
         input_arr[cartesian_positions] = input
-        input_routed = sum(pad_zeros(input_arr .* (flwdir .== code), arg) for (code, arg) in zip(d8_codes, d8_nn_pads))
+        
+        # Compute routing for each D8 direction (using pure functional operations)
+        input_routed = sum(d8_codes, d8_nn_pads) do code, pad
+            pad_zeros(input_arr .* (flwdir .== code), pad)
+        end
+        
+        # Clip borders and extract results
         clip_arr = input_routed[2:rows+1, 2:cols+1]
         return clip_arr[cartesian_positions]
     end
-
-    aggr_func = (outflow) -> grid_routing(outflow, positions, flwdir)
-    return aggr_func
+    
+    return grid_routing
 end
-
-function build_route_func(fluxes::Vector{<:AbstractHydroFlux}, dfluxes::Vector{<:AbstractStateFlux}, infos::HydroModelCore.HydroInfos)
-    nn_fluxes = filter(f -> f isa AbstractNeuralFlux, fluxes)
-
-    define_calls_1 = [
-        generate_var_assignments(vars=infos.inputs, target=:inputs, dims=1)...,
-        generate_var_assignments(vars=infos.states, target=:states, dims=1)...,
-        generate_param_assignments(params=infos.params)...,
-        generate_nn_assignments(nnfluxes=nn_fluxes)...
-    ]
-    define_calls_2 = [
-        generate_var_assignments(vars=infos.inputs, target=:inputs, dims=2)...,
-        generate_var_assignments(vars=infos.states, target=:states, dims=2)...,
-        generate_param_assignments(params=infos.params)...,
-        generate_nn_assignments(nnfluxes=nn_fluxes)...
-    ]
-
-    multi_flux_func_expr = :(function (inputs, states, pas)
-        Base.@_inline_meta
-        $(define_calls_2...)
-        $(generate_compute_calls(fluxes=fluxes, dims=1)...)
-        return [$(infos.outputs...)]
-    end)
-    generated_multi_flux_func = @RuntimeGeneratedFunction(multi_flux_func_expr)
-
-    if !isempty(infos.states)
-        multi_diff_func_expr = :(function (inputs, states, pas)
-            Base.@_inline_meta
-            $(define_calls_1...)
-            $(generate_compute_calls(fluxes=fluxes, dims=1)...)
-            [$(infos.outputs...), vcat($(map(expr -> :(@. $(simplify_expr(toexpr(expr)))), reduce(vcat, get_exprs.(dfluxes)))...))]
-        end)
-        generated_multi_diff_func = @RuntimeGeneratedFunction(multi_diff_func_expr)
-        return generated_multi_flux_func, generated_multi_diff_func
-    else
-        return generated_multi_flux_func, (_) -> nothing
-    end
-end
-
 
 """
-    (route::HydroRoute)(input, params; kwargs...)
+    (route::HydroRoute)(input, params, config; kwargs...)
 
-Runs the simulation for the `HydroRoute` component. This is the functor implementation.
+Run the simulation for the HydroRoute component. This is the functor implementation.
 
-It expects 3D input `(variables, nodes, timesteps)`. The method integrates the state variables over time using a specified ODE solver, applying the `aggr_func` at each step to handle flow between nodes. It then computes the final output fluxes.
+It expects 3D input `(variables, nodes, timesteps)`. The method integrates the state variables 
+over time using a specified ODE solver, applying the `aggr_func` at each step to handle flow 
+between nodes. It then computes the final output fluxes.
 
-Common `kwargs` include `solver`, `interp`, `timeidx`, and `initstates`.
+Common kwargs include `initstates`.
 """
 function (route::HydroRoute)(
     input::AbstractArray{T,3},
     params::ComponentVector,
-    config::NamedTuple=DEFAULT_CONFIG;
+    config::ConfigType=default_config();
     kwargs...
 ) where {T}
-    solve_type = get(config, :solver, MutableSolver)
-    interp_type = get(config, :interpolator, Val(DirectInterpolation))
-    device = get(config, :device, identity)
-
+    config_norm = normalize_config(config)
+    solve_type = config_norm.solver
+    interp_type = config_norm.interpolator
+    device = config_norm.device
+    
     input_dims, num_nodes, time_len = size(input)
     new_pas = expand_component_params(params, get_param_names(route), route.hru_types) |> device
     params_vec, params_axes = Vector(new_pas) |> device, getaxes(new_pas)
-    initstates = get(kwargs, :initstates, zeros(eltype(params), length(get_state_names(route)) * size(input, 2)))
-    timeidx = get(kwargs, :timeidx, collect(1:time_len))
-
+    
+    num_states = length(get_state_names(route))
+    initstates = get(kwargs, :initstates, zeros(T, num_states * num_nodes))
+    timeidx = isempty(config_norm.timeidx) ? collect(1:time_len) : config_norm.timeidx
+    
+    # Create interpolator
     itpfunc = hydrointerp(interp_type, reshape(input, input_dims * num_nodes, time_len), timeidx)
-    solved_states = hydrosolve(solve_type,
+    
+    # Solve state variables (avoiding in-place modifications)
+    solved_states = hydrosolve(
+        solve_type,
         (u, p, t) -> begin
+            # Compute current time outflow and state changes
             tmp_outflow, tmp_states = route.ode_func(
-                reshape(itpfunc(t), input_dims, num_nodes), u,
+                reshape(itpfunc(t), input_dims, num_nodes),
+                u,
                 ComponentVector(p, params_axes)
             )
+            # Apply aggregation function to get inflow
             tmp_inflow_arr = route.aggr_func(tmp_outflow)
+            # Return total state change (avoiding in-place .+ operation)
             tmp_states .+ tmp_inflow_arr
         end,
-        params_vec, initstates, timeidx, config
+        params_vec, initstates, timeidx, config_norm
     )
-
-    solved_states_reshape = reshape(solved_states, length(get_state_names(route)), num_nodes, time_len)
+    
+    # Reshape state array
+    solved_states_reshape = reshape(solved_states, num_states, num_nodes, time_len)
+    
+    # Compute flux outputs
     output = route.flux_func(input, solved_states_reshape, new_pas)
+    
+    # Merge states and outputs
     cat(solved_states_reshape, stack(output, dims=1), dims=1)
 end
+
+# Export interfaces
+export HydroRoute, @hydroroute, build_aggr_func

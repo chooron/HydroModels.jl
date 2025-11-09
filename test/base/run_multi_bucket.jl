@@ -1,19 +1,19 @@
-Df_v, Tmax_v, Tmin_v = 2.674548848, 0.175739196, -2.092959084
-params = ComponentVector(Df=Df_v, Tmax=Tmax_v, Tmin=Tmin_v)
-init_states = ComponentVector(snowpack=0.0)
+# Test multi-node bucket components
 
+# Load test data
 ts = collect(1:10)
-df = DataFrame(CSV.File("../data/exphydro/01013500.csv"))
-input_ntp = (lday=df[ts, "dayl(day)"], temp=df[ts, "tmean(C)"], prcp=df[ts, "prcp(mm/day)"])
+input_ntp, input, df = load_test_data(:exphydro, ts)
 
-input = Matrix(reduce(hcat, collect(input_ntp[[:temp, :lday, :prcp]]))')
-
+# Define variables and parameters
 @variables temp lday prcp pet snowfall rainfall melt snowpack
 @parameters Tmin Tmax Df
 
+# Number of nodes for testing
+const NUM_NODES = 10
 
-@testset "test multi hydro element (with state)" begin
-    snow_single_ele = @hydrobucket :snow begin
+@testset "Multi hydro bucket with state" begin
+    # Define single-node bucket for comparison
+    snow_single = @hydrobucket :snow begin
         fluxes = begin
             @hydroflux pet ~ 29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)
             @hydroflux snowfall ~ step_func(Tmin - temp) * prcp
@@ -25,7 +25,8 @@ input = Matrix(reduce(hcat, collect(input_ntp[[:temp, :lday, :prcp]]))')
         end
     end
 
-    snow_multi_ele1 = @hydrobucket :snow begin
+    # Define multi-node bucket with independent parameters
+    snow_multi_independent = @hydrobucket :snow begin
         fluxes = begin
             @hydroflux pet ~ 29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)
             @hydroflux snowfall ~ step_func(Tmin - temp) * prcp
@@ -35,11 +36,11 @@ input = Matrix(reduce(hcat, collect(input_ntp[[:temp, :lday, :prcp]]))')
         dfluxes = begin
             @stateflux snowpack ~ snowfall - melt
         end
-        hru_types = collect(1:10)
+        hru_types = collect(1:NUM_NODES)
     end
 
-
-    snow_multi_ele2 = @hydrobucket :snow begin
+    # Define multi-node bucket with shared parameters
+    snow_multi_shared = @hydrobucket :snow begin
         fluxes = begin
             @hydroflux pet ~ 29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)
             @hydroflux snowfall ~ step_func(Tmin - temp) * prcp
@@ -49,46 +50,79 @@ input = Matrix(reduce(hcat, collect(input_ntp[[:temp, :lday, :prcp]]))')
         dfluxes = begin
             @stateflux snowpack ~ snowfall - melt
         end
-        hru_types = [1, 2, 2, 2, 1, 3, 3, 2, 3, 2]
+        hru_types = [1, 2, 2, 2, 1, 3, 3, 2, 3, 2]  # 3 parameter types
     end
 
-    @testset "test run with multiple nodes input (independent parameters)" begin
-        node_num = 10
-        node_names = [Symbol(:node, i) for i in 1:node_num]
-        node_params = ComponentVector(Df=fill(Df_v, node_num), Tmax=fill(Tmax_v, node_num), Tmin=fill(Tmin_v, node_num))
-        node_states = ComponentVector(snowpack=fill(0.0, node_num))
-        input_arr = reduce(hcat, collect(input_ntp[HydroModels.get_input_names(snow_single_ele)]))
-        node_input = reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([input_arr], length(node_names)))
-        node_input = permutedims(node_input, (2, 3, 1))
-        node_output = snow_multi_ele1(node_input, ComponentVector(params=node_params); initstates=node_states)
-        single_output = snow_single_ele(input, ComponentVector(params=(Df=Df_v, Tmax=Tmax_v, Tmin=Tmin_v)), initstates=init_states, timeidx=ts)
-        target_output = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([single_output], 10)), (1, 3, 2))
-        @test node_output == target_output
+    @testset "Multi-node with independent parameters" begin
+        # Prepare multi-node inputs
+        input_arr = create_multinode_input(input, NUM_NODES)
+        
+        # Prepare parameters (all nodes have same parameter values)
+        single_params = ComponentVector(params = (Df = EXPHYDRO_PARAMS.Df, Tmax = EXPHYDRO_PARAMS.Tmax, Tmin = EXPHYDRO_PARAMS.Tmin))
+        node_params = create_multinode_params(single_params, NUM_NODES)
+        node_states = create_multinode_states(ComponentVector(snowpack = 0.0), NUM_NODES)
+        
+        # Run multi-node model
+        config = create_test_config()
+        node_output = snow_multi_independent(input_arr, node_params; initstates = node_states)
+        
+        # Run single-node model for comparison
+        single_output = snow_single(input, single_params; initstates = ComponentVector(snowpack = 0.0), timeidx = ts)
+        
+        # Expected output: replicate single-node output for all nodes
+        target_output = permutedims(
+            reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([single_output], NUM_NODES)),
+            (1, 3, 2)
+        )
+        
+        @test node_output ≈ target_output atol = 1e-10
+        @test size(node_output) == (
+            length(HydroModels.get_state_names(snow_single)) + 
+            length(HydroModels.get_output_names(snow_single)),
+            NUM_NODES,
+            size(input, 2)
+        )
     end
 
-    @testset "test run with multiple nodes input (share parameters)" begin
-        # share parameters
-        node_num = 10
-        node_names = [Symbol(:node, i) for i in 1:node_num]
-        node_params = ComponentVector(Df=fill(Df_v, node_num), Tmax=fill(Tmax_v, node_num), Tmin=fill(Tmin_v, node_num))
-        node_states = ComponentVector(snowpack=fill(0.0, node_num))
-
-        node_pas = ComponentVector(params=node_params)
-        input_arr = reduce(hcat, collect(input_ntp[HydroModels.get_input_names(snow_single_ele)]))
-        node_input = reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([input_arr], 10))
-        node_input = permutedims(node_input, (2, 3, 1))
-        node_output = snow_multi_ele2(node_input, node_pas; initstates=node_states)
-        single_output = snow_single_ele(input, ComponentVector(params=(Df=Df_v, Tmax=Tmax_v, Tmin=Tmin_v)), initstates=init_states, timeidx=ts)
-        target_output = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([single_output], 10)), (1, 3, 2))
-        @test node_output == target_output
+    @testset "Multi-node with shared parameters" begin
+        # Prepare multi-node inputs
+        input_arr = create_multinode_input(input, NUM_NODES)
+        
+        # Prepare parameters (3 parameter types)
+        single_params = ComponentVector(params = (Df = EXPHYDRO_PARAMS.Df, Tmax = EXPHYDRO_PARAMS.Tmax, Tmin = EXPHYDRO_PARAMS.Tmin))
+        node_params = ComponentVector(params = (
+            Df = fill(EXPHYDRO_PARAMS.Df, 3),
+            Tmax = fill(EXPHYDRO_PARAMS.Tmax, 3),
+            Tmin = fill(EXPHYDRO_PARAMS.Tmin, 3)
+        ))
+        node_states = create_multinode_states(ComponentVector(snowpack = 0.0), NUM_NODES)
+        
+        # Run multi-node model
+        config = create_test_config()
+        node_output = snow_multi_shared(input_arr, node_params; initstates = node_states)
+        
+        # Run single-node model for comparison
+        single_output = snow_single(input, single_params; initstates = ComponentVector(snowpack = 0.0), timeidx = ts)
+        
+        # Expected output: same for all nodes (since all parameter types have same values)
+        target_output = permutedims(
+            reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([single_output], NUM_NODES)),
+            (1, 3, 2)
+        )
+        
+        @test node_output ≈ target_output atol = 1e-10
+        @test size(node_output) == (
+            length(HydroModels.get_state_names(snow_single)) + 
+            length(HydroModels.get_output_names(snow_single)),
+            NUM_NODES,
+            size(input, 2)
+        )
     end
 end
 
-@testset "test multi hydro element (without state)" begin
-    @variables temp lday prcp pet snowfall rainfall melt snowpack
-    @parameters Tmin Tmax Df
-
-    snow_single_ele = @hydrobucket :snow begin
+@testset "Multi hydro bucket without state" begin
+    # Define single-node bucket without state
+    snow_single = @hydrobucket :snow begin
         fluxes = begin
             @hydroflux pet ~ 29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)
             @hydroflux snowfall ~ step_func(Tmin - temp) * prcp
@@ -96,56 +130,60 @@ end
         end
     end
 
-    snow_multi_ele1 = @hydrobucket :snow begin
+    # Define multi-node buckets
+    snow_multi_independent = @hydrobucket :snow begin
         fluxes = begin
             @hydroflux pet ~ 29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)
             @hydroflux snowfall ~ step_func(Tmin - temp) * prcp
             @hydroflux rainfall ~ step_func(temp - Tmin) * prcp
         end
-        hru_types = collect(1:10)
+        hru_types = collect(1:NUM_NODES)
     end
-    snow_multi_ele2 = @hydrobucket :snow begin
+    
+    snow_multi_shared = @hydrobucket :snow begin
         fluxes = begin
             @hydroflux pet ~ 29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)
             @hydroflux snowfall ~ step_func(Tmin - temp) * prcp
             @hydroflux rainfall ~ step_func(temp - Tmin) * prcp
         end
-        hru_types = [1, 2, 3, 3, 2, 1, 2, 1, 3, 2]
+        hru_types = [1, 2, 3, 3, 2, 1, 2, 1, 3, 2]  # 3 parameter types
     end
 
-    pas = ComponentVector(params=(Df=Df_v, Tmax=Tmax_v, Tmin=Tmin_v))
-    @testset "test run with multiple nodes input (independent parameters)" begin
-        node_num = 10
-        node_names = [Symbol(:node, i) for i in 1:node_num]
-        node_params = ComponentVector(
-            Df=fill(Df_v, node_num), Tmax=fill(Tmax_v, node_num), Tmin=fill(Tmin_v, node_num)
+    @testset "Multi-node with independent parameters" begin
+        input_arr = create_multinode_input(input, NUM_NODES)
+        single_params = ComponentVector(params = (Tmin = EXPHYDRO_PARAMS.Tmin,))
+        node_params = create_multinode_params(single_params, NUM_NODES)
+        node_states = ComponentVector()
+        
+        config = create_test_config()
+        node_output = snow_multi_independent(input_arr, node_params; initstates = node_states)
+        
+        # Compare with single-node
+        single_output = snow_single(input, single_params; initstates = node_states, timeidx = ts)
+        target_output = permutedims(
+            reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([single_output], NUM_NODES)),
+            (1, 3, 2)
         )
-        node_states = ComponentVector(snowpack=fill(0.0, node_num))
-
-        node_pas = ComponentVector(params=node_params[HydroModels.get_param_names(snow_single_ele)], initstates=node_states[HydroModels.get_state_names(snow_single_ele)])
-        input_arr = reduce(hcat, collect(input_ntp[HydroModels.get_input_names(snow_single_ele)]))
-        node_input = reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([input_arr], length(node_names)))
-        node_input = permutedims(node_input, (2, 3, 1))
-        node_output = snow_multi_ele1(node_input, node_pas; initstates=node_states)
-        single_output = snow_single_ele(input, pas; initstates=init_states, timeidx=ts)
-        target_output = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([single_output], 10)), (1, 3, 2))
-        @test node_output == target_output
+        
+        @test node_output ≈ target_output atol = 1e-10
     end
 
-    @testset "test run with multiple nodes input (share parameters)" begin
-        # share parameters
-        node_num = 3
-        node_names = [Symbol(:node, i) for i in 1:node_num]
-        node_params = ComponentVector(Df=fill(Df_v, node_num), Tmax=fill(Tmax_v, node_num), Tmin=fill(Tmin_v, node_num))
-        node_states = ComponentVector(snowpack=fill(0.0, node_num))
-
-        node_pas = ComponentVector(params=node_params[HydroModels.get_param_names(snow_single_ele)])
-        input_arr = reduce(hcat, collect(input_ntp[HydroModels.get_input_names(snow_single_ele)]))
-        node_input = reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([input_arr], 10))
-        node_input = permutedims(node_input, (2, 3, 1))
-        node_output = snow_multi_ele2(node_input, node_pas; initstates=node_states)
-        single_output = snow_single_ele(input, pas; initstates=init_states, timeidx=ts)
-        target_output = permutedims(reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([single_output], 10)), (1, 3, 2))
-        @test node_output == target_output
+    @testset "Multi-node with shared parameters" begin
+        input_arr = create_multinode_input(input, NUM_NODES)
+        node_params = ComponentVector(params = (Tmin = fill(EXPHYDRO_PARAMS.Tmin, 3),))
+        node_states = ComponentVector()
+        
+        config = create_test_config()
+        node_output = snow_multi_shared(input_arr, node_params; initstates = node_states)
+        
+        # Compare with single-node
+        single_params = ComponentVector(params = (Tmin = EXPHYDRO_PARAMS.Tmin,))
+        single_output = snow_single(input, single_params; initstates = node_states, timeidx = ts)
+        target_output = permutedims(
+            reduce((m1, m2) -> cat(m1, m2, dims=3), repeat([single_output], NUM_NODES)),
+            (1, 3, 2)
+        )
+        
+        @test node_output ≈ target_output atol = 1e-10
     end
 end

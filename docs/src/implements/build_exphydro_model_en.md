@@ -3,7 +3,10 @@
 ## Introduction to ExpHydro Model
 
 This section demonstrates how to build a simple hydrological model - the ExpHydro model - using HydroModels.jl, serving as an introduction to conceptual model construction.
-The ExpHydro model consists of two computational modules: the Snowpack Bucket and the Soilwater Bucket. Their mathematical formulations are as follows:
+
+The ExpHydro model consists of two computational modules: the Snowpack Bucket and the Soilwater Bucket. This guide focuses on the **model construction** process using both the old-style functional construction and the new **macro-based** approach introduced in HydroModels.jl v0.5.
+
+Their mathematical formulations are as follows:
 
 ```math
 \begin{aligned}
@@ -27,40 +30,89 @@ Where: $H(x)$ represents the Heaviside step function, equals 1 when $x > 0$, oth
 
 ## Complete Model Construction Process
 
+### Method 1: Macro-Based Construction (Recommended for v0.5+)
+
+The **recommended approach** in HydroModels.jl v0.5+ uses macros for cleaner and more intuitive model construction:
+
 ```julia
-# import packages
+# Import packages
 using HydroModels
 
-# define variables and parameters
+# Define variables and parameters
 @variables temp lday pet prcp 
 @variables snowfall rainfall melt evap baseflow surfaceflow flow
 @variables snowpack soilwater
 @parameters Tmin Tmax Df Smax Qmax f
 
+# Define smooth step function
 step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
 
-# define snowpack bucket
+# Define snowpack bucket using macro
+snow_bucket = @hydrobucket :snow begin
+    fluxes = begin
+        @hydroflux pet ~ 29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)
+        @hydroflux snowfall ~ step_func(Tmin - temp) * prcp
+        @hydroflux rainfall ~ step_func(temp - Tmin) * prcp
+        @hydroflux melt ~ step_func(temp - Tmax) * step_func(snowpack) * min(snowpack, Df * (temp - Tmax))
+    end
+    dfluxes = begin
+        @stateflux snowpack ~ snowfall - melt
+    end
+end
+
+# Define soilwater bucket using macro
+soil_bucket = @hydrobucket :soil begin
+    fluxes = begin
+        @hydroflux evap ~ step_func(soilwater) * pet * min(1.0, soilwater / Smax)
+        @hydroflux baseflow ~ step_func(soilwater) * Qmax * exp(-f * (max(0.0, Smax - soilwater)))
+        @hydroflux surfaceflow ~ max(0.0, soilwater - Smax)
+        @hydroflux flow ~ baseflow + surfaceflow
+    end
+    dfluxes = begin
+        @stateflux soilwater ~ (rainfall + melt) - (evap + flow)
+    end
+end
+
+# Define the ExpHydro model using macro
+exphydro_model = @hydromodel :exphydro begin
+    snow_bucket
+    soil_bucket
+end
+```
+
+### Method 2: Functional Construction (Still Supported)
+
+The original functional construction approach is still fully supported for backward compatibility:
+
+```julia
+# Define snowpack bucket (functional style)
 fluxes_1 = [
-    HydroFlux([temp, lday] => [pet], exprs=[29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)]),
-    HydroFlux([prcp, temp] => [snowfall, rainfall], [Tmin], exprs=[step_func(Tmin - temp) * prcp, step_func(temp - Tmin) * prcp]),
-    HydroFlux([snowpack, temp] => [melt], [Tmax, Df], exprs=[step_func(temp - Tmax) * step_func(snowpack) * min(snowpack, Df * (temp - Tmax))]),
+    HydroFlux(exprs=[29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)]),
+    HydroFlux(exprs=[step_func(Tmin - temp) * prcp, step_func(temp - Tmin) * prcp]),
+    HydroFlux(exprs=[step_func(temp - Tmax) * step_func(snowpack) * min(snowpack, Df * (temp - Tmax))]),
 ]
-dfluxes_1 = [StateFlux([snowfall] => [melt], snowpack),]
+dfluxes_1 = [StateFlux(exprs=[snowfall - melt]),]
 snowpack_bucket = HydroBucket(name=:surface, fluxes=fluxes_1, dfluxes=dfluxes_1)
 
-# define soilwater bucket
+# Define soilwater bucket (functional style)
 fluxes_2 = [
-    HydroFlux([soilwater, pet] => [evap], [Smax], exprs=[step_func(soilwater) * pet * min(1.0, soilwater / Smax)]),
-    HydroFlux([soilwater] => [baseflow], [Smax, Qmax, f], exprs=[step_func(soilwater) * Qmax * exp(-f * (max(0.0, Smax - soilwater)))]),
-    HydroFlux([soilwater] => [surfaceflow], [Smax], exprs=[max(0.0, soilwater - Smax)]),
-    HydroFlux([baseflow, surfaceflow] => [flow], exprs=[baseflow + surfaceflow]),
+    HydroFlux(exprs=[step_func(soilwater) * pet * min(1.0, soilwater / Smax)]),
+    HydroFlux(exprs=[step_func(soilwater) * Qmax * exp(-f * (max(0.0, Smax - soilwater)))]),
+    HydroFlux(exprs=[max(0.0, soilwater - Smax)]),
+    HydroFlux(exprs=[baseflow + surfaceflow]),
 ]
-dfluxes_2 = [StateFlux([rainfall, melt] => [evap, flow], soilwater)]
+dfluxes_2 = [StateFlux(exprs=[(rainfall + melt) - (evap + flow)])]
 soilwater_bucket = HydroBucket(name=:soil, fluxes=fluxes_2, dfluxes=dfluxes_2)
 
-# define the Exp-Hydro model
+# Define the ExpHydro model
 exphydro_model = HydroModel(name=:exphydro, components=[snowpack_bucket, soilwater_bucket])
 ```
+
+> **Note**: The macro-based approach (Method 1) is recommended for new projects as it provides:
+> - Cleaner, more readable syntax
+> - Better error messages
+> - Automatic variable extraction
+> - Closer alignment with mathematical notation
 
 ## Step-by-Step Analysis
 
@@ -133,3 +185,41 @@ Finally, we combine the `HydroBucket` components into a `HydroModel` to create t
 # define the Exp-Hydro model
 exphydro_model = HydroModel(name=:exphydro, components=[snowpack_bucket, soilwater_bucket])
 ```
+
+## Running the Model
+
+Once the model is constructed, you can run it using the new `HydroConfig` system:
+
+```julia
+using ComponentArrays
+
+# Prepare parameters
+params = ComponentVector(
+    Tmin = -2.09,
+    Tmax = 0.17,
+    Df = 2.674,
+    Smax = 1709.46,
+    Qmax = 18.47,
+    f = 0.0167
+)
+pas = ComponentVector(params = params)
+
+# Prepare initial states
+init_states = ComponentVector(
+    snowpack = 0.0,
+    soilwater = 1303.0
+)
+
+# Configure model execution (NEW in v0.5)
+config = HydroConfig(
+    solver = MutableSolver,
+    interpolator = Val(DirectInterpolation),
+    timeidx = 1:1000,
+    min_value = 1e-6
+)
+
+# Run model
+output = exphydro_model(input_matrix, pas, config; initstates = init_states)
+```
+
+For more details on running models and configuration options, see the [Getting Started Guide](../get_start_en.md).
