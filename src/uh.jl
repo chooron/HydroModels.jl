@@ -27,7 +27,7 @@ struct UnitHydrograph{MS,UF,MF,HT,NT} <: AbstractHydrograph
     hru_types::HT
     "A named tuple containing information about inputs, outputs, parameters, and states"
     infos::NT
-    
+
     # Direct function constructor
     function UnitHydrograph(
         inputs::AbstractVector,
@@ -45,12 +45,12 @@ struct UnitHydrograph{MS,UF,MF,HT,NT} <: AbstractHydrograph
             outputs=!isempty(outputs) ? tosymbol.(outputs) : Symbol[]
         )
         uh_name = isnothing(name) ? Symbol("##uh#", hash(infos)) : name
-        
+
         return new{length(hru_types) > 1,typeof(uh_func),typeof(max_lag_func),typeof(hru_types),typeof(infos)}(
             uh_name, uh_func, max_lag_func, hru_types, infos
         )
     end
-    
+
     # Symbolic constructor
     function UnitHydrograph(
         inputs::AbstractVector,
@@ -63,18 +63,18 @@ struct UnitHydrograph{MS,UF,MF,HT,NT} <: AbstractHydrograph
         max_lag = get(kwargs, :max_lag, uh_conds[1][1])
         hru_types = get(kwargs, :hru_types, Int[])
         param_names = !isempty(params) ? tosymbol.(Num.(params)) : Symbol[]
-        
+
         uh_func, max_lag_func = build_uh_func(uh_conds, param_names, max_lag)
-        
+
         @assert length(inputs) == length(outputs) == 1 "Only one input and one output is supported"
-        
+
         infos = HydroInfos(
             params=param_names,
             inputs=!isempty(inputs) ? tosymbol.(inputs) : Symbol[],
             outputs=!isempty(outputs) ? tosymbol.(outputs) : Symbol[]
         )
         uh_name = isnothing(name) ? Symbol("##uh#", hash(infos)) : name
-        
+
         return new{length(hru_types) > 1,typeof(uh_func),typeof(max_lag_func),typeof(hru_types),typeof(infos)}(
             uh_name, uh_func, max_lag_func, hru_types, infos
         )
@@ -115,11 +115,11 @@ julia> @unithydro :my_uh begin
 macro unithydro(args...)
     name = length(args) == 1 ? nothing : args[1]
     expr = length(args) == 1 ? args[1] : args[2]
-    
+
     @assert Meta.isexpr(expr, :block) "Expected a begin...end block"
-    
+
     uh_func_expr, uh_vars_expr, kwargs_vec = nothing, nothing, Expr[]
-    
+
     for arg in expr.args
         arg isa LineNumberNode && continue
         if Meta.isexpr(arg, :(=))
@@ -133,10 +133,10 @@ macro unithydro(args...)
             end
         end
     end
-    
+
     @assert uh_func_expr !== nothing "Missing uh_func in unit hydrograph definition"
     @assert uh_vars_expr !== nothing "Missing uh_vars in unit hydrograph definition"
-    
+
     # Check variable definitions
     for var_name in extract_variables(uh_func_expr)
         if !@isdefined(var_name)
@@ -150,12 +150,12 @@ macro unithydro(args...)
             return :(error("Undefined variable '", $(string(var_name)), "' detected in expression: `", $expr_str, "`"))
         end
     end
-    
+
     @assert Meta.isexpr(uh_vars_expr, :call) && uh_vars_expr.args[1] == :(=>) "uh_vars must be a single Pair, e.g., P => Q"
-    
+
     uh_inputs_expr = Expr(:vect, uh_vars_expr.args[2])
     uh_outputs_expr = Expr(:vect, uh_vars_expr.args[3])
-    
+
     uh_conds_pair, cond_values = Pair[], []
     for uh_expr in uh_func_expr.args
         uh_expr isa LineNumberNode && continue
@@ -165,18 +165,35 @@ macro unithydro(args...)
             push!(cond_values, uh_expr.args[3])
         end
     end
-    
+
     return esc(quote
         params_val = reduce(union, map(
             val -> filter(x -> HydroModels.isparameter(x), HydroModels.get_variables(val)),
             [$(cond_values...)]
-        ))
+        )) |> collect
         UnitHydrograph(
             $uh_inputs_expr, $uh_outputs_expr, params_val;
             uh_conds=$uh_conds_pair, max_lag=$(uh_conds_pair[1][1]), name=$(name),
             $(kwargs_vec...)
         )
     end)
+end
+
+function hydro_conv(weights::Vector{T}, input::Vector{T}) where T
+    weights = weights / sum(weights)
+    K = length(weights)
+    if K == 0
+        return T[]
+    end
+    N = length(input)
+    if N == 0
+        return zeros(T, N + 1)
+    end
+    input_reshaped = reshape(input, N, 1, 1)
+    weights_reshaped = reshape(weights, K, 1, 1)
+    output_reshaped = conv(input_reshaped, weights_reshaped; pad=(K - 1, 0), flipped=false)
+    output = vec(output_reshaped)
+    return output
 end
 
 """
@@ -198,60 +215,24 @@ function (uh::UnitHydrograph)(
     config::ConfigType=default_config();
     kwargs...
 )::AbstractArray{T,2} where {T}
-    config_norm = normalize_config(config)
-    # Use solver from config for better flexibility
-    solve_type = get_config_value(config_norm, :solver, MutableSolver)
-    
-    timeidx = collect(1:size(input, 2))
-    interp_func = DirectInterpolation(input, timeidx)
-    
     # Compute UH weights (avoiding in-place modification)
     max_lag_val = uh.max_lag(params)
     lag_weights = [uh.uh_func(t, params) for t in 1:max_lag_val]
-    
+
     # Compute difference weights
     uh_weight = if isempty(lag_weights)
         T[]
     else
         shifted = circshift(lag_weights, -1)
-        vcat([lag_weights[1]], (shifted .- lag_weights)[1:end-1])
+        vcat([lag_weights[1]], (shifted.-lag_weights)[1:end-1])
     end
-    
+
     # If no weights, return input directly
     if length(uh_weight) == 0
         return input
     end
-    
-    # Normalize weights
-    weight_sum = sum(uh_weight)
-    normalized_weight = uh_weight ./ weight_sum
-    
-    # Update function (avoiding in-place modification)
-    function update_func(inp::AbstractVector, state::AbstractVector, weight::AbstractVector)
-        # inp: current input
-        # state: current state
-        # weight: UH weight
-        # Returns: updated state
-        new_state = vcat(diff(state), [-state[end]])
-        inp .* weight .+ new_state
-    end
-    
-    # Initial states
-    num_vars = size(input, 1)
-    initstates = zeros(T, num_vars, length(normalized_weight))
-    
-    # Solve convolution
-    sol = hydrosolve(
-        solve_type,
-        (u, p, t) -> begin
-            inp_t = interp_func(t)
-            stack([update_func(inp_t, u[i, :], p) for i in 1:num_vars], dims=1)
-        end,
-        normalized_weight, initstates, timeidx, config_norm
-    )
-    
-    # Return first column (accumulated output)
-    return sol[:, 1, :]
+    uh_out = hydro_conv(uh_weight, input[1, :])
+    return reshape(uh_out, 1, :)
 end
 
 # Multi-node UH
@@ -263,22 +244,22 @@ function (uh::UnitHydrograph{true})(
 )::AbstractArray{T,3} where {T}
     ptyidx = uh.hru_types
     uh_param_names = get_param_names(uh)
-    
+
     # Extract parameters for each node
     params_matrix = reshape(
         reduce(vcat, params[:params][uh_param_names]),
         :, length(uh_param_names)
     )[ptyidx, :]
-    
+
     extract_params_cv = map(1:length(ptyidx)) do idx
         ComponentVector(params=NamedTuple{Tuple(uh_param_names)}(params_matrix[idx, :]))
     end
-    
+
     # Apply UH to each node
     node_sols = map(1:size(input, 2)) do i
         uh(input[:, i, :], extract_params_cv[i], config)
     end
-    
+
     # Stack results efficiently (O(n) instead of O(n²))
     sol_mat = cat(node_sols..., dims=1)  # Splatting is more efficient than reduce
     reshape(sol_mat, 1, size(input)[2], size(input)[3])

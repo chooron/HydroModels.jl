@@ -78,61 +78,63 @@ end
         ts = collect(1:100)
         input_ntp, input_mat, df = load_test_data(:exphydro, ts)
         input_arr = create_multinode_input(input_mat, NUM_SPATIAL_NODES)
-        
+
         # Prepare parameters
-        single_params = ComponentVector(params = (
-            Df = 2.674, Tmax = 0.17, Tmin = -2.09,
-            Smax = 1709.46, f = 0.0167, Qmax = 18.47,
-            lag = 0.2, area_coef = 1.0
+        single_params = ComponentVector(params=(
+            Df=2.674, Tmax=0.17, Tmin=-2.09,
+            Smax=1709.46, f=0.0167, Qmax=18.47,
+            lag=0.2, area_coef=1.0
         ))
         node_params = create_multinode_params(single_params, NUM_SPATIAL_NODES)
-        
+
         # Prepare states
         node_states = ComponentVector(
-            snowpack = fill(0.0, NUM_SPATIAL_NODES),
-            soilwater = fill(0.0, NUM_SPATIAL_NODES),
-            s_river = fill(0.0, NUM_SPATIAL_NODES)
+            snowpack=fill(0.0, NUM_SPATIAL_NODES),
+            soilwater=fill(0.0, NUM_SPATIAL_NODES),
+            s_river=fill(0.0, NUM_SPATIAL_NODES)
         )
-        
+
         # Run model
-        config = create_test_config(solver = MutableSolver, timeidx = ts)
-        result = grid_spatial_model(input_arr, node_params, config; initstates = node_states)
-        
-        expected_n_outputs = length(HydroModels.get_state_names(grid_spatial_model)) + 
-                            length(HydroModels.get_output_names(grid_spatial_model))
+        config = create_test_config(solver=MutableSolver, timeidx=ts)
+        result = grid_spatial_model(input_arr, node_params, config; initstates=node_states)
+
+        expected_n_outputs = length(HydroModels.get_state_names(grid_spatial_model)) +
+                             length(HydroModels.get_output_names(grid_spatial_model))
         @test size(result) == (expected_n_outputs, NUM_SPATIAL_NODES, length(ts))
-        
+
         # Sanity checks
         @test all(result[1, :, :] .>= 0)  # snowpack >= 0
         @test all(result[2, :, :] .>= 0)  # soilwater >= 0
         @test all(result[3, :, :] .>= 0)  # s_river >= 0
     end
-    
+
     @testset "Flow routing correctness" begin
         # Test that outlet receives more flow than sources (due to accumulation)
         ts = collect(1:50)
         input_ntp, input_mat, df = load_test_data(:exphydro, ts)
         input_arr = create_multinode_input(input_mat, NUM_SPATIAL_NODES)
-        
-        single_params = ComponentVector(params = (
-            Df = 2.674, Tmax = 0.17, Tmin = -2.09,
-            Smax = 1709.46, f = 0.0167, Qmax = 18.47,
-            lag = 0.2, area_coef = 1.0
+
+        single_params = ComponentVector(params=(
+            Df=2.674, Tmax=0.17, Tmin=-2.09,
+            Smax=1709.46, f=0.0167, Qmax=18.47,
+            lag=0.2, area_coef=1.0
         ))
         node_params = create_multinode_params(single_params, NUM_SPATIAL_NODES)
-        
+
         node_states = ComponentVector(
-            snowpack = fill(0.0, NUM_SPATIAL_NODES),
-            soilwater = fill(1303.0, NUM_SPATIAL_NODES),
-            s_river = fill(0.0, NUM_SPATIAL_NODES)
+            snowpack=fill(0.0, NUM_SPATIAL_NODES),
+            soilwater=fill(1303.0, NUM_SPATIAL_NODES),
+            s_river=fill(0.0, NUM_SPATIAL_NODES)
         )
-        
-        config = create_test_config(solver = MutableSolver, timeidx = ts)
-        result = grid_spatial_model(input_arr, node_params, config; initstates = node_states)
-        
+
+        config = create_test_config(solver=MutableSolver, timeidx=ts)
+        result = grid_spatial_model(input_arr, node_params, config; initstates=node_states)
+
+        expected_n_outputs = length(HydroModels.get_state_names(grid_spatial_model)) +
+                             length(HydroModels.get_output_names(grid_spatial_model))
         # Output index for q_routed (last output)
         q_routed_idx = expected_n_outputs
-        
+
         # Node 9 (3,3) is the outlet - should accumulate flow
         # Node 1 (1,1) is a source - should have local flow only
         @test mean(result[q_routed_idx, 9, :]) > mean(result[q_routed_idx, 1, :])
@@ -182,60 +184,62 @@ end
         ts = collect(1:100)
         input_ntp, input_mat, df = load_test_data(:exphydro, ts)
         input_arr = create_multinode_input(input_mat, NUM_SPATIAL_NODES)
-        
+
         # Prepare parameters
-        single_params = ComponentVector(params = (
-            Df = 2.674, Tmax = 0.17, Tmin = -2.09,
-            Smax = 1709.46, f = 0.0167, Qmax = 18.47,
-            lag = 0.2, area_coef = 1.0
+        single_params = ComponentVector(params=(
+            Df=2.674, Tmax=0.17, Tmin=-2.09,
+            Smax=1709.46, f=0.0167, Qmax=18.47,
+            lag=0.2, area_coef=1.0
         ))
         node_params = create_multinode_params(single_params, NUM_SPATIAL_NODES)
-        
+
         # Prepare states
         node_states = ComponentVector(
-            snowpack = fill(0.0, NUM_SPATIAL_NODES),
-            soilwater = fill(0.0, NUM_SPATIAL_NODES),
-            s_river = fill(0.0, NUM_SPATIAL_NODES)
+            snowpack=fill(0.0, NUM_SPATIAL_NODES),
+            soilwater=fill(0.0, NUM_SPATIAL_NODES),
+            s_river=fill(0.0, NUM_SPATIAL_NODES)
         )
-        
+
         # Run model
-        config = create_test_config(solver = MutableSolver, timeidx = ts)
-        result = vector_spatial_model(input_arr, node_params, config; initstates = node_states)
-        
-        expected_n_outputs = length(HydroModels.get_state_names(vector_spatial_model)) + 
-                            length(HydroModels.get_output_names(vector_spatial_model))
+        config = create_test_config(solver=MutableSolver, timeidx=ts)
+        result = vector_spatial_model(input_arr, node_params, config; initstates=node_states)
+
+        expected_n_outputs = length(HydroModels.get_state_names(vector_spatial_model)) +
+                             length(HydroModels.get_output_names(vector_spatial_model))
         @test size(result) == (expected_n_outputs, NUM_SPATIAL_NODES, length(ts))
-        
+
         # Sanity checks
         @test all(result[1, :, :] .>= 0)  # snowpack >= 0
         @test all(result[2, :, :] .>= 0)  # soilwater >= 0
         @test all(result[3, :, :] .>= 0)  # s_river >= 0
     end
-    
+
     @testset "Network flow accumulation" begin
         # Test flow accumulation along network path
         # Node 9 is outlet, should have highest accumulated flow at steady state
         ts = collect(1:100)
         input_ntp, input_mat, df = load_test_data(:exphydro, ts)
         input_arr = create_multinode_input(input_mat, NUM_SPATIAL_NODES)
-        
-        single_params = ComponentVector(params = (
-            Df = 2.674, Tmax = 0.17, Tmin = -2.09,
-            Smax = 1709.46, f = 0.0167, Qmax = 18.47,
-            lag = 0.2, area_coef = 1.0
+
+        single_params = ComponentVector(params=(
+            Df=2.674, Tmax=0.17, Tmin=-2.09,
+            Smax=1709.46, f=0.0167, Qmax=18.47,
+            lag=0.2, area_coef=1.0
         ))
         node_params = create_multinode_params(single_params, NUM_SPATIAL_NODES)
-        
+
         node_states = ComponentVector(
-            snowpack = fill(0.0, NUM_SPATIAL_NODES),
-            soilwater = fill(1303.0, NUM_SPATIAL_NODES),
-            s_river = fill(0.0, NUM_SPATIAL_NODES)
+            snowpack=fill(0.0, NUM_SPATIAL_NODES),
+            soilwater=fill(1303.0, NUM_SPATIAL_NODES),
+            s_river=fill(0.0, NUM_SPATIAL_NODES)
         )
-        
-        config = create_test_config(solver = MutableSolver, timeidx = ts)
-        result = vector_spatial_model(input_arr, node_params, config; initstates = node_states)
-        
+
+        config = create_test_config(solver=MutableSolver, timeidx=ts)
+        result = vector_spatial_model(input_arr, node_params, config; initstates=node_states)
+
         # Outlet (node 9) should have higher flow than upstream nodes
+        expected_n_outputs = length(HydroModels.get_state_names(vector_spatial_model)) +
+                             length(HydroModels.get_output_names(vector_spatial_model))
         q_routed_idx = expected_n_outputs
         @test mean(result[q_routed_idx, 9, end-10:end]) > mean(result[q_routed_idx, 1, end-10:end])
     end
@@ -275,27 +279,27 @@ end
     ts = collect(1:50)
     input_ntp, input_mat, df = load_test_data(:exphydro, ts)
     input_arr = create_multinode_input(input_mat, NUM_SPATIAL_NODES)
-    
-    single_params = ComponentVector(params = (
-        Df = 2.674, Tmax = 0.17, Tmin = -2.09,
-        Smax = 1709.46, f = 0.0167, Qmax = 18.47,
-        lag = 0.2, area_coef = 1.0
+
+    single_params = ComponentVector(params=(
+        Df=2.674, Tmax=0.17, Tmin=-2.09,
+        Smax=1709.46, f=0.0167, Qmax=18.47,
+        lag=0.2, area_coef=1.0
     ))
     node_params = create_multinode_params(single_params, NUM_SPATIAL_NODES)
-    
+
     node_states = ComponentVector(
-        snowpack = fill(0.0, NUM_SPATIAL_NODES),
-        soilwater = fill(1303.0, NUM_SPATIAL_NODES),
-        s_river = fill(0.0, NUM_SPATIAL_NODES)
+        snowpack=fill(0.0, NUM_SPATIAL_NODES),
+        soilwater=fill(1303.0, NUM_SPATIAL_NODES),
+        s_river=fill(0.0, NUM_SPATIAL_NODES)
     )
 
     # Run with both solvers
-    config_mut = create_test_config(solver = MutableSolver, timeidx = ts)
-    config_immut = create_test_config(solver = ImmutableSolver, timeidx = ts)
-    
-    result_mut = spatial_model(input_arr, node_params, config_mut; initstates = node_states)
-    result_immut = spatial_model(input_arr, node_params, config_immut; initstates = node_states)
-    
+    config_mut = create_test_config(solver=MutableSolver, timeidx=ts)
+    config_immut = create_test_config(solver=ImmutableSolver, timeidx=ts)
+
+    result_mut = spatial_model(input_arr, node_params, config_mut; initstates=node_states)
+    result_immut = spatial_model(input_arr, node_params, config_immut; initstates=node_states)
+
     # Results should be very similar
     @test result_mut ≈ result_immut atol = 1e-6
 end

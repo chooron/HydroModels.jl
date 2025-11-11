@@ -198,9 +198,7 @@ function build_aggr_func(flwdir::AbstractMatrix, positions::AbstractVector)
         input_arr[cartesian_positions] = input
         
         # Compute routing for each D8 direction (using pure functional operations)
-        input_routed = sum(d8_codes, d8_nn_pads) do code, pad
-            pad_zeros(input_arr .* (flwdir .== code), pad)
-        end
+        input_routed = sum(pad_zeros(input_arr .* (flwdir .== code), pad) for (code, pad) in zip(d8_codes, d8_nn_pads))
         
         # Clip borders and extract results
         clip_arr = input_routed[2:rows+1, 2:cols+1]

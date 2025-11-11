@@ -77,8 +77,8 @@ end
     @parameters x1 x2 x3 x4
 
     # Load data
-    input_ntp, input_mat, df = load_test_data(:gr4j, collect(1:length(df[!, "qobs"])))
-    ts = collect(1:size(input_mat, 2))
+    ts = collect(1:100)
+    input_ntp, input_mat, df = load_test_data(:gr4j, ts)
 
     # Define production bucket with hru_types
     prod_bucket = @hydrobucket begin

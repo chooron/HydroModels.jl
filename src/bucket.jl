@@ -159,7 +159,6 @@ function (bucket::HydroBucket{true,false})(
     param_vec, params_axes = Vector(params), getaxes(params)
     initstates = get(kwargs, :initstates, zeros(T, length(get_state_names(bucket))))
     timeidx = isempty(config_norm.timeidx) ? collect(1:size(input, 2)) : config_norm.timeidx
-    
     # Create interpolator
     itpfuncs = hydrointerp(interp_type, input, timeidx)
     

@@ -31,7 +31,7 @@ function load_test_data(dataset::Symbol, timesteps::AbstractVector{Int})
         for col in names(df)[3:end]
             df[ismissing.(df[:, col]), col] .= 0.0
         end
-        input_ntp = (prcp = df[!, "prec"], ep = df[!, "pet"])
+        input_ntp = (prcp = df[timesteps, "prec"], ep = df[timesteps, "pet"])
         input_mat = Matrix(reduce(hcat, collect(input_ntp[[:prcp, :ep]]))')
         return input_ntp, input_mat, df
         
