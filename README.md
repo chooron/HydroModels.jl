@@ -202,15 +202,13 @@ HydroModels.jl provides several key component types:
 ```julia
 using Lux
 
+@variables temp prcp soilwater et
 # Define a neural network-enhanced flux
-nn_flux = @neuralflux begin
-    nn_model = Lux.Chain(
-        Dense(3, 10, tanh),
-        Dense(10, 1)
-    )
-    input_names = [:temp, :prcp, :soilwater]
-    output_name = :nn_et
-end
+nn_model = Lux.Chain(
+    Dense(3, 10, tanh),
+    Dense(10, 1)
+)
+nn_flux = @neuralflux et ~ nn_model([temp, prcp, soilwater])
 ```
 
 ## 📖 Documentation
@@ -272,7 +270,7 @@ If you use HydroModels.jl in your research, please cite:
 
 ```bibtex
 @software{hydromodels_jl,
-  author = {Jing Xu},
+  author = {Jing Xin},
   title = {HydroModels.jl: A Modern Hydrological Modeling Framework},
   year = {2024},
   url = {https://github.com/chooron/HydroModels.jl}
@@ -285,6 +283,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 👤 Author
 
-**Jing Xu** ([@chooron](https://github.com/chooron))
+**Jing Xin** ([@chooron](https://github.com/chooron))
 
 *Note: I am not a professional full-time software developer. If you find any issues or have suggestions, please feel free to post them in the [issues](https://github.com/chooron/HydroModels.jl/issues) section.*
