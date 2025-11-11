@@ -7,8 +7,8 @@ on:
     tags: '*'
     paths:
       - 'docs/**'          # 只有docs目录下的文件改变时触发
-      - 'src/**'           # 源代码改变时触发
-      - '*.toml'          # 项目配置文件改变时触发
+      # - 'src/**'           # 源代码改变时触发
+      # - '*.toml'          # 项目配置文件改变时触发
       - '.github/workflows/documentation.yml'  # 工作流配置改变时触发
   pull_request:
     paths:
