@@ -181,7 +181,7 @@ export @hydroflux, @stateflux
 
 # Neural network components
 include("nn.jl")
-export NeuralFlux, NeuralBucket
+export NeuralFlux, NeuralBucket # under test
 export @neuralflux
 export create_neural_bucket, create_simple_neural_bucket
 

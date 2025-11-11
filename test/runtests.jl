@@ -6,11 +6,8 @@ using Test
 using StableRNGs
 using Statistics
 using ComponentArrays
-using DataInterpolations
 using Graphs
 using HydroModels
-using DifferentialEquations
-using SciMLSensitivity
 
 # Smooth step function for tests
 step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5

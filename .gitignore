@@ -35,3 +35,6 @@ Manifest.toml
 dev
 tmp
 .venv
+
+*.md
+!README.md

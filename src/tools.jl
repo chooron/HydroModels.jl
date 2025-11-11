@@ -30,7 +30,7 @@ julia> value = interp(1.7);  # Returns data[:, 2] (ceiling of 1.7)
 struct DirectInterpolation{N,T,V<:AbstractVector{<:Integer}}
     data::AbstractArray{T,N}
     ts::V
-    
+
     function DirectInterpolation(data::AbstractArray{T,N}, ts::AbstractVector{<:Integer}) where {T,N}
         @assert size(data, N) == length(ts) "Last dimension of data must match length of time index"
         new{N,T,typeof(ts)}(data, ts)
@@ -100,24 +100,24 @@ function hydrosolve(
 ) where {T,N}
     device = get_config_value(config, :device, identity)
     min_val = get_config_value(config, :min_value, 1e-6)
-    
+
     T1 = promote_type(eltype(params), T)
     time_len = length(timeidx)
-    
+
     # Preallocate result array
     state_size = size(initstates)
     results = zeros(T1, state_size..., time_len) |> device
-    
+
     # Use functional programming to avoid in-place modifications
     current_state = T1.(initstates)
-    
+
     for (i, t) in enumerate(timeidx)
         du = du_func(current_state, params, t)
         # Use pure functional update to avoid in-place modification
         current_state = max.(T1(min_val), current_state .+ du)
         results[ntuple(Returns(Colon()), N)..., i] .= current_state
     end
-    
+
     results
 end
 
@@ -137,38 +137,15 @@ function hydrosolve(
 ) where {T,N}
     device = get_config_value(config, :device, identity)
     min_val = get_config_value(config, :min_value, 1e-6)
-    
+
     # Use accumulate for pure functional solving
     states_vec = accumulate(timeidx; init=initstates) do last_state, t
         du = du_func(last_state, params, t)
         max.(min_val, last_state .+ du)
     end
-    
+
     # Stack vector into array
     stack(states_vec; dims=N + 1) |> device
-end
-
-"""
-    hydrosolve(::Val{DiscreteSolver}, ...)
-
-Discrete solver implementation - for pure algebraic equations (no state evolution).
-"""
-function hydrosolve(
-    ::Val{DiscreteSolver},
-    compute_func,
-    params,
-    input,
-    timeidx,
-    config
-) where {T,N}
-    device = get_config_value(config, :device, identity)
-    
-    # Direct computation for each time step
-    results = map(timeidx) do t
-        compute_func(input, params, t)
-    end
-    
-    stack(results; dims=ndims(first(results)) + 1) |> device
 end
 
 """
