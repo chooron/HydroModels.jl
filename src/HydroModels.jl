@@ -256,7 +256,7 @@ export step_func, smoothlogistic_func
 # ============================================================================
 
 """
-Module version: v0.4.5
+Module version: v0.5.0
 
 # Major Updates
 - ✨ Complete refactoring with type-stable design
@@ -274,6 +274,6 @@ Module version: v0.4.5
 # Julia Version Requirements
 - Julia >= 1.10 (recommended 1.12+)
 """
-const HYDROMODELS_VERSION = v"0.4.5"
+const HYDROMODELS_VERSION = v"0.5.0"
 
 end # module HydroModels
