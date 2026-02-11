@@ -2,7 +2,7 @@
 
 using YAML
 
-yaml_file = joinpath(dirname(dirname(@__DIR__)), "examples", "exphydro.yaml")
+yaml_file = joinpath(dirname(dirname(@__DIR__)), "docs", "examples", "exphydro.yaml")
 
 @testset "Load model from YAML" begin
     model = load_model_from_yaml(yaml_file)

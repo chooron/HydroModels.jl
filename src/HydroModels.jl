@@ -69,10 +69,6 @@ using ComponentArrays
 using ComponentArrays: getaxes, Axis
 using DocStringExtensions
 
-# Symbolic computation
-using Symbolics
-using Symbolics: tosymbol, Num, @variables, get_variables
-
 # Graph computation
 using Graphs
 using Graphs: SimpleDiGraph, add_edge!, topological_sort, adjacency_matrix
@@ -111,6 +107,7 @@ using HydroModelCore: get_var_names, get_input_names, get_output_names
 using HydroModelCore: get_state_names, get_param_names, get_nn_names
 using HydroModelCore: isparameter, toparam
 using HydroModelCore: build_flux_func, build_bucket_func, build_route_func, build_uh_func
+using HydroModelCore: tosymbol, Num, @variables, get_variables
 
 # ============================================================================
 # Export Symbolic Computation Tools
