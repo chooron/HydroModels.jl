@@ -152,7 +152,7 @@ dem_info = create_hydroroute_from_dem(test_dem, name=:test_watershed)
 println("\n从DEM提取的信息:")
 println("  流向矩阵大小: ", size(dem_info.flow_dir))
 println("  有效位置数量: ", length(dem_info.positions))
-println("  HRU类型: ", length(dem_info.hru_types))
+println("  HRU类型: ", length(dem_info.htypes))
 
 # 构建完整的HydroRoute需要定义fluxes和dfluxes
 # 这里是一个概念性示例
@@ -170,7 +170,7 @@ println("  3. 参数: 模型参数（如流速系数k）")
 #     dfluxes = begin
 #         @stateflux storage ~ inflow - outflow
 #     end
-#     hru_types = dem_info.hru_types
+#     htypes = dem_info.htypes
 #     aggr_func = dem_info.aggr_func
 # end
 

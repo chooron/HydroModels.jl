@@ -1,0 +1,112 @@
+# HydroModels YAML Executor Example
+# This file demonstrates how to configure and execute a hydrological model using YAML
+
+version: "1.0"
+schema: "hydromodels"
+
+# Parameter definitions with metadata
+parameters:
+  Smax:
+    description: "Maximum soil moisture storage capacity"
+    units: "mm"
+    default: 100.0
+    bounds: [50.0, 500.0]
+
+  Qmax:
+    description: "Maximum baseflow rate"
+    units: "mm/day"
+    default: 10.0
+    bounds: [1.0, 50.0]
+
+  f:
+    description: "Baseflow recession exponent"
+    units: "-"
+    default: 2.0
+    bounds: [0.1, 5.0]
+
+  Df:
+    description: "Drainage factor for soil water"
+    units: "-"
+    default: 0.5
+    bounds: [0.0, 1.0]
+
+# Model components
+components:
+  - type: HydroBucket
+    name: soil
+    fluxes:
+      # Baseflow calculation
+      - formula: "baseflow ~ Qmax * exp(-f * max(0.0, (Smax - soilwater) / Smax))"
+
+      # Evapotranspiration (limited by available water)
+      - formula: "evap ~ min(PET, soilwater * Df)"
+
+    state_fluxes:
+      # Soil water balance
+      - formula: "soilwater ~ Prcp - evap - baseflow"
+
+# Model composition
+model:
+  type: HydroModel
+  name: simple_bucket_model
+  components: [soil]
+
+# Solver configuration
+config:
+  solver: MutableSolver
+  interpolator: DirectInterpolation
+  min_value: 1.0e-6
+  parallel: false
+
+# Forcing data configuration (CSV example)
+data:
+  type: csv
+  path: "forcing_data.csv"
+  variables:
+    Prcp: Precipitation    # model_variable: csv_column_name
+    PET: PotentialET
+  time_column: date
+
+# Parameter values (Option 1: from CSV file)
+parameters_data:
+  type: csv
+  path: "parameters.csv"
+
+# Parameter values (Option 2: direct values)
+# parameters_data:
+#   type: values
+#   values:
+#     Smax: 120.0
+#     Qmax: 8.5
+#     f: 2.5
+#     Df: 0.6
+
+# Initial state values
+initial_states:
+  soilwater: 50.0
+
+# ============================================
+# NetCDF Data Configuration Example
+# ============================================
+# For spatial models with NetCDF data:
+#
+# data:
+#   type: netcdf
+#   path: "forcing_data.nc"
+#   variables:
+#     Prcp: precipitation
+#     PET: pet
+#   positions:
+#     - row: 10
+#       col: 20
+#     - row: 15
+#       col: 25
+#
+# Or for lumped models (spatial average):
+#
+# data:
+#   type: netcdf
+#   path: "forcing_data.nc"
+#   variables:
+#     Prcp: precipitation
+#     PET: pet

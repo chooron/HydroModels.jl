@@ -11,7 +11,7 @@ const NUM_TEST_NODES = 10
     ts = collect(1:100)
     input_ntp, input_mat, df = load_test_data(:exphydro, ts)
 
-    # Define snow bucket with hru_types
+    # Define snow bucket with htypes
     snow_bucket = @hydrobucket :surface begin
         fluxes = begin
             @hydroflux begin
@@ -24,10 +24,10 @@ const NUM_TEST_NODES = 10
         dfluxes = begin
             @stateflux snowpack ~ snowfall - melt
         end
-        hru_types = collect(1:NUM_TEST_NODES)
+        htypes = collect(1:NUM_TEST_NODES)
     end
 
-    # Define soil bucket with hru_types
+    # Define soil bucket with htypes
     soil_bucket = @hydrobucket :soil begin
         fluxes = begin
             @hydroflux evap ~ step_func(soilwater) * pet * min(1.0, soilwater / Smax)
@@ -38,7 +38,7 @@ const NUM_TEST_NODES = 10
         dfluxes = begin
             @stateflux soilwater ~ (rainfall + melt) - (evap + flow)
         end
-        hru_types = collect(1:NUM_TEST_NODES)
+        htypes = collect(1:NUM_TEST_NODES)
     end
 
     # Define complete model
@@ -80,7 +80,7 @@ end
     ts = collect(1:100)
     input_ntp, input_mat, df = load_test_data(:gr4j, ts)
 
-    # Define production bucket with hru_types
+    # Define production bucket with htypes
     prod_bucket = @hydrobucket begin
         fluxes = begin
             @hydroflux pn ~ prcp - min(prcp, ep)
@@ -95,16 +95,16 @@ end
         dfluxes = begin
             @stateflux soilwater ~ ps - es - perc
         end
-        hru_types = collect(1:NUM_TEST_NODES)
+        htypes = collect(1:NUM_TEST_NODES)
     end
 
-    # Define unit hydrographs with hru_types
+    # Define unit hydrographs with htypes
     uh_slow = @unithydro :uh_slow begin
         uh_func = begin
             x4 => (t / x4)^2.5
         end
         uh_vars = slowflow => slowflow_routed
-        hru_types = collect(1:NUM_TEST_NODES)
+        htypes = collect(1:NUM_TEST_NODES)
     end
 
     uh_fast = @unithydro :uh_fast begin
@@ -113,10 +113,10 @@ end
             x4 => (0.5 * (t / x4)^2.5)
         end
         uh_vars = fastflow => fastflow_routed
-        hru_types = collect(1:NUM_TEST_NODES)
+        htypes = collect(1:NUM_TEST_NODES)
     end
 
-    # Define routing bucket with hru_types
+    # Define routing bucket with htypes
     routing_bucket = @hydrobucket begin
         fluxes = begin
             @hydroflux exch ~ x2 * abs(routingstore / x3)^3.5
@@ -126,7 +126,7 @@ end
         dfluxes = begin
             @stateflux routingstore ~ slowflow_routed + exch - routedflow
         end
-        hru_types = collect(1:NUM_TEST_NODES)
+        htypes = collect(1:NUM_TEST_NODES)
     end
 
     # Define complete model
@@ -168,7 +168,7 @@ end
     @variables norm_snw norm_slw norm_temp norm_prcp
 
     # Load data
-    df = DataFrame(CSV.File("../data/m50/01013500.csv"))
+    df = DataFrame(CSV.File(joinpath(dirname(dirname(@__DIR__)), "data", "m50", "01013500.csv")))
     ts = collect(1:10000)
     prcp_vec = df[ts, "Prcp"]
     temp_vec = df[ts, "Temp"]
@@ -180,7 +180,7 @@ end
     inputs = [prcp_vec, temp_vec, snowpack_vec, soilwater_vec]
     means, stds = mean.(inputs), std.(inputs)
 
-    # Define snow bucket with hru_types
+    # Define snow bucket with htypes
     snow_bucket = @hydrobucket :m50_snow begin
         fluxes = begin
             @hydroflux pet ~ 29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)
@@ -191,7 +191,7 @@ end
         dfluxes = begin
             @stateflux snowpack ~ snowfall - melt
         end
-        hru_types = collect(1:NUM_TEST_NODES)
+        htypes = collect(1:NUM_TEST_NODES)
     end
 
     # Define neural networks
@@ -211,7 +211,7 @@ end
     )
     q_nn_p = ComponentVector(LuxCore.initialparameters(StableRNG(42), q_nn))
 
-    # Define soil bucket with neural networks and hru_types
+    # Define soil bucket with neural networks and htypes
     soil_bucket = @hydrobucket :m50_soil begin
         fluxes = begin
             @hydroflux norm_snw ~ (snowpack - snowpack_mean) / snowpack_std
@@ -224,7 +224,7 @@ end
         dfluxes = begin
             @stateflux soilwater ~ rainfall + melt - step_func(soilwater) * lday * log_evap_div_lday - step_func(soilwater) * exp(log_flow)
         end
-        hru_types = collect(1:NUM_TEST_NODES)
+        htypes = collect(1:NUM_TEST_NODES)
     end
 
     # Define complete model

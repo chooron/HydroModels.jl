@@ -5,19 +5,19 @@ Modern hydrological modeling framework supporting both symbolic and functional m
 
 # Key Features
 - Type-stable configuration system
-- Fully compatible with Zygote automatic differentiation
+- Fully compatible with Zygote and Enzyme automatic differentiation
 - Flexible symbolic and functional modeling interfaces
-- Efficient computation without in-place modifications
-- Support for single-node and multi-node spatial simulations
+- Unified single-node (2D) and multi-node (3D) components via `htypes`
+- Pluggable interpolators (supports DataInterpolations.jl via extension)
 - Optimized ODE solvers
 
 # Core Components
-- `HydroFlux`: Flux calculation component
+- `HydroFlux`: Flux calculation component (2D/3D via htypes)
 - `StateFlux`: State derivative component
 - `NeuralFlux`: Neural network-driven flux component
-- `HydroBucket`: Hydrological bucket container
-- `NeuralBucket`: RNN-style neural bucket component
-- `HydroRoute`: Spatial routing component
+- `HydroBucket`: Hydrological bucket container (2D/3D via htypes)
+- `NeuralBucket`: Neural network-based bucket (RNN-style, embeds into HydroModel)
+- `HydroRoute`: Spatial routing component (multi-node only)
 - `UnitHydrograph`: Unit hydrograph convolution component
 - `HydroModel`: Complete hydrological model
 
@@ -53,34 +53,6 @@ end
 model = @hydromodel :my_model begin
     bucket
 end
-```
-
-# Functional Interface
-
-```julia
-# Define flux using pure Julia function
-flux_func = HydroFlux(
-    (inputs, params) -> [params.k * inputs[1]];
-    inputs=[:P],
-    outputs=[:Q],
-    params=[:k],
-    name=:simple_flux
-)
-```
-
-# Configuration System
-
-```julia
-# Create configuration
-config = HydroConfig(
-    solver=MutableSolver,
-    interpolator=Val(DirectInterpolation),
-    min_value=1e-6,
-    parallel=false
-)
-
-# Run model
-output = model(input, params, config)
 ```
 """
 module HydroModels
@@ -137,7 +109,7 @@ using HydroModelCore: AbstractModel
 using HydroModelCore: HydroInfos
 using HydroModelCore: get_var_names, get_input_names, get_output_names
 using HydroModelCore: get_state_names, get_param_names, get_nn_names
-using HydroModelCore: isparameter
+using HydroModelCore: isparameter, toparam
 using HydroModelCore: build_flux_func, build_bucket_func, build_route_func, build_uh_func
 
 # ============================================================================
@@ -145,7 +117,7 @@ using HydroModelCore: build_flux_func, build_bucket_func, build_route_func, buil
 # ============================================================================
 
 export @variables, @parameters
-export Num, tosymbol, get_variables, isparameter
+export Num, tosymbol, get_variables, isparameter, toparam
 
 # ============================================================================
 # Export Solver Types
@@ -157,15 +129,25 @@ export SolverType, MutableSolver, ImmutableSolver, ODESolver, DiscreteSolver
 # Module Includes
 # ============================================================================
 
+# Error types
+include("errors.jl")
+export HydroModelsError, ConfigurationError, DimensionMismatchError
+export MacroSyntaxError, ParameterError, VariableError
+
 # Configuration system
 include("config.jl")
 export HydroConfig, default_config, merge_config, normalize_config
 export get_config_value, ConfigType
 
-# Tool functions
-include("tools.jl")
-export DirectInterpolation, hydrointerp, hydrosolve
-export safe_clamp, safe_max
+# Interpolation
+include("interpolate.jl")
+export ConstantInterpolation, LinearInterpolation
+export DirectInterpolation, EnzymeInterpolation, EnzymeCompatibleInterpolation  # backward compat
+export hydrointerp
+
+# Solver and utilities
+include("solve.jl")
+export hydrosolve, safe_clamp, safe_max
 
 # Utility functions
 include("utils.jl")
@@ -176,18 +158,15 @@ export @hydroflux_for
 
 # Flux components
 include("flux.jl")
-export HydroFlux, StateFlux
-export @hydroflux, @stateflux
+# exports: HydroFlux, HydroMultiFlux (alias), StateFlux, @hydroflux, @hydromultiflux (deprecated), @stateflux
 
 # Neural network components
 include("nn.jl")
-export NeuralFlux, NeuralBucket # under test
-export @neuralflux
-export create_neural_bucket, create_simple_neural_bucket
+# exports: NeuralFlux, NeuralBucket, @neuralflux, create_neural_bucket, create_simple_neural_bucket
 
 # Bucket components
 include("bucket.jl")
-export HydroBucket, @hydrobucket
+# exports: HydroBucket, HydroMultiBucket (alias), @hydrobucket, @hydromultibucket (deprecated)
 
 # Routing components
 include("route.jl")
@@ -252,28 +231,113 @@ end
 export step_func, smoothlogistic_func
 
 # ============================================================================
+# YAML Extension Function Stubs
+# ============================================================================
+
+"""
+    load_model_from_yaml(yaml_file::String)
+
+Load a hydrological model from a YAML configuration file.
+
+This function is provided by the HydroModelsYAMLExt extension.
+To use it, you must first load the YAML package:
+
+```julia
+using HydroModels
+using YAML  # This triggers the extension
+
+model = load_model_from_yaml("model.yaml")
+```
+
+# Arguments
+- `yaml_file`: Path to YAML configuration file
+
+# Returns
+- HydroModel object
+"""
+function load_model_from_yaml end
+
+"""
+    load_config_from_yaml(yaml_file::String)
+
+Load configuration from a YAML file.
+
+This function is provided by the HydroModelsYAMLExt extension.
+To use it, you must first load the YAML package.
+
+# Arguments
+- `yaml_file`: Path to YAML configuration file
+
+# Returns
+- HydroConfig object
+"""
+function load_config_from_yaml end
+
+"""
+    load_parameters_from_yaml(yaml_file::String)
+
+Load parameter metadata from a YAML file.
+
+This function is provided by the HydroModelsYAMLExt extension.
+To use it, you must first load the YAML package.
+
+# Arguments
+- `yaml_file`: Path to YAML configuration file
+
+# Returns
+- Dictionary of parameter metadata
+"""
+function load_parameters_from_yaml end
+
+"""
+    execute_from_yaml(yaml_file::String; return_components::Bool=false)
+
+Execute a hydrological model from a YAML configuration file.
+
+This function is provided by the HydroModelsYAMLExt extension.
+To use it, you must first load the YAML package:
+
+```julia
+using HydroModels
+using YAML  # This triggers the extension
+
+# Execute model
+output = execute_from_yaml("model_config.yaml")
+
+# Or get all components
+output, model, config, data = execute_from_yaml("model_config.yaml", return_components=true)
+```
+
+# Arguments
+- `yaml_file`: Path to YAML configuration file
+- `return_components`: If true, return (output, model, config, data) tuple
+
+# Returns
+- Model output, or tuple of (output, model, config, data) if return_components=true
+"""
+function execute_from_yaml end
+
+# Export YAML functions (will be extended by HydroModelsYAMLExt)
+export load_model_from_yaml, load_config_from_yaml, load_parameters_from_yaml, execute_from_yaml
+
+# ============================================================================
 # Module Version Information
 # ============================================================================
 
 """
-Module version: v0.5.0
+Module version: v0.6.0
 
-# Major Updates
-- ✨ Complete refactoring with type-stable design
-- 🚀 100% Zygote automatic differentiation compatibility
-- 🎯 Support for both functional and symbolic interfaces
-- 📈 Significant performance improvements
-- 🧹 Removed redundant code
-- 📚 Improved documentation and type annotations
-
-# Backward Compatibility
-- ✅ All original computational interfaces preserved
-- ✅ NamedTuple configuration supported (auto-conversion)
-- ✅ Original macros and symbolic interfaces fully compatible
+# Major Updates (v0.6.0)
+- Unified HydroFlux/HydroMultiFlux into single HydroFlux (htypes dispatch)
+- Unified HydroBucket/HydroMultiBucket into single HydroBucket (htypes dispatch)
+- Redesigned NeuralBucket to implement AbstractHydroBucket (embeds into HydroModel)
+- Unified UnitHydrograph htypes pattern
+- Added DataInterpolations.jl extension for pluggable interpolators
+- Backward-compatible aliases: HydroMultiFlux, HydroMultiBucket, @hydromultiflux, @hydromultibucket
 
 # Julia Version Requirements
 - Julia >= 1.10 (recommended 1.12+)
 """
-const HYDROMODELS_VERSION = v"0.5.0"
+const HYDROMODELS_VERSION = v"0.6.0"
 
 end # module HydroModels

@@ -89,7 +89,7 @@ end
 # Create configuration
 config = HydroConfig(
     solver = ImmutableSolver,
-    interpolator = Val(DirectInterpolation),
+    interpolator = Val(ConstantInterpolation),
     timeidx = 1:1000,
     min_value = 1e-6
 )
@@ -97,6 +97,42 @@ config = HydroConfig(
 # Run model
 output = model(input, params, config; initstates = states)
 ```
+
+### Interpolation Methods
+
+HydroModels.jl provides two built-in interpolation methods for handling input data between timesteps:
+
+#### ConstantInterpolation (Default)
+
+**Algorithm:** Ceiling-indexed constant interpolation - uses the value at the next timestep.
+
+**Best for:**
+- Daily timestep data
+- Step-function forcing (e.g., daily rainfall)
+- Maximum performance requirements
+- Data representing period averages
+
+**Example:**
+```julia
+config = HydroConfig(interpolator = Val(ConstantInterpolation))
+```
+
+#### LinearInterpolation
+
+**Algorithm:** Linear interpolation between adjacent data points.
+
+**Best for:**
+- Sub-daily timesteps (hourly, 3-hourly)
+- Smooth forcing transitions
+- Higher accuracy requirements
+- Data representing instantaneous measurements
+
+**Example:**
+```julia
+config = HydroConfig(interpolator = Val(LinearInterpolation))
+```
+
+**Note:** Both methods are fully compatible with automatic differentiation (Enzyme/Zygote). For advanced interpolation methods, see the [Interpolation Methods Guide](tutorials/interpolation_guide.md).
 
 ### Performance Benefits
 

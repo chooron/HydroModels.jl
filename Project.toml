@@ -1,10 +1,12 @@
 name = "HydroModels"
 uuid = "7e3cde01-c141-467b-bff6-5350a0af19fc"
-version = "0.5.1"
+version = "0.6.0"
 authors = ["jingx <50790703+chooron@users.noreply.github.com>"]
 
 [deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
 Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
 HydroModelCore = "57609f06-44cb-4626-8f6d-47ea844d0af1"
@@ -16,19 +18,27 @@ Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
 TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
 
 [weakdeps]
 BasicModelInterface = "59605e27-edc0-445a-b93d-c09a3a50b330"
+DataInterpolations = "82cc6244-b520-54b8-b369-a6b68bce1da4"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+NCDatasets = "85f8d34a-cbdd-5861-8df4-14fed0d494ab"
 Optimization = "7f7a1694-90dd-40f0-9382-eb1efda571ba"
 OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
+Rasters = "a3a2b9e3-a471-40c9-b274-f62e811dbef5"
 SciMLBase = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
 SciMLSensitivity = "1ed8b502-d754-442c-8d5d-10ac956f44a1"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
 [extensions]
 HydroModelsBMIExt = ["BasicModelInterface", "Dates"]
+HydroModelsDataInterpolationsExt = "DataInterpolations"
 HydroModelsOptimizationExt = ["Optimization", "SciMLBase", "ComponentArrays"]
 HydroModelsOrdinaryDiffEqExt = ["SciMLBase", "OrdinaryDiffEq", "SciMLSensitivity"]
+HydroModelsRastersExt = ["Rasters", "NCDatasets", "Statistics"]
+HydroModelsYAMLExt = ["YAML", "CSV", "DataFrames"]
 
 [compat]
 Aqua = "0.8"
@@ -36,25 +46,29 @@ BasicModelInterface = "0.1"
 CSV = "0.10"
 ComponentArrays = "0.15"
 DataFrames = "1"
+DataInterpolations = "7"
 Dates = "1"
 DocStringExtensions = "0.9"
 Graphs = "1"
 HydroModelCore = "0.3.1"
 Lux = "1"
 LuxCore = "1"
+NCDatasets = "0.14"
 NNlib = "0.9"
 Optimization = "4, 5"
 OrdinaryDiffEq = "6"
 Random = "1"
+Rasters = "0.11"
 Reexport = "1"
 SciMLBase = "2"
 SciMLSensitivity = "7"
 SpecialFunctions = "2"
 StableRNGs = "1"
 Statistics = "1"
-Symbolics = "6,7"
+Symbolics = "7"
 TOML = "1"
 Test = "1"
+YAML = "0.4"
 julia = "1"
 
 [extras]
@@ -64,6 +78,7 @@ DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
 
 [targets]
-test = ["Test", "Aqua", "CSV", "DataFrames", "Statistics", "StableRNGs"]
+test = ["Test", "Aqua", "CSV", "DataFrames", "Statistics", "StableRNGs", "YAML"]

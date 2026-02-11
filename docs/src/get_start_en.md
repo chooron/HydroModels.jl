@@ -316,7 +316,7 @@ config = HydroConfig(
     # Solver type: MutableSolver, ImmutableSolver, ODESolver, or DiscreteSolver
     solver = MutableSolver,
     # Interpolation method (wrapped in Val for type stability)
-    interpolator = Val(DirectInterpolation),
+    interpolator = Val(ConstantInterpolation),
     # Time indices for simulation
     timeidx = ts,
     # Device function (e.g., for GPU acceleration)
@@ -336,12 +336,18 @@ The configuration includes:
   - `ODESolver`: For use with DifferentialEquations.jl solvers
   - `DiscreteSolver`: For pure algebraic equations
 - `interpolator`: Method for interpolating input data, wrapped in `Val` for type stability
-  - `DirectInterpolation`: Simple indexing (fastest, recommended)
-  - Can use other interpolators from DataInterpolations.jl
+  - `ConstantInterpolation`: Ceiling-indexed constant interpolation (fastest, recommended for daily data)
+  - `LinearInterpolation`: Linear interpolation between points (better for sub-daily data)
+  - Can also use advanced interpolators from DataInterpolations.jl extension
 - `timeidx`: Time indices for the simulation period
 - `device`: Device function (default `identity`, can be changed for GPU)
 - `min_value`: Minimum value threshold to ensure numerical stability
 - `parallel`: Whether to enable parallel computation
+
+**Choosing an Interpolation Method:**
+- Use `ConstantInterpolation` (default) for daily timestep data or when maximum performance is needed
+- Use `LinearInterpolation` for sub-daily timesteps or when smooth transitions are important
+- See the [Interpolation Methods Guide](tutorials/interpolation_guide.md) for detailed comparison
 
 ### Run Model
 

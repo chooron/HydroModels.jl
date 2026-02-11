@@ -113,6 +113,30 @@ function _prepare_indices(
 end
 
 """
+    _extract_component_states(initstates, comp_state_names, model_state_names, num_nodes)
+
+Extract component-level initial states from model-level initstates for multi-node (3D) computation.
+
+For ComponentVector (named), indexes by Symbol names directly.
+For plain Vector (multi-node flat layout), extracts by positional index.
+The flat vector layout is: [n1_s1, n2_s1, ..., nN_s1, n1_s2, ..., nN_s2, ...]
+where each state variable occupies a contiguous block of `num_nodes` elements.
+"""
+function _extract_component_states(initstates::ComponentVector, comp_state_names, model_state_names, num_nodes)
+    return initstates[comp_state_names]
+end
+
+function _extract_component_states(initstates::AbstractVector, comp_state_names, model_state_names, num_nodes)
+    indices = Int[]
+    for sname in comp_state_names
+        global_idx = findfirst(==(sname), model_state_names)
+        isnothing(global_idx) && error("State $sname not found in model states")
+        append!(indices, ((global_idx - 1) * num_nodes + 1):(global_idx * num_nodes))
+    end
+    return initstates[indices]
+end
+
+"""
     @hydromodel [name] begin ... end
 
 Macro to conveniently create a HydroModel from a sequence of components.
@@ -151,7 +175,7 @@ Common kwargs include `initstates` and `config` (for component-specific settings
 
 # Arguments
 - `input`: Input array with dimensions (variables, timesteps) or (variables, nodes, timesteps)
-- `params`: ComponentVector of parameters
+- `params`: Parameter vector (ComponentVector or AbstractVector)
 - `config`: Configuration object or configuration tuple (for multi-component)
 - `kwargs`: Additional keyword arguments
 
@@ -160,10 +184,11 @@ Common kwargs include `initstates` and `config` (for component-specific settings
 """
 function (model::HydroModel)(
     input::AbstractArray{T,D},
-    params::ComponentVector,
+    params::AbstractVector,
     config::Union{ConfigType,Tuple}=default_config();
     kwargs...
 ) where {T,D}
+    params = _as_componentvector(params)
     # Normalize configuration
     comp_configs = if config isa Tuple || config isa NamedTuple{(:components,)}
         # Multi-component configuration
@@ -225,10 +250,11 @@ end
 # Specialized version for 2D input
 function (model::HydroModel)(
     input::AbstractArray{T,2},
-    params::ComponentVector,
+    params::AbstractVector,
     config::Union{ConfigType,Tuple}=default_config();
     kwargs...
 ) where {T}
+    params = _as_componentvector(params)
     # Normalize configuration
     comp_configs = if config isa Tuple
         length(config) == length(model.components) || 
@@ -264,39 +290,46 @@ end
 # Specialized version for 3D input
 function (model::HydroModel)(
     input::AbstractArray{T,3},
-    params::ComponentVector,
+    params::AbstractVector,
     config::Union{ConfigType,Tuple}=default_config();
     kwargs...
 ) where {T}
+    params = _as_componentvector(params)
     # Normalize configuration
     comp_configs = if config isa Tuple
-        length(config) == length(model.components) || 
+        length(config) == length(model.components) ||
             error("Component configs length must equal components length")
         map(normalize_config, config)
     else
         ntuple(_ -> normalize_config(config), length(model.components))
     end
-    
+
     @assert size(input, 1) == length(get_input_names(model)) "Input variables length mismatch"
-    
-    initstates = get(kwargs, :initstates, model._defaultstates)
+
+    num_nodes = size(input, 2)
+    initstates_raw = get(kwargs, :initstates, model._defaultstates)
+    model_state_names = get_state_names(model)
     outputs = input
-    
+
     for (idx_, comp_, config_) in zip(model._varindices, model.components, comp_configs)
         tmp_input = @view outputs[idx_, :, :]
-        
+
         comp_state_names = get_state_names(comp_)
-        comp_initstates = !isempty(comp_state_names) ? initstates[comp_state_names] : nothing
-        
+        comp_initstates = if !isempty(comp_state_names)
+            _extract_component_states(initstates_raw, comp_state_names, model_state_names, num_nodes)
+        else
+            nothing
+        end
+
         tmp_output = if !isnothing(comp_initstates)
             comp_(tmp_input, params, config_; initstates=comp_initstates)
         else
             comp_(tmp_input, params, config_)
         end
-        
+
         outputs = vcat(outputs, tmp_output)
     end
-    
+
     return @view outputs[model._outputindices, :, :]
 end
 

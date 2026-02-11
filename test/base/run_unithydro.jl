@@ -18,7 +18,7 @@
         uh_func = begin
             lag => (t / lag)^2.5
         end
-        hru_types = collect(1:10)
+        htypes = collect(1:10)
     end
 
     @testset "UH interface" begin
@@ -82,7 +82,7 @@ end
     end
 end
 
-@testset "Unit hydrograph with hru_types" begin
+@testset "Unit hydrograph with htypes" begin
     @variables q q_lag t
     @parameters lag
 
@@ -92,7 +92,7 @@ end
             lag => (t / lag)^2.5
         end
         uh_vars = q => q_lag
-        hru_types = [1, 1, 2, 2, 2, 3, 3, 3, 3, 3]  # 3 parameter types for 10 nodes
+        htypes = [1, 1, 2, 2, 2, 3, 3, 3, 3, 3]  # 3 parameter types for 10 nodes
     end
 
     @testset "Multi-node with shared parameters" begin

@@ -28,7 +28,7 @@ end
     @parameters p1 p2
     simple_flux_1 = @hydroflux begin
         c ~ a * p1 + b * p2
-        hru_types = collect(1:10)
+        htypes = collect(1:10)
     end
     @test Set(HydroModels.get_input_names(simple_flux_1)) == Set([:a, :b])
     @test Set(HydroModels.get_param_names(simple_flux_1)) == Set([:p1, :p2])
@@ -47,7 +47,7 @@ end
     simple_flux_1 = @hydroflux begin
         c ~ a * p1 + b * p2
         d ~ a + p1 + b + p2
-        hru_types = collect(1:10)
+        htypes = collect(1:10)
     end
     @test Set(HydroModels.get_input_names(simple_flux_1)) == Set([:a, :b])
     @test Set(HydroModels.get_param_names(simple_flux_1)) == Set([:p1, :p2])

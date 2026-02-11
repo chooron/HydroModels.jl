@@ -18,7 +18,7 @@
             @stateflux s_river ~ q - q_routed
         end
         aggr_func = HydroModels.build_aggr_func(flwdir, positions)
-        hru_types = [1, 1, 1, 2, 2, 2, 3, 3, 3]
+        htypes = [1, 1, 1, 2, 2, 2, 3, 3, 3]
     end
 
     @testset "Route interface" begin
@@ -82,7 +82,7 @@ end
             @stateflux s_river ~ q - q_routed
         end
         aggr_func = HydroModels.build_aggr_func(network)
-        hru_types = [1, 1, 1, 2, 2, 2, 3, 3, 3]
+        htypes = [1, 1, 1, 2, 2, 2, 3, 3, 3]
     end
 
     @testset "Route interface" begin
@@ -126,7 +126,7 @@ end
                 @stateflux s_river ~ q - q_routed
             end
             aggr_func = HydroModels.build_aggr_func(simple_network)
-            hru_types = [1, 1, 1]
+            htypes = [1, 1, 1]
         end
         
         # Input: constant flow at each node
@@ -160,7 +160,7 @@ end
             @stateflux s_river ~ q_gen - q_routed
         end
         aggr_func = HydroModels.build_aggr_func(network)
-        hru_types = collect(1:3)
+        htypes = collect(1:3)
     end
     
     @testset "Route with generated flow" begin

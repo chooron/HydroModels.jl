@@ -29,8 +29,10 @@ makedocs(
     pages = [
         "Home" => "index.md",
         "Get Started with HydroModels.jl" => "get_start_en.md",
+        "Migration Guide" => "migration_guide_v06.md",
         "tutorials" => [
             "Framework Design" => "tutorials/framework_design.md",
+            "Interpolation Methods" => "tutorials/interpolation_guide.md",
             "Neural Network Embedding" => "tutorials/neuralnetwork_embeding.md",
             "Distribute Modeling" => "tutorials/distribute_modeling.md",
             "Optimal Parameters" => "tutorials/optimimal_parameters.md"

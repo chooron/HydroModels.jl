@@ -95,40 +95,40 @@ end
 
 Construct an `ODEProblem` from a `HydroBucket` and input data.
 
-This function serves as a factory to conveniently create an `ODEProblem` by bundling
-a hydrological model (`HydroBucket`), its input forcings, and simulation settings.
-It also automatically sets up a `SavingCallback` to record the output of the bucket's `flux_func`.
-
 # Arguments
 - `bucket`: A `HydroBucket` instance containing the model's ODE and flux functions.
 - `input`: A 2D array of input data (forcings), where rows are variables and columns are time steps.
 
 # Keyword Arguments
-- `interpolator`: The interpolation method for the input data (defaults to `Val(LinearInterpolation)`).
-- `timeidx`: A vector of time points corresponding to the columns of `input` (defaults to `1:size(input, 2)`).
-- `initstates`: The initial states of the model (defaults to a zero vector).
+- `params`: Parameter vector for the model.
+- `interpolator`: The interpolation method (defaults to `Val(ConstantInterpolation)`).
+- `timeidx`: Time points corresponding to columns of `input` (defaults to `1:size(input, 2)`).
+- `initstates`: Initial states (defaults to zero vector).
 
 # Returns
-- A `Tuple{ODEProblem, SavedValues}` containing the configured problem and the callback object for retrieving saved flux values.
+- A `Tuple{ODEProblem, SavedValues}` containing the configured problem and callback for saved flux values.
 """
 function SciMLBase.ODEProblem(bucket::HydroModels.HydroBucket, input::AbstractArray{T,2}; kwargs...) where T
-    # todo 目前Enzyme.jl对于DE.jl+DataInterpolations.jl的组合支持仍不够理想(),因此这部分的开发需要暂缓
+    # TODO: Enzyme.jl support for DE.jl+DataInterpolations.jl is not yet mature
 
-    interp = get(kwargs, :interpolator, Val(LinearInterpolation))
+    params = get(kwargs, :params, nothing)
+    isnothing(params) && error("params keyword argument is required")
+
+    interp = get(kwargs, :interpolator, Val(HydroModels.ConstantInterpolation))
     timeidx = get(kwargs, :timeidx, collect(1:size(input, 2)))
-    initstates = get(kwargs, :initstates, zeros(eltype(params), length(get_state_names(bucket))))
+    initstates = get(kwargs, :initstates, zeros(T, length(HydroModels.get_state_names(bucket))))
     itpfuncs = HydroModels.hydrointerp(interp, input, timeidx)
 
     function ode_func!(du, u, p, t)
         du[:] = bucket.ode_func(itpfuncs(t), u, p)
     end
 
-    function cb_func(u, t, integrator)
-        bucket_1.flux_func(itpfunc(t), u, integrator.p)
-    end
-    saved_values = SavedValues(eltype(pas), Vector{Vector{eltype(pas)}}) # Vector{Vector{eltype(pas)}}
-    cb = SavingCallback((u, t, integrator) -> bucket_1.flux_func(itpfunc(t), u, integrator.p), saved_values)
-    prob = ODEProblem{true}(ode_func!, initstates, (timeidx[1], timeidx[end]), callback=cb)
+    saved_values = SavedValues(T, Vector{Vector{T}})
+    cb = SavingCallback(
+        (u, t, integrator) -> bucket.flux_func(itpfuncs(t), u, integrator.p),
+        saved_values
+    )
+    prob = ODEProblem{true}(ode_func!, initstates, (timeidx[1], timeidx[end]), params; callback=cb)
     return prob, saved_values
 end
 

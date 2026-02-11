@@ -56,22 +56,24 @@ output = bucket(input_data, params, config)
 
 See the [Getting Started Guide](get_start_en.md) for a complete tutorial.
 
-## New in Version 2.0
+## New in Version 0.6.0
 
+- ✅ **Clearer Interpolation Names**: `ConstantInterpolation` and `LinearInterpolation` replace confusing old names
 - ✅ **Type-Stable Configuration System**: New `HydroConfig` replaces NamedTuple
 - ✅ **Simplified Solver Types**: `MutableSolver`, `ImmutableSolver`, `ODESolver`, `DiscreteSolver`
 - ✅ **Enhanced Performance**: 5-10% speed improvement, better memory efficiency
 - ✅ **Improved Zygote Support**: Score improved from 8.5/10 to 9.5/10
 - ✅ **Functional Construction**: Build fluxes with pure Julia functions
 - ✅ **Better Error Messages**: Clear validation and helpful error reporting
+- ✅ **Consistent Terminology**: `htypes` for multi-node modeling
 
-See [Configuration Migration Guide](CONFIGURATION_MIGRATION_GUIDE.md) for upgrading from v1.x.
+See [Migration Guide](migration_guide_v06.md) for upgrading from v0.5.x.
 
 ## Important Notes
 
 - If you find any issues, please post them in the [issues](https://github.com/chooron/HydroModels.jl/issues) section
 - Check out our [executable examples](../notebook/) in the notebook folder
-- For migration from older versions, see [Configuration Migration Guide](CONFIGURATION_MIGRATION_GUIDE.md)
+- For migration from v0.5.x, see [Migration Guide](migration_guide_v06.md)
 
 ## Contributing
 

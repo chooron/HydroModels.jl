@@ -38,7 +38,7 @@ discharge_route = @hydroroute :exphydro_routed begin
     dfluxes = begin
         @stateflux s_river ~ q - q_routed
     end
-    hru_types = collect(1:9)  # 9 nodes
+    htypes = collect(1:9)  # 9 nodes
     aggr_func = HydroModels.build_aggr_func(network)
 end
 ```
@@ -139,16 +139,16 @@ config = HydroConfig(
 )
 ```
 
-#### Parameter Type Index (hru_types)
+#### Parameter Type Index (htypes)
 
-In distributed hydrological models, some computational units have highly similar natural attributes, so it's reasonable to share parameters. This is achieved using `hru_types` during bucket/route construction:
+In distributed hydrological models, some computational units have highly similar natural attributes, so it's reasonable to share parameters. This is achieved using `htypes` during bucket/route construction:
 
 ```julia
 # Define parameter types for each node
 # Suppose we have 10 nodes falling into 4 terrain types
-hru_types = [1, 1, 1, 2, 2, 2, 3, 3, 3, 4]
+htypes = [1, 1, 1, 2, 2, 2, 3, 3, 3, 4]
 
-# Define bucket with hru_types
+# Define bucket with htypes
 snow_bucket = @hydrobucket :snow begin
     fluxes = begin
         @hydroflux pet ~ 29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)
@@ -157,7 +157,7 @@ snow_bucket = @hydrobucket :snow begin
     dfluxes = begin
         @stateflux snowpack ~ snowfall - melt
     end
-    hru_types = [1, 1, 1, 2, 2, 2, 3, 3, 3, 4]  # Specify node types
+    htypes = [1, 1, 1, 2, 2, 2, 3, 3, 3, 4]  # Specify node types
 end
 ```
 
@@ -174,9 +174,9 @@ params = ComponentVector(
 )
 ```
 
-The framework automatically expands parameters based on `hru_types` during computation:
+The framework automatically expands parameters based on `htypes` during computation:
 ```julia
-# Internally expands: Df[hru_types] = [2.5, 2.5, 2.5, 3.0, 3.0, 3.0, 2.0, 2.0, 2.0, 2.8]
+# Internally expands: Df[htypes] = [2.5, 2.5, 2.5, 3.0, 3.0, 3.0, 2.0, 2.0, 2.0, 2.8]
 ```
 
 This significantly reduces the number of parameters to calibrate while maintaining spatial heterogeneity.
@@ -259,6 +259,6 @@ results = hbv_distributed(
 )
 ```
 
-> **Note**: The `hru_types` parameter is now specified during model construction (in the bucket definition), not at runtime. This allows for better type stability and compiler optimization.
+> **Note**: The `htypes` parameter is now specified during model construction (in the bucket definition), not at runtime. This allows for better type stability and compiler optimization.
 
 This example demonstrates how HydroModels.jl can efficiently handle multi-node hydrological modeling with parameter sharing across similar terrain types, significantly reducing the number of parameters that need to be calibrated while maintaining the spatial heterogeneity of the watershed.

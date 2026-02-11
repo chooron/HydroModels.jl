@@ -4,7 +4,7 @@
 @parameters Tmin Tmax Df Smax f Qmax area_coef lag
 @variables prcp temp lday pet snowpack soilwater rainfall snowfall evap melt baseflow surfaceflow flow q q_routed s_river
 
-# Define base buckets with hru_types for spatial use
+# Define base buckets with htypes for spatial use
 const NUM_SPATIAL_NODES = 9
 
 snow_bucket = @hydrobucket :surface begin
@@ -19,7 +19,7 @@ snow_bucket = @hydrobucket :surface begin
     dfluxes = begin
         @stateflux snowpack ~ snowfall - melt
     end
-    hru_types = collect(1:NUM_SPATIAL_NODES)
+    htypes = collect(1:NUM_SPATIAL_NODES)
 end
 
 soil_bucket = @hydrobucket :soil begin
@@ -32,13 +32,13 @@ soil_bucket = @hydrobucket :soil begin
     dfluxes = begin
         @stateflux soilwater ~ (rainfall + melt) - (evap + flow)
     end
-    hru_types = collect(1:NUM_SPATIAL_NODES)
+    htypes = collect(1:NUM_SPATIAL_NODES)
 end
 
 # Convert flow to discharge
 convert_flux = @hydroflux begin
     q ~ flow * area_coef
-    hru_types = collect(1:NUM_SPATIAL_NODES)
+    htypes = collect(1:NUM_SPATIAL_NODES)
 end
 
 @testset "Grid-based spatial routing model" begin
@@ -55,7 +55,7 @@ end
             @stateflux s_river ~ q - q_routed
         end
         aggr_func = HydroModels.build_aggr_func(flwdir, positions)
-        hru_types = collect(1:NUM_SPATIAL_NODES)
+        htypes = collect(1:NUM_SPATIAL_NODES)
     end
 
     # Define complete model
@@ -162,7 +162,7 @@ end
             @stateflux s_river ~ q - q_routed
         end
         aggr_func = HydroModels.build_aggr_func(network)
-        hru_types = collect(1:NUM_SPATIAL_NODES)
+        htypes = collect(1:NUM_SPATIAL_NODES)
     end
 
     # Define complete model
@@ -265,7 +265,7 @@ end
             @stateflux s_river ~ q - q_routed
         end
         aggr_func = HydroModels.build_aggr_func(network)
-        hru_types = collect(1:NUM_SPATIAL_NODES)
+        htypes = collect(1:NUM_SPATIAL_NODES)
     end
 
     spatial_model = @hydromodel :spatial_test begin

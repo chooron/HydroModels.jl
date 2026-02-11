@@ -36,6 +36,10 @@ include("test_helpers.jl")
         include("base/run_multi_lumped.jl")
         include("base/run_spatial_model.jl")
     end
+
+    @testset "YAML Model Loading" begin
+        include("base/run_yaml_model.jl")
+    end
 end
 
 # @testset "test cuda support" begin

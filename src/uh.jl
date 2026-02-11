@@ -1,30 +1,32 @@
 """
-Unit Hydrograph module - defines unit hydrograph routing components, supporting both symbolic and functional construction approaches.
+Unit Hydrograph module - defines unit hydrograph routing components using convolution.
 """
 
 """
-    UnitHydrograph{MS, UF, MF, HT, NT} <: AbstractHydrograph
+    UnitHydrograph{UF, MF, HT, NT} <: AbstractHydrograph
 
-Represents a Unit Hydrograph routing component for convolution.
+Represents a Unit Hydrograph routing component using convolution.
+
+When `htypes` is `nothing`, this is a single-node component that accepts 2D input.
+When `htypes` is a `Vector{Int}`, this is a multi-node component that accepts 3D input.
 
 $(FIELDS)
 
 # Type Parameters
-- `MS`: Whether in multi-node mode
 - `UF`: UH function type
 - `MF`: Maximum lag function type
-- `HT`: HRU type vector type
+- `HT`: HRU type (`Nothing` for 2D, `Vector{Int}` for 3D)
 - `NT`: Metadata type
 """
-struct UnitHydrograph{MS,UF,MF,HT,NT} <: AbstractHydrograph
+struct UnitHydrograph{UF,MF,HT,NT} <: AbstractHydrograph
     "unit hydrograph name"
     name::Symbol
     "calculate weight of unit hydrograph"
     uh_func::UF
     "calculate the max lag of the unit hydrograph"
     max_lag::MF
-    "nodes type"
-    hru_types::HT
+    "HRU type indices (Nothing = single-node 2D, Vector{Int} = multi-node 3D)"
+    htypes::HT
     "A named tuple containing information about inputs, outputs, parameters, and states"
     infos::NT
 
@@ -36,7 +38,7 @@ struct UnitHydrograph{MS,UF,MF,HT,NT} <: AbstractHydrograph
         uh_func::Function,
         max_lag_func::Function;
         name::Optional{Symbol}=nothing,
-        hru_types::Vector{Int}=Int[],
+        htypes::Optional{Vector{Int}}=nothing,
         kwargs...
     )
         infos = HydroInfos(
@@ -46,8 +48,8 @@ struct UnitHydrograph{MS,UF,MF,HT,NT} <: AbstractHydrograph
         )
         uh_name = isnothing(name) ? Symbol("##uh#", hash(infos)) : name
 
-        return new{length(hru_types) > 1,typeof(uh_func),typeof(max_lag_func),typeof(hru_types),typeof(infos)}(
-            uh_name, uh_func, max_lag_func, hru_types, infos
+        return new{typeof(uh_func),typeof(max_lag_func),typeof(htypes),typeof(infos)}(
+            uh_name, uh_func, max_lag_func, htypes, infos
         )
     end
 
@@ -61,7 +63,11 @@ struct UnitHydrograph{MS,UF,MF,HT,NT} <: AbstractHydrograph
         kwargs...
     )
         max_lag = get(kwargs, :max_lag, uh_conds[1][1])
-        hru_types = get(kwargs, :hru_types, Int[])
+        htypes = get(kwargs, :htypes, nothing)
+        # Support old-style Vector{Int} htypes (convert empty to nothing)
+        if htypes isa Vector{Int} && isempty(htypes)
+            htypes = nothing
+        end
         param_names = !isempty(params) ? tosymbol.(Num.(params)) : Symbol[]
 
         uh_func, max_lag_func = build_uh_func(uh_conds, param_names, max_lag)
@@ -75,11 +81,15 @@ struct UnitHydrograph{MS,UF,MF,HT,NT} <: AbstractHydrograph
         )
         uh_name = isnothing(name) ? Symbol("##uh#", hash(infos)) : name
 
-        return new{length(hru_types) > 1,typeof(uh_func),typeof(max_lag_func),typeof(hru_types),typeof(infos)}(
-            uh_name, uh_func, max_lag_func, hru_types, infos
+        return new{typeof(uh_func),typeof(max_lag_func),typeof(htypes),typeof(infos)}(
+            uh_name, uh_func, max_lag_func, htypes, infos
         )
     end
 end
+
+# ============================================================================
+# @unithydro macro
+# ============================================================================
 
 """
     @unithydro [name] begin ... end
@@ -87,30 +97,16 @@ end
 Macro to simplify the construction of a UnitHydrograph.
 
 # Usage
-The macro takes an optional name and a begin...end block that defines the hydrograph.
-In the `uh_func` block, `t` is a special variable representing time, and other variables are treated as parameters.
-
-```jldoctest
-julia> @variables P, Q, lag  # Define symbolic variables
-julia> @unithydro :my_uh begin
-           uh_func = begin
-               # Piecewise UH definition: max_time => expression
-               lag => 0.5 * (t / lag)^2.5
-               2lag => 1.0 - 0.5 * abs(2 - t / lag)^2.5
-           end
-           uh_vars = P => Q  # Defines input => output variables
-       end
+```julia
+@variables P, Q, lag
+@unithydro :my_uh begin
+    uh_func = begin
+        lag => 0.5 * (t / lag)^2.5
+        2lag => 1.0 - 0.5 * abs(2 - t / lag)^2.5
+    end
+    uh_vars = P => Q
+end
 ```
-
-# Arguments
-- `name`: (Optional) A Symbol for the name of the UnitHydrograph.
-- The begin...end block must contain:
-    - `uh_func`: A block of max_time => expression pairs defining the piecewise unit hydrograph. The variable `t` can be used to represent time.
-    - `uh_vars`: A Pair of input_variable => output_variable.
-- Other assignments in the block are passed as keyword arguments to the UnitHydrograph constructor.
-
-# Returns
-- An instance of UnitHydrograph.
 """
 macro unithydro(args...)
     name = length(args) == 1 ? nothing : args[1]
@@ -179,6 +175,15 @@ macro unithydro(args...)
     end)
 end
 
+# ============================================================================
+# Convolution computation
+# ============================================================================
+
+"""
+    hydro_conv(weights, input)
+
+Efficient unit hydrograph convolution using NNlib.conv.
+"""
 function hydro_conv(weights::Vector{T}, input::Vector{T}) where T
     weights = weights / sum(weights)
     K = length(weights)
@@ -196,38 +201,34 @@ function hydro_conv(weights::Vector{T}, input::Vector{T}) where T
     return output
 end
 
-"""
-    (uh::UnitHydrograph)(input, params, config; kwargs...)
+# ============================================================================
+# Functor methods
+# ============================================================================
 
-Apply the unit hydrograph convolution to an input time series. This is the functor implementation for UnitHydrograph.
-
-This method is dispatched based on the dimensionality of the input array and the MS type parameter 
-of the struct, which indicates if it's a multi-node setup.
-
-- **2D Input:** Performs convolution for a single location.
-- **3D Input:** Performs convolution for multiple locations (nodes). It iterates over the nodes and applies the 2D method for each.
-
-A method for 1D AbstractVector input is defined to throw an error, as single time points are not supported.
-"""
-function (uh::UnitHydrograph)(
+# 2D computation (single-node, htypes = Nothing)
+function (uh::UnitHydrograph{UF,MF,Nothing,NT})(
     input::AbstractArray{T,2},
-    params::ComponentVector,
+    params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...
-)::AbstractArray{T,2} where {T}
-    # Compute UH weights (avoiding in-place modification)
+)::AbstractArray{T,2} where {UF,MF,NT,T}
+    params = _as_componentvector(params)
+    # Compute UH weights (Zygote-compatible)
     max_lag_val = uh.max_lag(params)
     lag_weights = [uh.uh_func(t, params) for t in 1:max_lag_val]
 
-    # Compute difference weights
     uh_weight = if isempty(lag_weights)
         T[]
     else
-        shifted = circshift(lag_weights, -1)
-        vcat([lag_weights[1]], (shifted.-lag_weights)[1:end-1])
+        n = length(lag_weights)
+        weights = similar(lag_weights)
+        weights[1] = lag_weights[1]
+        for i in 2:n
+            weights[i] = lag_weights[i] - lag_weights[i-1]
+        end
+        weights
     end
 
-    # If no weights, return input directly
     if length(uh_weight) == 0
         return input
     end
@@ -235,14 +236,15 @@ function (uh::UnitHydrograph)(
     return reshape(uh_out, 1, :)
 end
 
-# Multi-node UH
-function (uh::UnitHydrograph{true})(
+# 3D computation (multi-node, htypes = Vector{Int})
+function (uh::UnitHydrograph{UF,MF,Vector{Int},NT})(
     input::AbstractArray{T,3},
-    params::ComponentVector,
+    params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...
-)::AbstractArray{T,3} where {T}
-    ptyidx = uh.hru_types
+)::AbstractArray{T,3} where {UF,MF,NT,T}
+    params = _as_componentvector(params)
+    ptyidx = uh.htypes
     uh_param_names = get_param_names(uh)
 
     # Extract parameters for each node
@@ -255,14 +257,44 @@ function (uh::UnitHydrograph{true})(
         ComponentVector(params=NamedTuple{Tuple(uh_param_names)}(params_matrix[idx, :]))
     end
 
-    # Apply UH to each node
+    # Apply UH to each node (using 2D method)
     node_sols = map(1:size(input, 2)) do i
-        uh(input[:, i, :], extract_params_cv[i], config)
+        uh_2d = UnitHydrograph(
+            collect(get_input_names(uh)),
+            collect(get_output_names(uh)),
+            collect(get_param_names(uh)),
+            uh.uh_func, uh.max_lag;
+            name=uh.name
+        )
+        uh_2d(input[:, i, :], extract_params_cv[i], config)
     end
 
-    # Stack results efficiently (O(n) instead of O(n²))
-    sol_mat = cat(node_sols..., dims=1)  # Splatting is more efficient than reduce
-    reshape(sol_mat, 1, size(input)[2], size(input)[3])
+    sol_mat = cat(node_sols..., dims=1)
+    reshape(sol_mat, 1, size(input, 2), size(input, 3))
+end
+
+# Error: single-node UH receiving 3D input
+function (uh::UnitHydrograph{UF,MF,Nothing,NT})(
+    input::AbstractArray{T,3},
+    params::AbstractVector,
+    config::ConfigType=default_config();
+    kwargs...
+) where {UF,MF,NT,T}
+    error("UnitHydrograph without htypes only accepts 2D input (variables × time).\n" *
+          "For multi-node computation, provide htypes.\n" *
+          "Got input shape: $(size(input))")
+end
+
+# Error: multi-node UH receiving 2D input
+function (uh::UnitHydrograph{UF,MF,Vector{Int},NT})(
+    input::AbstractArray{T,2},
+    params::AbstractVector,
+    config::ConfigType=default_config();
+    kwargs...
+) where {UF,MF,NT,T}
+    error("UnitHydrograph with htypes only accepts 3D input (variables × nodes × time).\n" *
+          "For single-node computation, omit htypes.\n" *
+          "Got input shape: $(size(input))")
 end
 
 # Export interfaces

@@ -19,7 +19,7 @@ Type-stable hydrological model configuration for better performance and type sta
 ```jldoctest
 julia> config = HydroConfig(
            solver=MutableSolver,
-           interpolator=Val(DirectInterpolation),
+           interpolator=Val(ConstantInterpolation),
            timeidx=1:100,
            device=identity,
            min_value=1e-6,
@@ -37,7 +37,7 @@ struct HydroConfig{S<:SolverType,I,D}
     
     function HydroConfig(;
         solver::SolverType=MutableSolver,
-        interpolator::Val=Val(DirectInterpolation),
+        interpolator::Val=Val(ConstantInterpolation),
         timeidx::Union{Vector{Int},AbstractVector{<:Integer}}=Int[],
         device=identity,
         min_value::Real=1e-6,
@@ -62,7 +62,7 @@ Create a default configuration instance.
 function default_config()
     HydroConfig(
         solver=MutableSolver,
-        interpolator=Val(DirectInterpolation),
+        interpolator=Val(ConstantInterpolation),
         timeidx=Int[],
         device=identity,
         min_value=1e-6,

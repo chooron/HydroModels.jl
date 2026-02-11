@@ -210,10 +210,10 @@ init_states = ComponentVector(
     soilwater = 1303.0
 )
 
-# Configure model execution (NEW in v0.5)
+# Configure model execution (NEW in v0.6)
 config = HydroConfig(
     solver = MutableSolver,
-    interpolator = Val(DirectInterpolation),
+    interpolator = Val(ConstantInterpolation),
     timeidx = 1:1000,
     min_value = 1e-6
 )

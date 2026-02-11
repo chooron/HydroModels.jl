@@ -16,8 +16,9 @@ Load test data from a specified dataset.
 - `df`: Original DataFrame
 """
 function load_test_data(dataset::Symbol, timesteps::AbstractVector{Int})
+    datadir = joinpath(dirname(@__DIR__), "data")
     if dataset == :exphydro
-        df = DataFrame(CSV.File("../data/exphydro/01013500.csv"))
+        df = DataFrame(CSV.File(joinpath(datadir, "exphydro", "01013500.csv")))
         input_ntp = (
             lday = df[timesteps, "dayl(day)"],
             temp = df[timesteps, "tmean(C)"],
@@ -25,25 +26,25 @@ function load_test_data(dataset::Symbol, timesteps::AbstractVector{Int})
         )
         input_mat = Matrix(reduce(hcat, collect(input_ntp[[:temp, :lday, :prcp]]))')
         return input_ntp, input_mat, df
-        
+
     elseif dataset == :gr4j
-        df = DataFrame(CSV.File("../data/gr4j/sample.csv"))
+        df = DataFrame(CSV.File(joinpath(datadir, "gr4j", "sample.csv")))
         for col in names(df)[3:end]
             df[ismissing.(df[:, col]), col] .= 0.0
         end
         input_ntp = (prcp = df[timesteps, "prec"], ep = df[timesteps, "pet"])
         input_mat = Matrix(reduce(hcat, collect(input_ntp[[:prcp, :ep]]))')
         return input_ntp, input_mat, df
-        
+
     elseif dataset == :m50
-        df = DataFrame(CSV.File("../data/m50/01013500.csv"))
+        df = DataFrame(CSV.File(joinpath(datadir, "m50", "01013500.csv")))
         prcp_vec = df[timesteps, "Prcp"]
         temp_vec = df[timesteps, "Temp"]
         dayl_vec = df[timesteps, "Lday"]
         input_ntp = (prcp = prcp_vec, temp = temp_vec, lday = dayl_vec)
         input_mat = Matrix(reduce(hcat, collect(input_ntp[[:prcp, :temp, :lday]]))')
         return input_ntp, input_mat, df
-        
+
     else
         error("Unknown dataset: $dataset")
     end
@@ -98,20 +99,19 @@ Replicate initial states for multiple nodes.
 - `num_nodes`: Number of nodes
 
 # Returns
-- Multi-node initial states (ComponentVector with expanded states)
+- Multi-node initial states (flattened vector for multi-node computation)
 """
 function create_multinode_states(states::ComponentVector, num_nodes::Int)
-    state_nt = NamedTuple(states)
-    node_states = NamedTuple{keys(state_nt)}(
-        fill(v, num_nodes) for (k, v) in pairs(state_nt)
-    )
-    return ComponentVector(node_states)
+    # Layout: [n1_s1, n2_s1, ..., nN_s1, n1_s2, ..., nN_s2]
+    # Each state variable occupies a contiguous block of num_nodes elements
+    state_values = collect(values(NamedTuple(states)))
+    return reduce(vcat, fill(v, num_nodes) for v in state_values)
 end
 
 """
     create_test_config(;
         solver = MutableSolver,
-        interpolator = Val(DirectInterpolation),
+        interpolator = Val(ConstantInterpolation),
         timeidx = Int[],
         min_value = 1e-6,
         parallel = false
@@ -121,7 +121,7 @@ Create a HydroConfig for testing.
 """
 function create_test_config(;
     solver = MutableSolver,
-    interpolator = Val(DirectInterpolation),
+    interpolator = Val(ConstantInterpolation),
     timeidx = Int[],
     min_value = 1e-6,
     parallel = false
@@ -183,4 +183,3 @@ const GR4J_STATES = (
     soilwater = 235.97,
     routingstore = 45.47
 )
-

@@ -187,7 +187,7 @@ end
     @variables norm_snw norm_slw norm_temp norm_prcp
 
     # Load data
-    df = DataFrame(CSV.File("../data/m50/01013500.csv"))
+    df = DataFrame(CSV.File(joinpath(dirname(dirname(@__DIR__)), "data", "m50", "01013500.csv")))
     ts = collect(1:10000)
     prcp_vec = df[ts, "Prcp"]
     temp_vec = df[ts, "Temp"]

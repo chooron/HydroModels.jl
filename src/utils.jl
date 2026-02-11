@@ -1,6 +1,25 @@
 """
-Utility functions module - provides sorting, parameter expansion and variable extraction utilities.
+Utility functions module - provides sorting, parameter expansion, variable extraction,
+and parameter conversion utilities.
 """
+
+# ============================================================================
+# Parameter conversion utilities
+# ============================================================================
+
+"""
+    _as_componentvector(p::ComponentVector)
+
+Identity for ComponentVector - return as-is.
+"""
+@inline _as_componentvector(p::ComponentVector) = p
+
+"""
+    _as_componentvector(p::AbstractVector, axes)
+
+Convert a plain vector to ComponentVector using stored axes.
+"""
+@inline _as_componentvector(p::AbstractVector, axes) = ComponentVector(p, axes)
 
 """
     sort_fluxes(fluxes::AbstractVector{<:AbstractComponent})
@@ -138,7 +157,7 @@ function sort_components(components::AbstractVector{<:AbstractComponent})
 end
 
 """
-    expand_component_params(params::ComponentVector, param_names::AbstractVector, hru_types::AbstractVector)
+    expand_component_params(params::ComponentVector, param_names::AbstractVector, htypes::AbstractVector)
 
 Expand specified parameters of a ComponentVector using a given index.
 
@@ -147,7 +166,7 @@ This is useful for spatial modeling, where a parameter vector needs to be expand
 # Arguments
 - `params`: ComponentVector containing parameters
 - `param_names`: Parameter names to expand
-- `hru_types`: HRU type index vector
+- `htypes`: HRU type index vector
 
 # Returns
 - Expanded ComponentVector
@@ -155,11 +174,11 @@ This is useful for spatial modeling, where a parameter vector needs to be expand
 function expand_component_params(
     params::ComponentVector,
     param_names::AbstractVector{Symbol},
-    hru_types::AbstractVector{Int}
+    htypes::AbstractVector{Int}
 )
     # If no parameters need expansion, return directly
     isempty(param_names) && return params
-    
+
     # Extract and expand parameters with bounds checking
     params_nt = NamedTuple(params[:params])
     expanded_params = map(param_names) do pname
@@ -168,15 +187,15 @@ function expand_component_params(
         end
         param_vec = params_nt[pname]
         # Validate indices
-        if !isempty(hru_types) && (minimum(hru_types) < 1 || maximum(hru_types) > length(param_vec))
-            throw(BoundsError(param_vec, hru_types))
+        if !isempty(htypes) && (minimum(htypes) < 1 || maximum(htypes) > length(param_vec))
+            throw(BoundsError(param_vec, htypes))
         end
-        param_vec[hru_types]
+        param_vec[htypes]
     end
-    
+
     # Build new parameter NamedTuple
     new_params = (; params=NamedTuple{Tuple(param_names)}(expanded_params))
-    
+
     # Merge and return
     merge(params |> NamedTuple, new_params) |> ComponentVector
 end
@@ -343,4 +362,5 @@ end
 # Export main functions
 export sort_fluxes, sort_components, expand_component_params
 export get_default_states, extract_variables
+export _as_componentvector
 export @hydroflux_for

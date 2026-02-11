@@ -2,6 +2,11 @@ module HydroModelsRastersExt
 
 using Rasters
 using HydroModels
+using NCDatasets
+using Statistics
+
+# Include NetCDF data loader
+include("netcdf_loader.jl")
 
 """
     compute_d8_flow_direction(dem::Raster)
@@ -174,7 +179,7 @@ function create_hydroroute_from_dem(dem::Raster; name::Symbol=:dem_route)
     aggr_func = HydroModels.build_aggr_func(flow_dir, positions)
     
     # 提取HRU类型（假设每个有效像元都是同一类型）
-    hru_types = ones(Int, length(positions))
+    htypes = ones(Int, length(positions))
     
     # 注意：这里需要用户提供fluxes和dfluxes定义
     # 这只是一个框架示例
@@ -182,7 +187,7 @@ function create_hydroroute_from_dem(dem::Raster; name::Symbol=:dem_route)
     println("流向矩阵大小: $(size(flow_dir))")
     println("有效位置数量: $(length(positions))")
     
-    return (flow_dir=flow_dir, positions=positions, aggr_func=aggr_func, hru_types=hru_types)
+    return (flow_dir=flow_dir, positions=positions, aggr_func=aggr_func, htypes=htypes)
 end
 
 # 导出主要函数
@@ -190,6 +195,10 @@ export compute_d8_flow_direction
 export extract_positions_from_raster
 export match_raster_to_dem
 export create_hydroroute_from_dem
+export load_netcdf_data
+export load_netcdf_data_simple
+export prepare_netcdf_forcing
+export extract_positions_from_netcdf
 
 end
 

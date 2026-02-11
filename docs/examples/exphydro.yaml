@@ -1,0 +1,104 @@
+# ExpHydro Model Configuration
+# A simple rainfall-runoff model with snow and soil components
+
+version: "1.0"
+schema: "hydromodels"
+
+metadata:
+  name: "ExpHydro Model"
+  description: "Experimental hydrological model with snow and soil processes"
+  author: "HydroModels Team"
+  created: "2026-02-10"
+
+# Global parameter definitions with metadata
+parameters:
+  Tmin:
+    description: "Minimum temperature for snow"
+    units: "°C"
+    default: -2.09
+    bounds: [-5.0, 5.0]
+
+  Tmax:
+    description: "Maximum temperature for melt"
+    units: "°C"
+    default: 0.18
+    bounds: [0.0, 10.0]
+
+  Df:
+    description: "Degree-day factor"
+    units: "mm/°C/day"
+    default: 2.67
+    bounds: [0.5, 10.0]
+
+  Smax:
+    description: "Maximum soil moisture"
+    units: "mm"
+    default: 1709.0
+    bounds: [50.0, 5000.0]
+
+  Qmax:
+    description: "Maximum baseflow rate"
+    units: "mm/day"
+    default: 18.5
+    bounds: [0.1, 50.0]
+
+  f:
+    description: "Baseflow exponent"
+    units: "dimensionless"
+    default: 0.017
+    bounds: [0.001, 0.1]
+
+# Component definitions
+components:
+  # Snow accumulation and melt bucket
+  - type: HydroBucket
+    name: snow
+    fluxes:
+      - name: pet
+        formula: "pet ~ 29.8 * lday * 24 * 0.611 * exp((17.3 * temp) / (temp + 237.3)) / (temp + 273.2)"
+
+      - name: snowfall
+        formula: "snowfall ~ step_func(Tmin - temp) * prcp"
+
+      - name: rainfall
+        formula: "rainfall ~ step_func(temp - Tmin) * prcp"
+
+      - name: melt
+        formula: "melt ~ step_func(temp - Tmax) * step_func(snowpack) * min(snowpack, Df * (temp - Tmax))"
+
+    state_fluxes:
+      - name: snowpack_balance
+        formula: "snowpack ~ snowfall - melt"
+
+  # Soil water balance bucket
+  - type: HydroBucket
+    name: soil
+    fluxes:
+      - name: evaporation
+        formula: "evap ~ step_func(soilwater) * pet * min(1.0, soilwater / Smax)"
+
+      - name: baseflow
+        formula: "baseflow ~ step_func(soilwater) * Qmax * exp(-f * (max(0.0, Smax - soilwater)))"
+
+      - name: surfaceflow
+        formula: "surfaceflow ~ max(0.0, soilwater - Smax)"
+
+      - name: totalflow
+        formula: "flow ~ baseflow + surfaceflow"
+
+    state_fluxes:
+      - name: soil_balance
+        formula: "soilwater ~ (rainfall + melt) - (evap + flow)"
+
+# Model composition
+model:
+  type: HydroModel
+  name: exphydro
+  components: [snow, soil]
+
+# Configuration
+config:
+  solver: MutableSolver
+  interpolator: DirectInterpolation
+  min_value: 1.0e-6
+  parallel: false

@@ -300,7 +300,7 @@ init_states = ComponentVector(
 # Configure model execution (NEW in v2.0)
 config = HydroConfig(
     solver = MutableSolver,
-    interpolator = Val(DirectInterpolation),
+    interpolator = Val(ConstantInterpolation),
     timeidx = 1:1000,
     min_value = 1e-6
 )
@@ -352,7 +352,7 @@ When running a model in HydroModels.jl, the following steps occur:
    ```julia
    config = HydroConfig(
        solver = MutableSolver,
-       interpolator = Val(DirectInterpolation),
+       interpolator = Val(ConstantInterpolation),
        timeidx = 1:1000,
        min_value = 1e-6,
        parallel = false
