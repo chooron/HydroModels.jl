@@ -83,7 +83,8 @@ function HydroModels.load_model_from_yaml(yaml_file::AbstractString)
             # Create parameter symbol
             param_sym = Symbol(param_name)
             # Create a Symbolics parameter (so it is not treated as an input)
-            param_var = HydroModels.toparam(Symbolics.variable(param_sym))
+            # Use eval with @variables macro to create variable dynamically
+            param_var = HydroModels.toparam(only(@eval @variables $param_sym))
             global_params[param_sym] = param_var
         end
     end
@@ -99,8 +100,8 @@ function HydroModels.load_model_from_yaml(yaml_file::AbstractString)
                         vars = extract_variables_from_formula(flux_def["formula"])
                         for var in vars
                             if !haskey(global_vars, var) && !haskey(global_params, var)
-                                # Create variable dynamically using Symbolics functional API
-                                var_sym = Symbolics.variable(var)
+                                # Create variable dynamically using @variables macro
+                                var_sym = only(@eval @variables $var)
                                 global_vars[var] = var_sym
                             end
                         end
@@ -115,8 +116,8 @@ function HydroModels.load_model_from_yaml(yaml_file::AbstractString)
                         vars = extract_variables_from_formula(dflux_def["formula"])
                         for var in vars
                             if !haskey(global_vars, var) && !haskey(global_params, var)
-                                # Create variable dynamically using Symbolics functional API
-                                var_sym = Symbolics.variable(var)
+                                # Create variable dynamically using @variables macro
+                                var_sym = only(@eval @variables $var)
                                 global_vars[var] = var_sym
                             end
                         end

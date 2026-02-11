@@ -34,9 +34,8 @@ See the examples directory for sample YAML files.
 module HydroModelsYAMLExt
 
 using HydroModels
+using HydroModels: Num, @variables, @parameters, toparam
 using YAML
-using Symbolics
-using Symbolics: Num
 using ComponentArrays: ComponentVector
 
 # Include submodules
