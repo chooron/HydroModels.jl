@@ -3,7 +3,7 @@ Bucket module - defines hydrological bucket components, supporting both symbolic
 """
 
 """
-    HydroBucket{S, FF, OF, HT, I} <: AbstractHydroBucket
+    HydroBucket{S, FF, OF, HT, I, NF} <: AbstractHydroBucket
 
 A container component that organizes and executes a collection of hydrological flux components.
 
@@ -19,8 +19,9 @@ $(FIELDS)
 - `OF`: ODE function type
 - `HT`: HRU type (`Nothing` for 2D, `Vector{Int}` for 3D)
 - `I`: Metadata type
+- `NF`: Neural flux components type
 """
-struct HydroBucket{S,FF,OF,HT,I} <: AbstractHydroBucket
+struct HydroBucket{S,FF,OF,HT,I,NF} <: AbstractHydroBucket
     "bucket name"
     name::Symbol
     "Generated function for calculating all hydrological fluxes"
@@ -31,6 +32,8 @@ struct HydroBucket{S,FF,OF,HT,I} <: AbstractHydroBucket
     htypes::HT
     "Metadata about the bucket"
     infos::I
+    "Neural flux components for parameter extraction"
+    neural_fluxes::NF
 
     # Symbolic constructor
     function HydroBucket(;
@@ -48,13 +51,16 @@ struct HydroBucket{S,FF,OF,HT,I} <: AbstractHydroBucket
             params=params, nns=nns
         )
 
+        # Extract neural flux components
+        neural_fluxes = filter(f -> f isa AbstractNeuralFlux, fluxes)
+
         is_multi = !isnothing(htypes)
         flux_func, ode_func = build_bucket_func(fluxes, dfluxes, infos, is_multi)
         bucket_name = isnothing(name) ? Symbol("##bucket#", hash(infos)) : name
         hasstates = !isempty(states)
 
-        return new{hasstates,typeof(flux_func),typeof(ode_func),typeof(htypes),typeof(infos)}(
-            bucket_name, flux_func, ode_func, htypes, infos
+        return new{hasstates,typeof(flux_func),typeof(ode_func),typeof(htypes),typeof(infos),typeof(neural_fluxes)}(
+            bucket_name, flux_func, ode_func, htypes, infos, neural_fluxes
         )
     end
 
@@ -74,9 +80,10 @@ struct HydroBucket{S,FF,OF,HT,I} <: AbstractHydroBucket
             params=params, nns=Symbol[]
         )
         hasstates = !isempty(states)
+        neural_fluxes = AbstractNeuralFlux[]  # Empty for functional constructor
 
-        return new{hasstates,typeof(flux_func),typeof(ode_func),typeof(htypes),typeof(infos)}(
-            name, flux_func, ode_func, htypes, infos
+        return new{hasstates,typeof(flux_func),typeof(ode_func),typeof(htypes),typeof(infos),typeof(neural_fluxes)}(
+            name, flux_func, ode_func, htypes, infos, neural_fluxes
         )
     end
 end
@@ -159,12 +166,12 @@ end
 # ============================================================================
 
 # 2D with states (single-node)
-function (bucket::HydroBucket{true,FF,OF,Nothing,I})(
+function (bucket::HydroBucket{true,FF,OF,Nothing,I,NF})(
     input::AbstractArray{T,2},
     params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...
-)::AbstractArray{T,2} where {FF,OF,I,T}
+)::AbstractArray{T,2} where {FF,OF,I,NF,T}
     params = _as_componentvector(params)
     config_norm = normalize_config(config)
     solve_type = config_norm.solver
@@ -186,23 +193,23 @@ function (bucket::HydroBucket{true,FF,OF,Nothing,I})(
 end
 
 # 2D without states (single-node)
-function (bucket::HydroBucket{false,FF,OF,Nothing,I})(
+function (bucket::HydroBucket{false,FF,OF,Nothing,I,NF})(
     input::AbstractArray{T,2},
     params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...
-)::AbstractArray{T,2} where {FF,OF,I,T}
+)::AbstractArray{T,2} where {FF,OF,I,NF,T}
     params = _as_componentvector(params)
     stack(bucket.flux_func(input, nothing, params), dims=1)
 end
 
 # 3D with states (multi-node)
-function (bucket::HydroBucket{true,FF,OF,Vector{Int},I})(
+function (bucket::HydroBucket{true,FF,OF,Vector{Int},I,NF})(
     input::AbstractArray{T,3},
     params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...
-)::AbstractArray{T,3} where {FF,OF,I,T}
+)::AbstractArray{T,3} where {FF,OF,I,NF,T}
     params = _as_componentvector(params)
     config_norm = normalize_config(config)
     solve_type = config_norm.solver
@@ -237,36 +244,36 @@ function (bucket::HydroBucket{true,FF,OF,Vector{Int},I})(
 end
 
 # 3D without states (multi-node)
-function (bucket::HydroBucket{false,FF,OF,Vector{Int},I})(
+function (bucket::HydroBucket{false,FF,OF,Vector{Int},I,NF})(
     input::AbstractArray{T,3},
     params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...
-)::AbstractArray{T,3} where {FF,OF,I,T}
+)::AbstractArray{T,3} where {FF,OF,I,NF,T}
     params = _as_componentvector(params)
     new_params = expand_component_params(params, get_param_names(bucket), bucket.htypes)
     stack(bucket.flux_func(input, nothing, new_params), dims=1)
 end
 
 # Error: single-node bucket receiving 3D input
-function (bucket::HydroBucket{S,FF,OF,Nothing,I})(
+function (bucket::HydroBucket{S,FF,OF,Nothing,I,NF})(
     input::AbstractArray{T,3},
     params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...
-) where {S,FF,OF,I,T}
+) where {S,FF,OF,I,NF,T}
     error("HydroBucket without htypes only accepts 2D input (variables × time).\n" *
           "For multi-node computation, provide htypes.\n" *
           "Got input shape: $(size(input))")
 end
 
 # Error: multi-node bucket receiving 2D input
-function (bucket::HydroBucket{S,FF,OF,Vector{Int},I})(
+function (bucket::HydroBucket{S,FF,OF,Vector{Int},I,NF})(
     input::AbstractArray{T,2},
     params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...
-) where {S,FF,OF,I,T}
+) where {S,FF,OF,I,NF,T}
     error("HydroBucket with htypes only accepts 3D input (variables × nodes × time).\n" *
           "For single-node computation, omit htypes.\n" *
           "Got input shape: $(size(input))")

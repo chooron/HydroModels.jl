@@ -78,6 +78,23 @@ function hydrosolve(
     stack(states_vec; dims=N + 1) |> device
 end
 
+"""
+    hydrosolve(::Val{DiscreteSolver}, ...)
+
+Discrete solver - alias for MutableSolver for backward compatibility.
+"""
+function hydrosolve(
+    ::Val{DiscreteSolver},
+    du_func,
+    params,
+    initstates::AbstractArray{T,N},
+    timeidx,
+    config
+) where {T,N}
+    # DiscreteSolver is an alias for MutableSolver
+    hydrosolve(Val(MutableSolver), du_func, params, initstates, timeidx, config)
+end
+
 # ============================================================================
 # Numerical utilities
 # ============================================================================

@@ -25,7 +25,6 @@ Modern hydrological modeling framework supporting both symbolic and functional m
 
 ```julia
 using HydroModels
-using Symbolics
 
 # Define symbolic variables
 @variables P, ET, Q, S

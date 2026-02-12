@@ -106,22 +106,64 @@ const ConfigType = Union{HydroConfig,NamedTuple}
 Normalize configuration to HydroConfig type.
 """
 normalize_config(config::HydroConfig) = config
-normalize_config(config::NamedTuple) = HydroConfig(; config...)
+function normalize_config(config::NamedTuple)
+    # Check if this is a nested config with hydro_config field (from OptimizationExt)
+    if haskey(config, :hydro_config)
+        # Extract the actual HydroConfig, ignoring optimization-specific fields
+        return normalize_config(config.hydro_config)
+    end
+    # Filter out unsupported keys and only keep HydroConfig-compatible fields
+    supported_keys = (:solver, :interpolator, :timeidx, :device, :min_value, :parallel)
+    filtered_config = NamedTuple{Tuple(k for k in keys(config) if k in supported_keys)}(
+        Tuple(config[k] for k in keys(config) if k in supported_keys)
+    )
+    HydroConfig(; filtered_config...)
+end
 normalize_config(::Nothing) = default_config()
 
 """
     get_config_value(config::ConfigType, key::Symbol, default)
 
 Get value from configuration with type-safe default fallback.
+Handles nested config structures (e.g., from OptimizationExt).
 """
 @inline function get_config_value(config::HydroConfig, key::Symbol, default)
     hasproperty(config, key) ? getproperty(config, key) : default
 end
 
 @inline function get_config_value(config::NamedTuple, key::Symbol, default)
-    get(config, key, default)
+    # Check if key exists directly in config
+    if haskey(config, key)
+        return config[key]
+    end
+    # Check if this is a nested config with hydro_config field
+    if haskey(config, :hydro_config)
+        hydro_cfg = config.hydro_config
+        if hydro_cfg isa HydroConfig && hasproperty(hydro_cfg, key)
+            return getproperty(hydro_cfg, key)
+        elseif hydro_cfg isa NamedTuple && haskey(hydro_cfg, key)
+            return hydro_cfg[key]
+        end
+    end
+    return default
+end
+
+"""
+    extract_hydro_config(config::ConfigType)
+
+Extract the core HydroConfig from any config structure.
+This is useful when working with nested configs from optimization.
+"""
+extract_hydro_config(config::HydroConfig) = config
+function extract_hydro_config(config::NamedTuple)
+    if haskey(config, :hydro_config)
+        return extract_hydro_config(config.hydro_config)
+    else
+        return normalize_config(config)
+    end
 end
 
 # Export main interfaces
 export HydroConfig, default_config, merge_config, normalize_config, get_config_value, ConfigType
+export extract_hydro_config
 

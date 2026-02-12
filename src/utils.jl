@@ -359,8 +359,150 @@ function replace_loop_var!(expr, var_name, value)
     end
 end
 
+"""
+    get_initial_params(component::AbstractComponent; rng=Random.default_rng(), eltype=Float64)
+
+Get initial parameters for a component based on its infos metadata.
+
+Returns a ComponentVector with:
+- `params`: NamedTuple of traditional parameters (initialized to 1.0)
+- `nns`: NamedTuple of neural network parameters (randomly initialized)
+
+Uses multiple dispatch for different component types.
+
+# Examples
+```julia
+# For any component with params and/or nns
+flux = @hydroflux q ~ k * p
+params = get_initial_params(flux)
+# Returns: ComponentVector(params=(k=1.0,))
+
+# For component with neural networks
+neural_flux = @neuralflux et ~ nn([prcp, temp])
+params = get_initial_params(neural_flux)
+# Returns: ComponentVector(params=(), nns=(nn_name=ComponentVector(...),))
+```
+"""
+function get_initial_params(component::AbstractComponent; rng=Random.default_rng(), eltype=Float64)
+    param_names = get_param_names(component)
+    nn_names = get_nn_names(component)
+
+    # Initialize traditional parameters to 1.0
+    params_nt = if !isempty(param_names)
+        NamedTuple{Tuple(param_names)}(ones(eltype, length(param_names)))
+    else
+        NamedTuple()
+    end
+
+    # Initialize neural network parameters
+    nns_nt = if !isempty(nn_names)
+        _get_nn_params(component, nn_names, rng)
+    else
+        NamedTuple()
+    end
+
+    # Build ComponentVector
+    if !isempty(param_names) && !isempty(nn_names)
+        return ComponentVector(params=params_nt, nns=nns_nt)
+    elseif !isempty(param_names)
+        return ComponentVector(params=params_nt)
+    elseif !isempty(nn_names)
+        return ComponentVector(nns=nns_nt)
+    else
+        return ComponentVector()
+    end
+end
+
+# Helper function to extract neural network parameters
+function _get_nn_params(component::AbstractNeuralFlux, nn_names, rng)
+    if !isnothing(component.chain)
+        ps = LuxCore.initialparameters(rng, component.chain)
+        return NamedTuple{Tuple(nn_names)}((ComponentVector(ps),))
+    end
+    return NamedTuple()
+end
+
+function _get_nn_params(component::AbstractHydroBucket, nn_names, rng)
+    if hasproperty(component, :neural_fluxes) && !isempty(component.neural_fluxes)
+        all_nn_params = Dict{Symbol, ComponentVector}()
+        for nf in component.neural_fluxes
+            nf_nn_names = get_nn_names(nf)
+            nf_params = _get_nn_params(nf, nf_nn_names, rng)
+            merge!(all_nn_params, pairs(nf_params))
+        end
+        return NamedTuple(all_nn_params)
+    end
+    return NamedTuple()
+end
+
+function _get_nn_params(component::AbstractComponent, nn_names, rng)
+    # For NeuralBucket or other components with network fields
+    if isdefined(Main, :NeuralBucket) && component isa Main.NeuralBucket
+        flux_ps = LuxCore.initialparameters(rng, component.flux_network)
+        state_ps = LuxCore.initialparameters(rng, component.state_network)
+        output_ps = LuxCore.initialparameters(rng, component.output_network)
+
+        return NamedTuple{Tuple(nn_names)}((
+            ComponentVector(flux_ps),
+            ComponentVector(state_ps),
+            ComponentVector(output_ps)
+        ))
+    end
+
+    # For composite components (HydroModel, etc.)
+    if hasproperty(component, :components)
+        all_nn_params = Dict{Symbol, ComponentVector}()
+        for comp in component.components
+            comp_nn_names = get_nn_names(comp)
+            if !isempty(comp_nn_names)
+                comp_params = _get_nn_params(comp, comp_nn_names, rng)
+                merge!(all_nn_params, pairs(comp_params))
+            end
+        end
+        return NamedTuple(all_nn_params)
+    end
+
+    return NamedTuple()
+end
+
+"""
+    get_nn_initial_params(component::AbstractComponent; rng=Random.default_rng())
+
+Extract initial neural network parameters from a component.
+
+Supports:
+- `NeuralFlux`: Returns parameters for the neural network
+- `NeuralBucket`: Returns parameters for flux, state, and output networks
+- `HydroBucket`: Returns parameters from embedded neural flux components
+- `HydroModel`: Recursively collects parameters from all sub-components
+
+Returns a NamedTuple with neural network names as keys and ComponentVector parameters as values.
+Returns `nothing` if no neural networks are found.
+
+# Examples
+```julia
+# For a model with NeuralFlux
+model = HydroModel([neural_flux, bucket, ...])
+nn_params = get_nn_initial_params(model)
+# Returns: (nn_name = ComponentVector(...), ...)
+
+# For a NeuralBucket
+bucket = create_neural_bucket(...)
+nn_params = get_nn_initial_params(bucket)
+# Returns: (flux_net = ComponentVector(...), state_net = ComponentVector(...), output_net = ComponentVector(...))
+```
+"""
+function get_nn_initial_params(component::AbstractComponent; rng=Random.default_rng())
+    nn_names = get_nn_names(component)
+    isempty(nn_names) && return nothing
+
+    nns_nt = _get_nn_params(component, nn_names, rng)
+    return isempty(nns_nt) ? nothing : nns_nt
+end
+
 # Export main functions
 export sort_fluxes, sort_components, expand_component_params
 export get_default_states, extract_variables
 export _as_componentvector
+export get_initial_params, get_nn_initial_params
 export @hydroflux_for

@@ -1,6 +1,6 @@
 name = "HydroModels"
 uuid = "7e3cde01-c141-467b-bff6-5350a0af19fc"
-version = "0.6.1"
+version = "0.6.2"
 authors = ["jingx <50790703+chooron@users.noreply.github.com>"]
 
 [deps]
@@ -34,7 +34,7 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 [extensions]
 HydroModelsBMIExt = ["BasicModelInterface", "Dates"]
 HydroModelsDataInterpolationsExt = "DataInterpolations"
-HydroModelsOptimizationExt = ["Optimization", "SciMLBase", "ComponentArrays"]
+HydroModelsOptimizationExt = ["Optimization", "SciMLBase", "ComponentArrays", "Statistics"]
 HydroModelsOrdinaryDiffEqExt = ["SciMLBase", "OrdinaryDiffEq", "SciMLSensitivity"]
 HydroModelsRastersExt = ["Rasters", "NCDatasets", "Statistics"]
 HydroModelsYAMLExt = ["YAML", "CSV", "DataFrames"]
