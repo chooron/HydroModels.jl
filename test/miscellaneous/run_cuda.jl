@@ -25,38 +25,38 @@
     node_input = permutedims(node_input, (2, 3, 1))
 
     @testset "test cuda availability in multi-nodes bucket simulation based on the manual solver" begin
-        config = (ptyidx=1:10, styidx=1:10, timeidx=ts, solver=HydroModels.ManualSolver(mutable=false, dev=gpu), device=gpu)
-        result = bucket_1(node_input, node_pas; config...)
+        config = (ptyidx=1:10, styidx=1:10, timeidx=ts, solver=HydroModels.ImmutableSolver, device=gpu)
+        result = bucket_1(node_input, node_pas, config)
         @test !isnothing(result)
     end
 
     @testset "test cuda availability in multi-nodes model simulation  based on the manual solver" begin
-        config = (ptyidx=1:10, styidx=1:10, timeidx=ts, solver=HydroModels.ManualSolver(mutable=false, dev=gpu), device=gpu)
-        result = exphydro_model(node_input, node_pas; config=config)
+        config = (ptyidx=1:10, styidx=1:10, timeidx=ts, solver=HydroModels.ImmutableSolver, device=gpu)
+        result = exphydro_model(node_input, node_pas, config)
         @test !isnothing(result)
     end
     
     @testset "test cuda availability in multi-nodes bucket simulation based on the ode solver" begin
-        config = (ptyidx=1:10, styidx=1:10, timeidx=ts, solver=HydroModelSolvers.ODESolver(dev=gpu), device=gpu)
-        result = bucket_1(node_input, node_pas; config...)
+        config = (ptyidx=1:10, styidx=1:10, timeidx=ts, solver=HydroModels.ODESolver, device=gpu)
+        result = bucket_1(node_input, node_pas, config)
         @test !isnothing(result)
     end
 
     @testset "test cuda availability in multi-nodes model simulation  based on the ode solver" begin
-        config = (ptyidx=1:10, styidx=1:10, timeidx=ts, solver=HydroModelSolvers.ODESolver(dev=gpu), device=gpu)
-        result = exphydro_model(node_input, node_pas; config=config)
+        config = (ptyidx=1:10, styidx=1:10, timeidx=ts, solver=HydroModels.ODESolver, device=gpu)
+        result = exphydro_model(node_input, node_pas, config)
         @test !isnothing(result)
     end
         
     @testset "test cuda availability in multi-nodes bucket simulation based on the discrete solver" begin
-        config = (ptyidx=1:10, styidx=1:10, timeidx=ts, solver=HydroModelSolvers.DiscreteSolver(dev=gpu), device=gpu)
-        result = bucket_1(node_input, node_pas; config...)
+        config = (ptyidx=1:10, styidx=1:10, timeidx=ts, solver=HydroModels.DiscreteSolver, device=gpu)
+        result = bucket_1(node_input, node_pas, config)
         @test !isnothing(result)
     end
 
     @testset "test cuda availability in multi-nodes model simulation  based on the discrete solver" begin
-        config = (ptyidx=1:10, styidx=1:10, timeidx=ts, solver=HydroModelSolvers.DiscreteSolver(dev=gpu), device=gpu)
-        result = exphydro_model(node_input, node_pas; config=config)
+        config = (ptyidx=1:10, styidx=1:10, timeidx=ts, solver=HydroModels.DiscreteSolver, device=gpu)
+        result = exphydro_model(node_input, node_pas, config)
         @test !isnothing(result)
     end
 end

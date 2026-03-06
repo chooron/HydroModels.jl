@@ -34,7 +34,7 @@ styidx = [findfirst(isequal(hruname), hrunames) for hruname in hrunames]
 input_arr = rand(1, 9, 20)
 timeidx = collect(1:20)
 #* build the outflow projection function
-# sol_2 = vroute(input_arr, pas, config=(timeidx=timeidx, ptyidx=ptyidx, styidx=styidx, solver=HydroModels.ManualSolver{true}()))
+# sol_2 = vroute(input_arr, pas, config=(timeidx=timeidx, ptyidx=ptyidx, styidx=styidx, solver=HydroModels.MutableSolver))
 
 network = DiGraph(9)
 add_edge!(network, 1, 2)

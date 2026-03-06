@@ -150,7 +150,6 @@ include("utils.jl")
 export sort_components, sort_fluxes
 export expand_component_params, get_default_states
 export extract_variables
-export @hydroflux_for
 
 # Flux components
 include("flux.jl")
@@ -321,9 +320,9 @@ export load_model_from_yaml, load_config_from_yaml, load_parameters_from_yaml, e
 # ============================================================================
 
 """
-Module version: v0.6.0
+Module version: v0.6.2
 
-# Major Updates (v0.6.0)
+# Major Updates (v0.6.2)
 - Unified HydroFlux/HydroMultiFlux into single HydroFlux (htypes dispatch)
 - Unified HydroBucket/HydroMultiBucket into single HydroBucket (htypes dispatch)
 - Redesigned NeuralBucket to implement AbstractHydroBucket (embeds into HydroModel)
@@ -334,6 +333,6 @@ Module version: v0.6.0
 # Julia Version Requirements
 - Julia >= 1.10 (recommended 1.12+)
 """
-const HYDROMODELS_VERSION = v"0.6.0"
+const HYDROMODELS_VERSION = v"0.6.2"
 
 end # module HydroModels

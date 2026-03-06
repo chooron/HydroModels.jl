@@ -78,7 +78,7 @@ input_data = (
 input_mat = reduce(hcat, [input_data.temp, input_data.lday, input_data.prcp])'
 
 # Run the model
-config = (solver = HydroModels.ManualSolver(), timeidx = 1:100)
+config = (solver = HydroModels.MutableSolver, timeidx = 1:100)
 results = snow_bucket(input_mat, params, config; initstates = initstates)
 
 # Results contain: [snowpack, snowfall, rainfall, melt, pet] × timesteps
@@ -150,7 +150,7 @@ input_data = (
 input_mat = reduce(hcat, [input_data.temp, input_data.lday, input_data.prcp])'
 
 # Run the complete model
-config = (solver = HydroModels.ManualSolver(), timeidx = 1:365)
+config = (solver = HydroModels.MutableSolver, timeidx = 1:365)
 results = exphydro_model(input_mat, params, config; initstates = initstates)
 
 # Extract outputs
@@ -170,7 +170,7 @@ using Zygote
 
 # Define loss function
 function loss_fn(params, input_mat, observed_flow, initstates)
-    config = (solver = HydroModels.ManualSolver(mutable=false), timeidx = 1:length(observed_flow))
+    config = (solver = HydroModels.ImmutableSolver, timeidx = 1:length(observed_flow))
     predictions = exphydro_model(input_mat, params, config; initstates = initstates)
     predicted_flow = predictions[end, :]
     return sum((predicted_flow .- observed_flow).^2)  # MSE loss

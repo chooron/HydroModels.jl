@@ -277,87 +277,6 @@ function _extract_vars!(ex::Expr, vars::Set{Symbol})
     end
 end
 
-"""
-    @hydroflux_for [name] for ... end
-
-Macro: Create multiple HydroFlux equations through loop unrolling.
-
-# Examples
-```jldoctest
-julia> @variables P[1:3], Q[1:3], k[1:3];
-julia> @hydroflux_for :multi_flux for i in 1:3
-           Q[i] ~ k[i] * P[i]
-       end
-```
-"""
-macro hydroflux_for(args...)
-    name = length(args) == 1 ? nothing : args[1]
-    loop_expr = length(args) == 1 ? args[1] : args[2]
-    
-    if !Meta.isexpr(loop_expr, :for)
-        return :(error("@hydroflux_for macro must be used with a 'for' loop expression"))
-    end
-    
-    # Parse loop variable and range
-    loop_var = loop_expr.args[1].args[1]
-    range_expr = loop_expr.args[1].args[2]
-    
-    # Evaluate range
-    range_val = if Meta.isexpr(range_expr, :call) && range_expr.args[1] == :(:)
-        if length(range_expr.args) == 3
-            range_expr.args[2]:range_expr.args[3]
-        elseif length(range_expr.args) == 4
-            range_expr.args[2]:range_expr.args[3]:range_expr.args[4]
-        else
-            eval(range_expr)
-        end
-    else
-        eval(range_expr)
-    end
-    
-    # Extract loop body
-    loop_body = loop_expr.args[2]
-    if !Meta.isexpr(loop_body, :block)
-        loop_body = Expr(:block, loop_body)
-    end
-    
-    # Unroll loop
-    equations = filter(x -> !(x isa LineNumberNode) && !Meta.isexpr(x, :line), loop_body.args)
-    all_equations = []
-    
-    for i_val in range_val
-        for eq in equations
-            new_eq = deepcopy(eq)
-            replace_loop_var!(new_eq, loop_var, i_val)
-            push!(all_equations, new_eq)
-        end
-    end
-    
-    vect_eqs_expr = Expr(:tuple, all_equations...)
-    
-    # Check variable definitions
-    for var_name in extract_variables(vect_eqs_expr)
-        if !@isdefined(var_name)
-            expr_str = string(vect_eqs_expr)
-            return :(error("Undefined variable '", $(string(var_name)), "' detected in expression: `", $expr_str, "`"))
-        end
-    end
-    
-    return esc(:(HydroFlux(exprs=$vect_eqs_expr, name=$name)))
-end
-
-# Helper function: recursively replace loop variable
-function replace_loop_var!(expr, var_name, value)
-    if expr isa Expr
-        for i in 1:length(expr.args)
-            if expr.args[i] == var_name
-                expr.args[i] = value
-            else
-                replace_loop_var!(expr.args[i], var_name, value)
-            end
-        end
-    end
-end
 
 """
     get_initial_params(component::AbstractComponent; rng=Random.default_rng(), eltype=Float64)
@@ -505,4 +424,3 @@ export sort_fluxes, sort_components, expand_component_params
 export get_default_states, extract_variables
 export _as_componentvector
 export get_initial_params, get_nn_initial_params
-export @hydroflux_for

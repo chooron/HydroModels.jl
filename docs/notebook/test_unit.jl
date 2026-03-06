@@ -27,10 +27,10 @@ df = DataFrame(data);
 ts = collect(1:10000)
 input = (lday=df[ts, "dayl(day)"], temp=df[ts, "tmean(C)"], prcp=df[ts, "prcp(mm/day)"])
 input_arr = Matrix(reduce(hcat, collect(input[HydroModels.get_input_names(exphydro_model)]))')
-config = (timeidx=ts, interp=LinearInterpolation, solver=HydroModels.ManualSolver(mutable=true))
+config = (timeidx=ts, interpolator=Val(LinearInterpolation), solver=HydroModels.MutableSolver)
 # run model with single node input
-@btime result = exphydro_model(input_arr, pas, initstates=init_states, config=config)
-Zygote.gradient(p -> exphydro_model(input_arr, p; initstates=init_states, config=config)[end,:] |> sum, pas)
+@btime result = exphydro_model(input_arr, pas, config; initstates=init_states)
+Zygote.gradient(p -> exphydro_model(input_arr, p, config; initstates=init_states)[end,:] |> sum, pas)
 
 # # run model with multi node input
 # node_num = 10

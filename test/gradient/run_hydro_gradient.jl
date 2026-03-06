@@ -31,13 +31,9 @@ ts = collect(1:100)
 # single node input
 input = (lday=df[ts, "dayl(day)"], temp=df[ts, "tmean(C)"], prcp=df[ts, "prcp(mm/day)"])
 input_arr = Matrix(reduce(hcat, collect(input[HydroModels.get_input_names(bucket_1)]))')
-config = (solver=HydroModels.ManualSolver(mutable=false), timeidx=ts)
-results = bucket_1(input_arr, pas; config...) |> sum
+config = (solver=HydroModels.ImmutableSolver, timeidx=ts)
+results = bucket_1(input_arr, pas, config; initstates=init_states) |> sum
 
-Zygote.gradient(pas) do p
-    bucket_1(input_arr, p, inistates=init_states, solver=HydroModels.ManualSolver(mutable=false)) |> sum
-end
+Zygote.gradient(p -> bucket_1(input_arr, p, config; initstates=init_states) |> sum, pas)
 
-ForwardDiff.gradient(pas) do p
-    bucket_1(input_arr, p, inistates=init_states, solver=HydroModels.ManualSolver(mutable=false)) |> sum
-end
+ForwardDiff.gradient(p -> bucket_1(input_arr, p, config; initstates=init_states) |> sum, pas)

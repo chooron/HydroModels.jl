@@ -31,7 +31,7 @@ struct HydroModel{CS,NT,VI,OI,DS} <: AbstractModel
     _outputindices::OI
     "default initial states"
     _defaultstates::DS
-    
+
     function HydroModel(;
         components::Tuple,
         name::Optional{Symbol}=nothing,
@@ -39,18 +39,18 @@ struct HydroModel{CS,NT,VI,OI,DS} <: AbstractModel
         inputs, outputs, states = get_var_names(components)
         params = reduce(union, get_param_names.(components); init=Symbol[])
         nns = reduce(union, get_nn_names.(components); init=Symbol[])
-        
+
         input_idx, output_idx = _prepare_indices(components, inputs, vcat(states, outputs))
-        
+
         infos = HydroInfos(
             inputs=inputs, states=states, outputs=outputs,
             params=params, nns=nns
         )
-        
+
         model_name = isnothing(name) ? Symbol("##model#", hash(infos)) : name
         states_axes = Axis(NamedTuple{Tuple(states)}(1:length(states)))
         default_states = ComponentVector(zeros(length(states)), states_axes)
-        
+
         new{typeof(components),typeof(infos),typeof(input_idx),typeof(output_idx),typeof(default_states)}(
             model_name, components, infos, input_idx, output_idx, default_states
         )
@@ -78,37 +78,33 @@ function _prepare_indices(
 ) where {CT}
     input_idx = Vector{Int}[]
     output_idx = Int[]
-    
-    # Accumulate available variable names
+
     available_vars = copy(input_names)
-    
+
     for component in components
-        # Find input indices for current component
         comp_input_names = get_input_names(component)
         tmp_input_idx = map(comp_input_names) do nm
             findfirst(==(nm), available_vars)
         end
-        
+
         if nothing in tmp_input_idx
             missing_vars = comp_input_names[tmp_input_idx .=== nothing]
             @warn "Input variables $missing_vars not found in available_vars"
         end
-        
+
         push!(input_idx, filter(!isnothing, tmp_input_idx))
-        
-        # Add component outputs and states to available variables
+
         comp_output_state = vcat(get_state_names(component), get_output_names(component))
         available_vars = vcat(available_vars, comp_output_state)
     end
-    
-    # Find indices for final outputs
+
     for name in var_names
         idx = findfirst(==(name), available_vars)
         if !isnothing(idx)
             push!(output_idx, idx)
         end
     end
-    
+
     return input_idx, output_idx
 end
 
@@ -137,6 +133,65 @@ function _extract_component_states(initstates::AbstractVector, comp_state_names,
 end
 
 """
+    _normalize_component_configs(config, n_components)
+
+Normalize model configuration to per-component HydroConfig tuple.
+"""
+function _normalize_component_configs(config, n_components::Int)
+    if config isa Tuple
+        length(config) == n_components || error("Component configs length must equal components length")
+        return map(normalize_config, config)
+    elseif config isa NamedTuple && haskey(config, :components)
+        comp_cfgs = config.components
+        comp_cfgs isa Tuple || error("components field in config must be a Tuple")
+        length(comp_cfgs) == n_components || error("Component configs length must equal components length")
+        return map(normalize_config, comp_cfgs)
+    else
+        return ntuple(_ -> normalize_config(config), n_components)
+    end
+end
+
+@inline function _slice_row(blocks::Vector, idx::Int, ::Val{2})
+    row_idx = idx
+    for block in blocks
+        n_rows = size(block, 1)
+        if row_idx <= n_rows
+            return @view block[row_idx:row_idx, :]
+        end
+        row_idx -= n_rows
+    end
+    error("Row index $idx out of bounds for concatenated blocks")
+end
+
+@inline function _slice_row(blocks::Vector, idx::Int, ::Val{3})
+    row_idx = idx
+    for block in blocks
+        n_rows = size(block, 1)
+        if row_idx <= n_rows
+            return @view block[row_idx:row_idx, :, :]
+        end
+        row_idx -= n_rows
+    end
+    error("Row index $idx out of bounds for concatenated blocks")
+end
+
+function _collect_rows(blocks::Vector, indices::AbstractVector{Int}, ::Val{2})
+    first_block = blocks[1]
+    T = eltype(first_block)
+    isempty(indices) && return zeros(T, 0, size(first_block, 2))
+    rows = map(i -> _slice_row(blocks, i, Val(2)), indices)
+    return vcat(rows...)
+end
+
+function _collect_rows(blocks::Vector, indices::AbstractVector{Int}, ::Val{3})
+    first_block = blocks[1]
+    T = eltype(first_block)
+    isempty(indices) && return zeros(T, 0, size(first_block, 2), size(first_block, 3))
+    rows = map(i -> _slice_row(blocks, i, Val(3)), indices)
+    return cat(rows...; dims=1)
+end
+
+"""
     @hydromodel [name] begin ... end
 
 Macro to conveniently create a HydroModel from a sequence of components.
@@ -155,11 +210,11 @@ julia> @hydromodel :my_full_model begin
 macro hydromodel(args...)
     name = length(args) == 1 ? nothing : args[1]
     expr = length(args) == 1 ? args[1] : args[2]
-    
+
     @assert Meta.isexpr(expr, :block) "Expected a begin...end block after model name"
-    
+
     components = filter(x -> !(x isa LineNumberNode), expr.args)
-    
+
     return esc(:(HydroModel(; name=$(name), components=tuple($(components...)))))
 end
 
@@ -168,7 +223,7 @@ end
 
 Execute the full hydrological model simulation. This is the functor implementation for HydroModel.
 
-It sequentially runs each component in the model, automatically handling the routing of data between them. 
+It sequentially runs each component in the model, automatically handling the routing of data between components.
 It supports both 2D (single-node) and 3D (multi-node) inputs.
 
 Common kwargs include `initstates` and `config` (for component-specific settings).
@@ -182,72 +237,7 @@ Common kwargs include `initstates` and `config` (for component-specific settings
 # Returns
 - Output array containing all state and output variables
 """
-function (model::HydroModel)(
-    input::AbstractArray{T,D},
-    params::AbstractVector,
-    config::Union{ConfigType,Tuple}=default_config();
-    kwargs...
-) where {T,D}
-    params = _as_componentvector(params)
-    # Normalize configuration
-    comp_configs = if config isa Tuple || config isa NamedTuple{(:components,)}
-        # Multi-component configuration
-        length(config) == length(model.components) || 
-            error("Component configs length must equal components length")
-        config
-    else
-        # Single configuration, apply to all components
-        ntuple(_ -> normalize_config(config), length(model.components))
-    end
-    
-    @assert D in (2, 3) "Input array dimension must be 2 or 3"
-    @assert size(input, 1) == length(get_input_names(model)) "Input variables length must equal model input variables length"
-    
-    # Get initial states
-    initstates = get(kwargs, :initstates, model._defaultstates)
-    
-    # Validate initstates contains required state names
-    required_states = get_state_names(model)
-    if !isempty(required_states)
-        for state in required_states
-            if !hasproperty(initstates, state)
-                throw(ArgumentError("Missing required state: $state in initstates"))
-            end
-        end
-    end
-    
-    # Initialize output as input
-    outputs = input
-    
-    # Execute each component sequentially
-    for (idx_, comp_, config_) in zip(model._varindices, model.components, comp_configs)
-        # Use view to avoid copying, improving performance
-        tmp_input = @view outputs[idx_, ntuple(_ -> Colon(), D - 1)...]
-        
-        # Get component initial states
-        comp_state_names = get_state_names(comp_)
-        comp_initstates = if !isempty(comp_state_names)
-            initstates[comp_state_names]
-        else
-            nothing
-        end
-        
-        # Execute component
-        tmp_output = if !isnothing(comp_initstates)
-            comp_(tmp_input, params, config_; initstates=comp_initstates)
-        else
-            comp_(tmp_input, params, config_)
-        end
-        
-        # Concatenate output (avoiding in-place modification)
-        outputs = vcat(outputs, tmp_output)
-    end
-    
-    # Return final output
-    return @view outputs[model._outputindices, ntuple(_ -> Colon(), D - 1)...]
-end
 
-# Specialized version for 2D input
 function (model::HydroModel)(
     input::AbstractArray{T,2},
     params::AbstractVector,
@@ -255,39 +245,31 @@ function (model::HydroModel)(
     kwargs...
 ) where {T}
     params = _as_componentvector(params)
-    # Normalize configuration
-    comp_configs = if config isa Tuple
-        length(config) == length(model.components) || 
-            error("Component configs length must equal components length")
-        map(normalize_config, config)
-    else
-        ntuple(_ -> normalize_config(config), length(model.components))
-    end
-    
+    comp_configs = _normalize_component_configs(config, length(model.components))
+
     @assert size(input, 1) == length(get_input_names(model)) "Input variables length mismatch"
-    
+
     initstates = get(kwargs, :initstates, model._defaultstates)
-    outputs = input
-    
+    outputs_blocks = Any[input]
+
     for (idx_, comp_, config_) in zip(model._varindices, model.components, comp_configs)
-        tmp_input = @view outputs[idx_, :]
-        
+        tmp_input = _collect_rows(outputs_blocks, idx_, Val(2))
+
         comp_state_names = get_state_names(comp_)
         comp_initstates = !isempty(comp_state_names) ? initstates[comp_state_names] : nothing
-        
+
         tmp_output = if !isnothing(comp_initstates)
             comp_(tmp_input, params, config_; initstates=comp_initstates)
         else
             comp_(tmp_input, params, config_)
         end
-        
-        outputs = vcat(outputs, tmp_output)
+
+        push!(outputs_blocks, tmp_output)
     end
-    
-    return @view outputs[model._outputindices, :]
+
+    return _collect_rows(outputs_blocks, model._outputindices, Val(2))
 end
 
-# Specialized version for 3D input
 function (model::HydroModel)(
     input::AbstractArray{T,3},
     params::AbstractVector,
@@ -295,24 +277,17 @@ function (model::HydroModel)(
     kwargs...
 ) where {T}
     params = _as_componentvector(params)
-    # Normalize configuration
-    comp_configs = if config isa Tuple
-        length(config) == length(model.components) ||
-            error("Component configs length must equal components length")
-        map(normalize_config, config)
-    else
-        ntuple(_ -> normalize_config(config), length(model.components))
-    end
+    comp_configs = _normalize_component_configs(config, length(model.components))
 
     @assert size(input, 1) == length(get_input_names(model)) "Input variables length mismatch"
 
     num_nodes = size(input, 2)
     initstates_raw = get(kwargs, :initstates, model._defaultstates)
     model_state_names = get_state_names(model)
-    outputs = input
+    outputs_blocks = Any[input]
 
     for (idx_, comp_, config_) in zip(model._varindices, model.components, comp_configs)
-        tmp_input = @view outputs[idx_, :, :]
+        tmp_input = _collect_rows(outputs_blocks, idx_, Val(3))
 
         comp_state_names = get_state_names(comp_)
         comp_initstates = if !isempty(comp_state_names)
@@ -327,10 +302,10 @@ function (model::HydroModel)(
             comp_(tmp_input, params, config_)
         end
 
-        outputs = vcat(outputs, tmp_output)
+        push!(outputs_blocks, tmp_output)
     end
 
-    return @view outputs[model._outputindices, :, :]
+    return _collect_rows(outputs_blocks, model._outputindices, Val(3))
 end
 
 # Export interfaces
