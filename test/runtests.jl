@@ -29,6 +29,7 @@ include("test_helpers.jl")
     @testset "Routing Components" begin
         include("base/run_unithydro.jl")
         include("base/run_hydro_route.jl")
+        include("base/run_channel_route.jl")
     end
     
     @testset "Multi Node Models" begin

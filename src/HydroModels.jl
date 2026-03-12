@@ -165,11 +165,15 @@ include("bucket.jl")
 
 # Routing components
 include("route.jl")
+export ChannelRoute, @channelroute
 export HydroRoute, @hydroroute, build_aggr_func
+export RouteIRF, SparseRouteKernel, SparseRouteConvolution
+export build_irf_kernels, aggregate_route_kernel
 
 # Unit hydrograph components
 include("uh.jl")
 export UnitHydrograph, @unithydro
+
 
 # Model components
 include("model.jl")
@@ -192,9 +196,9 @@ Smooth step function implemented using tanh.
 
 # Examples
 ```jldoctest
-julia> y = step_func(0.0)  # ≈ 0.5
-julia> y = step_func(2.0)  # ≈ 1.0
-julia> y = step_func(-2.0) # ≈ 0.0
+julia> y = step_func(0.0)  # ~0.5
+julia> y = step_func(2.0)  # ~1.0
+julia> y = step_func(-2.0) # ~0.0
 ```
 """
 @inline step_func(x) = (tanh(5.0 * x) + 1.0) * 0.5
@@ -336,3 +340,11 @@ Module version: v0.6.2
 const HYDROMODELS_VERSION = v"0.6.2"
 
 end # module HydroModels
+
+
+
+
+
+
+
+
