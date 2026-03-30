@@ -17,6 +17,7 @@ The framework is built on [HydroModelCore.jl](https://github.com/chooron/HydroMo
 
 - **🧩 Flexible Model Construction**: Support for lumped, semi-distributed, and distributed hydrological models
 - **🤖 Deep Learning Integration**: Seamless neural network integration for enhanced flux calculations and dynamic parameter estimation
+- **🔌 Extension-Based Ecosystem**: Optional features (Lux, OrdinaryDiffEq, YAML, Rasters, Optimization) are loaded on demand
 - **⚡ High Performance**: Leverages Julia's performance and the SciML ecosystem for efficient computation
 - **🔍 Gradient-Based Optimization**: Full support for automatic differentiation (Zygote, ForwardDiff) and advanced optimization
 - **🌊 Modular Components**: Compose models from reusable buckets, fluxes, and routing components
@@ -200,6 +201,7 @@ HydroModels.jl provides several key component types:
 ### Neural Network Integration
 
 ```julia
+using HydroModels
 using Lux
 
 @variables temp prcp soilwater et
@@ -210,6 +212,12 @@ nn_model = Lux.Chain(
 )
 nn_flux = @neuralflux et ~ nn_model([temp, prcp, soilwater])
 ```
+
+`NeuralFlux` and `NeuralBucket` APIs are always available from `HydroModels`, while Lux-backed constructors and initialization are activated after `using Lux` (via `HydroModelsLuxExt`).
+
+## 📦 Version
+
+Current package version: **v0.6.3**
 
 ## 📖 Documentation
 

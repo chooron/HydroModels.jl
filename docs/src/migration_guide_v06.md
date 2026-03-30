@@ -1,14 +1,20 @@
-# 📚 Migration Guide: v0.5.x → v0.6.0
+# 📚 Migration Guide: v0.5.x → v0.6.x (current: v0.6.3)
 
 ## Overview
 
-HydroModels.jl v0.6.0 introduces several improvements focused on clarity, consistency, and performance. This guide helps you migrate your existing code from v0.5.x to v0.6.0.
+HydroModels.jl v0.6 introduced several improvements focused on clarity, consistency, and performance. This guide helps you migrate your existing code from v0.5.x to v0.6.x.
 
 **Key Changes:**
 - Clearer interpolation method naming
 - Consistent terminology for multi-node modeling
 - Enhanced parameter handling flexibility
 - Improved internal code organization
+- Extension-first optional dependencies (e.g., Lux, YAML, OrdinaryDiffEq)
+
+## v0.6.3 Notes
+
+- Neural APIs (`NeuralFlux`, `NeuralBucket`, `@neuralflux`) remain available from `HydroModels`.
+- Lux-backed constructors and initialization are provided by `HydroModelsLuxExt`, activated after `using Lux`.
 
 **Good News:** Most changes are backward compatible! Old names still work as aliases, giving you time to update your code gradually.
 

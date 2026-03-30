@@ -6,7 +6,6 @@ using HydroModels
 using HydroModelCore
 using ComponentArrays
 using Random
-using LuxCore
 using Statistics
 
 # Helper function to update ComponentArray with another ComponentArray

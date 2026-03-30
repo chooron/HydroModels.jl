@@ -56,7 +56,7 @@ output = bucket(input_data, params, config)
 
 See the [Getting Started Guide](get_start_en.md) for a complete tutorial.
 
-## New in Version 0.6.0
+## New in Version 0.6.3
 
 - ✅ **Clearer Interpolation Names**: `ConstantInterpolation` and `LinearInterpolation` replace confusing old names
 - ✅ **Type-Stable Configuration System**: New `HydroConfig` replaces NamedTuple
@@ -66,6 +66,7 @@ See the [Getting Started Guide](get_start_en.md) for a complete tutorial.
 - ✅ **Functional Construction**: Build fluxes with pure Julia functions
 - ✅ **Better Error Messages**: Clear validation and helpful error reporting
 - ✅ **Consistent Terminology**: `htypes` for multi-node modeling
+- ✅ **Extension-First Neural Integration**: Lux-backed neural constructors and initialization are provided by `HydroModelsLuxExt`
 
 See [Migration Guide](migration_guide_v06.md) for upgrading from v0.5.x.
 

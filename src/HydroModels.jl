@@ -72,9 +72,7 @@ using DocStringExtensions
 using Graphs
 using Graphs: SimpleDiGraph, add_edge!, topological_sort, adjacency_matrix
 
-# Deep learning
-using Lux
-using LuxCore
+# Convolution helpers
 using NNlib
 
 # ============================================================================
@@ -324,9 +322,9 @@ export load_model_from_yaml, load_config_from_yaml, load_parameters_from_yaml, e
 # ============================================================================
 
 """
-Module version: v0.6.2
+Module version: v0.6.3
 
-# Major Updates (v0.6.2)
+# Major Updates (v0.6.3)
 - Unified HydroFlux/HydroMultiFlux into single HydroFlux (htypes dispatch)
 - Unified HydroBucket/HydroMultiBucket into single HydroBucket (htypes dispatch)
 - Redesigned NeuralBucket to implement AbstractHydroBucket (embeds into HydroModel)
@@ -337,7 +335,7 @@ Module version: v0.6.2
 # Julia Version Requirements
 - Julia >= 1.10 (recommended 1.12+)
 """
-const HYDROMODELS_VERSION = v"0.6.2"
+const HYDROMODELS_VERSION = v"0.6.3"
 
 end # module HydroModels
 

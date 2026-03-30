@@ -1,19 +1,24 @@
 """
-Neural network components module - integrates Lux.jl neural networks with HydroModels framework.
+Neural component interfaces for HydroModels.
 
-This module provides:
-- `NeuralFlux`: Neural network-driven flux component
-- `NeuralBucket`: Neural network-based hydrological bucket with RNN-like recurrence structure
-
-# Design Philosophy
-
-The NeuralBucket leverages the structural similarity between hydrological ODEs and RNNs:
-- **Hydrological ODE**: `dS/dt = f(S, input, params)` → iterate over time
-- **RNN**: `h_t = f(h_{t-1}, x_t, params)` → iterate over time
-
-NeuralBucket implements the same interface as HydroBucket (`AbstractHydroBucket`),
-so it can be directly embedded into HydroModel.
+Lux-backed construction and state initialization are provided by the
+`HydroModelsLuxExt` package extension. The core package keeps the public
+component types and macros so the user-facing API remains stable while Lux is
+loaded on demand.
 """
+
+"""
+    _require_lux_extension(feature)
+
+Raise a consistent error for Lux-backed features when the Lux extension has not
+been loaded.
+"""
+function _require_lux_extension(feature::AbstractString)
+    throw(ArgumentError(
+        "$feature requires the HydroModelsLuxExt package extension. " *
+        "Load Lux before using it:\n\nusing HydroModels\nusing Lux"
+    ))
+end
 
 # ============================================================================
 # NeuralFlux - Neural Network Flux Component
@@ -22,91 +27,83 @@ so it can be directly embedded into HydroModel.
 """
     NeuralFlux{C, CF, NF, NT} <: AbstractNeuralFlux
 
-Represents a flux component driven by a neural network.
+Represents a flux component driven by a neural network or neural-style callable.
 
-It wraps a Lux.AbstractLuxLayer and connects it to symbolic variables for integration
-into a hydrological model. Supports both 2D (single-node) and 3D (multi-node) input.
+The Lux-backed constructor is added by `HydroModelsLuxExt`. A pure functional
+constructor remains available in core for lightweight testing or custom
+integration code.
 
 $(FIELDS)
 """
 struct NeuralFlux{C,CF,NF,NT} <: AbstractNeuralFlux
     "neural flux name"
     name::Symbol
-    "chain of the neural network"
+    "wrapped neural object"
     chain::C
-    "Compiled function that calculates the flux using the neural network"
+    "compiled function that calculates the flux"
     chain_func::CF
-    "input normalization functions"
+    "input normalization function"
     norm_func::NF
-    "Information about the neural network's input and output structure"
+    "metadata about inputs, outputs, and neural network names"
     infos::NT
-
-    function NeuralFlux(
-        inputs::Vector{T},
-        outputs::Vector{T},
-        chain::LuxCore.AbstractLuxLayer;
-        norm::Function=(x) -> x,
-        name::Optional{Symbol}=nothing,
-        st=LuxCore.initialstates(Random.default_rng(), chain),
-        chain_name::Optional{Symbol}=nothing,
-    ) where {T<:Num}
-        chain_name = chain_name === nothing ? chain.name : chain_name
-        @assert !isnothing(chain_name) "`chain_name` must be provided for NeuralFlux, or set `name` in chain"
-
-        ps = LuxCore.initialparameters(Random.default_rng(), chain)
-        ps_axes = getaxes(ComponentVector(ps))
-        nn_func = (x, p) -> LuxCore.apply(chain, x, ComponentVector(p, ps_axes), st)[1]
-
-        infos = HydroInfos(
-            inputs=!isempty(inputs) ? tosymbol.(inputs) : Symbol[],
-            outputs=!isempty(outputs) ? tosymbol.(outputs) : Symbol[],
-            nns=[chain_name]
-        )
-        flux_name = isnothing(name) ? Symbol("##neural_flux#", hash(infos)) : name
-
-        new{typeof(chain),typeof(nn_func),typeof(norm),typeof(infos)}(
-            flux_name, chain, nn_func, norm, infos
-        )
-    end
-
-    # Functional constructor - directly use Julia function
-    function NeuralFlux(
-        func::Function;
-        inputs::Vector{Symbol},
-        outputs::Vector{Symbol},
-        name::Optional{Symbol}=nothing,
-        norm::Function=(x) -> x,
-    )
-        infos = HydroInfos(
-            inputs=inputs,
-            outputs=outputs,
-            nns=Symbol[]
-        )
-        flux_name = isnothing(name) ? Symbol("##neural_flux_func#", hash(infos)) : name
-
-        wrapped_func = (x, p) -> func(x)
-
-        new{Nothing,typeof(wrapped_func),typeof(norm),typeof(infos)}(
-            flux_name, nothing, wrapped_func, norm, infos
-        )
-    end
 end
 
-# ============================================================================
-# @neuralflux macro
-# ============================================================================
+"""
+    NeuralFlux(inputs, outputs, chain; kwargs...)
+
+Construct a Lux-backed `NeuralFlux`.
+
+This method is provided by the `HydroModelsLuxExt` extension. Load `Lux` before
+calling it.
+"""
+function NeuralFlux(
+    inputs::Vector{T},
+    outputs::Vector{T},
+    chain;
+    norm::Function=identity,
+    name::Optional{Symbol}=nothing,
+    kwargs...,
+) where {T<:Num}
+    _require_lux_extension("NeuralFlux construction from a Lux layer")
+end
+
+"""
+    NeuralFlux(func; inputs, outputs, name=nothing, norm=identity)
+
+Construct a `NeuralFlux` directly from a Julia function. The wrapped function is
+called as `func(x)` and does not require neural-network parameters.
+"""
+function NeuralFlux(
+    func::Function;
+    inputs::Vector{Symbol},
+    outputs::Vector{Symbol},
+    name::Optional{Symbol}=nothing,
+    norm::Function=identity,
+)
+    infos = HydroInfos(
+        inputs=inputs,
+        outputs=outputs,
+        nns=Symbol[],
+    )
+    flux_name = isnothing(name) ? Symbol("##neural_flux_func#", hash(infos)) : name
+    wrapped_func = (x, _) -> func(x)
+
+    return NeuralFlux(
+        flux_name,
+        nothing,
+        wrapped_func,
+        norm,
+        infos,
+    )
+end
 
 """
     @neuralflux [name] eq
 
-Macro to conveniently create a NeuralFlux from an equation.
+Macro to conveniently create a `NeuralFlux` from an equation.
 
-# Examples
-```julia
-@variables x, y, z
-chain = Chain(Dense(2 => 10, relu), Dense(10 => 1), name=:my_net)
-flux = @neuralflux z ~ chain([x, y])
-```
+When the right-hand side is a Lux layer call, the actual constructor comes from
+`HydroModelsLuxExt`, which is loaded automatically after `using Lux`.
 """
 macro neuralflux(args...)
     name = length(args) == 1 ? nothing : args[1]
@@ -132,35 +129,43 @@ macro neuralflux(args...)
     end)
 end
 
-# ============================================================================
-# NeuralFlux functor methods
-# ============================================================================
+@inline function _get_neural_flux_params(flux::NeuralFlux, params::ComponentVector)
+    nn_names = get_nn_names(flux)
+    isempty(nn_names) && return nothing
 
-# NeuralFlux computation for 2D input (single node)
+    haskey(params, :nns) ||
+        throw(ArgumentError("Missing `nns` parameters for neural flux $(flux.name)"))
+
+    return params[:nns][only(nn_names)]
+end
+
+# 2D computation (single node)
 function (flux::NeuralFlux)(
     input::AbstractArray{T,2},
     params::AbstractVector,
     config::ConfigType=default_config();
-    kwargs...
+    kwargs...,
 )::AbstractArray{T,2} where {T}
-    params = _as_componentvector(params)
-    nn_params = params[:nns][get_nn_names(flux)[1]]
+    params_cv = _as_componentvector(params)
+    nn_params = _get_neural_flux_params(flux, params_cv)
     flux.chain_func(flux.norm_func(input), nn_params)
 end
 
-# NeuralFlux computation for 3D input (multi-node)
+# 3D computation (multi-node)
 function (flux::NeuralFlux)(
     input::AbstractArray{T,3},
     params::AbstractVector,
     config::ConfigType=default_config();
-    kwargs...
+    kwargs...,
 )::AbstractArray{T,3} where {T}
-    params = _as_componentvector(params)
-    nn_params = params[:nns][get_nn_names(flux)[1]]
+    params_cv = _as_componentvector(params)
+    nn_params = _get_neural_flux_params(flux, params_cv)
     norm_input = flux.norm_func(input)
+
     node_outputs = map(1:size(input, 2)) do i
         flux.chain_func(norm_input[:, i, :], nn_params)
     end
+
     stack(node_outputs, dims=2)
 end
 
@@ -171,58 +176,47 @@ end
 """
     NeuralBucket{FN, SN, ON, HT, I} <: AbstractHydroBucket
 
-A neural network-based hydrological bucket that mimics ODE structure using RNN-like recurrence.
+A neural-style hydrological bucket with three callables:
+- a flux network
+- a state update network
+- an output network
 
-Implements the same interface as `HydroBucket` (`AbstractHydroBucket`), so it can be
-directly embedded into `HydroModel`.
-
-# Architecture
-Three neural networks:
-1. **Flux Network**: `(n_states + n_inputs) → hidden → n_fluxes`
-2. **State Network**: `(n_states + n_fluxes) → hidden → n_states` (outputs delta_S)
-3. **Output Network**: `n_fluxes → n_outputs`
-
-# Recurrence
-```
-flux_t = flux_network(vcat(S_{t-1}, input_t))
-delta_S_t = state_network(vcat(S_{t-1}, flux_t))
-S_t = S_{t-1} + delta_S_t  # Residual connection
-output_t = output_network(flux_t)
-```
+The default Lux-based builders and network-state initialization are provided by
+`HydroModelsLuxExt`.
 
 $(FIELDS)
 """
 struct NeuralBucket{FN,SN,ON,HT,I} <: AbstractHydroBucket
-    "Bucket name"
+    "bucket name"
     name::Symbol
-    "Neural network for computing fluxes from states and inputs"
+    "network for computing fluxes from states and inputs"
     flux_network::FN
-    "Neural network for updating states from previous states and fluxes"
+    "network for updating states from previous states and fluxes"
     state_network::SN
-    "Neural network for computing outputs from fluxes"
+    "network for computing outputs from fluxes"
     output_network::ON
-    "Number of input variables"
+    "number of input variables"
     n_inputs::Int
-    "Number of state variables"
+    "number of state variables"
     n_states::Int
-    "Number of output variables"
+    "number of output variables"
     n_outputs::Int
     "HRU types (Nothing = 2D, Vector{Int} = 3D)"
     htypes::HT
-    "Metadata about inputs, outputs, states"
+    "metadata about inputs, outputs, states, and neural network names"
     infos::I
 end
 
 """
     NeuralBucket(; name, flux_network, state_network, output_network, ...)
 
-Construct a NeuralBucket component.
+Construct a `NeuralBucket` from pre-built network-like callables.
 """
 function NeuralBucket(;
     name::Symbol,
-    flux_network::LuxCore.AbstractLuxLayer,
-    state_network::LuxCore.AbstractLuxLayer,
-    output_network::LuxCore.AbstractLuxLayer,
+    flux_network,
+    state_network,
+    output_network,
     n_inputs::Int,
     n_states::Int,
     n_outputs::Int,
@@ -235,107 +229,109 @@ function NeuralBucket(;
     @assert length(states) == n_states "Number of state names must match n_states"
     @assert length(outputs) == n_outputs "Number of output names must match n_outputs"
 
-    flux_name = hasproperty(flux_network, :name) ? flux_network.name : :flux_net
-    state_name = hasproperty(state_network, :name) ? state_network.name : :state_net
-    output_name = hasproperty(output_network, :name) ? output_network.name : :output_net
+    flux_name = hasproperty(flux_network, :name) ? getproperty(flux_network, :name) : :flux_net
+    state_name = hasproperty(state_network, :name) ? getproperty(state_network, :name) : :state_net
+    output_name = hasproperty(output_network, :name) ? getproperty(output_network, :name) : :output_net
 
     infos = HydroInfos(
         inputs=inputs,
         states=states,
         outputs=outputs,
-        nns=[flux_name, state_name, output_name]
+        nns=[flux_name, state_name, output_name],
     )
 
     return NeuralBucket(
-        name, flux_network, state_network, output_network,
-        n_inputs, n_states, n_outputs,
-        htypes, infos
+        name,
+        flux_network,
+        state_network,
+        output_network,
+        n_inputs,
+        n_states,
+        n_outputs,
+        htypes,
+        infos,
     )
 end
 
-# ============================================================================
-# Internal step function (not exposed as Lux interface)
-# ============================================================================
+"""
+    _initial_neural_bucket_states(bucket, rng)
+
+Return backend-specific network state containers for a `NeuralBucket`.
+"""
+function _initial_neural_bucket_states(bucket::NeuralBucket, rng)
+    _require_lux_extension("NeuralBucket execution")
+end
 
 """
-    _neural_bucket_step(bucket, x_t, hydro_state, nn_params, lux_states)
+    _neural_bucket_step(bucket, x_t, hydro_state, nn_params, network_states)
 
-Single timestep computation for NeuralBucket. Internal function.
-
-Returns `(output, new_hydro_state, new_lux_states)`.
+Single timestep computation for `NeuralBucket`. Returns
+`(output, new_hydro_state, new_network_states)`.
 """
-function _neural_bucket_step(bucket::NeuralBucket, x_t, hydro_state, nn_params, lux_states)
-    # Step 1: Compute fluxes from states and inputs
+function _neural_bucket_step(bucket::NeuralBucket, x_t, hydro_state, nn_params, network_states)
     flux_input = vcat(hydro_state, x_t)
-    fluxes, flux_st_new = bucket.flux_network(flux_input, nn_params.flux, lux_states.flux)
+    fluxes, flux_state_new = bucket.flux_network(flux_input, nn_params.flux, network_states.flux)
 
-    # Step 2: Update states with residual connection (S_new = S_old + delta)
     state_input = vcat(hydro_state, fluxes)
-    state_delta, state_st_new = bucket.state_network(state_input, nn_params.state, lux_states.state)
+    state_delta, state_state_new = bucket.state_network(state_input, nn_params.state, network_states.state)
     new_hydro_state = hydro_state .+ state_delta
 
-    # Step 3: Compute outputs from fluxes
-    y_t, output_st_new = bucket.output_network(fluxes, nn_params.output, lux_states.output)
+    y_t, output_state_new = bucket.output_network(fluxes, nn_params.output, network_states.output)
 
-    new_lux_states = (
-        flux = flux_st_new,
-        state = state_st_new,
-        output = output_st_new,
+    new_network_states = (
+        flux=flux_state_new,
+        state=state_state_new,
+        output=output_state_new,
     )
 
-    return y_t, new_hydro_state, new_lux_states
+    return y_t, new_hydro_state, new_network_states
 end
 
-# ============================================================================
-# NeuralBucket functor - HydroModel compatible interface
-# ============================================================================
+@inline function _get_neural_bucket_params(bucket::NeuralBucket, params::ComponentVector)
+    haskey(params, :nns) ||
+        throw(ArgumentError("Missing `nns` parameters for neural bucket $(bucket.name)"))
 
-# 2D computation (single-node, htypes = Nothing)
+    flux_name, state_name, output_name = bucket.infos.nns
+    return (
+        flux=params[:nns][flux_name],
+        state=params[:nns][state_name],
+        output=params[:nns][output_name],
+    )
+end
+
+# 2D computation (single node, htypes = Nothing)
 function (bucket::NeuralBucket{FN,SN,ON,Nothing,I})(
     input::AbstractArray{T,2},
     params::AbstractVector,
     config::ConfigType=default_config();
-    kwargs...
+    kwargs...,
 )::AbstractArray{T,2} where {FN,SN,ON,I,T}
-    params = _as_componentvector(params)
+    params_cv = _as_componentvector(params)
     n_inputs, n_steps = size(input)
     @assert n_inputs == bucket.n_inputs "Input size mismatch: expected $(bucket.n_inputs), got $n_inputs"
 
-    # Extract neural network parameters
-    flux_name = bucket.infos.nns[1]
-    state_name = bucket.infos.nns[2]
-    output_name = bucket.infos.nns[3]
+    nn_params = _get_neural_bucket_params(bucket, params_cv)
+    network_states = _initial_neural_bucket_states(bucket, Random.default_rng())
 
-    nn_params = (
-        flux = params[:nns][flux_name],
-        state = params[:nns][state_name],
-        output = params[:nns][output_name]
-    )
-
-    # Initialize Lux states
-    rng = Random.default_rng()
-    lux_states = (
-        flux = LuxCore.initialstates(rng, bucket.flux_network),
-        state = LuxCore.initialstates(rng, bucket.state_network),
-        output = LuxCore.initialstates(rng, bucket.output_network),
-    )
-
-    # Initialize hydrological states
     initstates = get(kwargs, :initstates, zeros(T, bucket.n_states))
     hydro_state = T.(Vector(initstates))
 
-    # Process sequence (RNN-style recurrence)
     all_states = Vector{AbstractVector{T}}(undef, n_steps)
     all_outputs = Vector{AbstractVector{T}}(undef, n_steps)
 
     for t in 1:n_steps
         x_t = input[:, t]
-        y_t, hydro_state, lux_states = _neural_bucket_step(bucket, x_t, hydro_state, nn_params, lux_states)
+        y_t, hydro_state, network_states = _neural_bucket_step(
+            bucket,
+            x_t,
+            hydro_state,
+            nn_params,
+            network_states,
+        )
         all_states[t] = hydro_state
         all_outputs[t] = y_t
     end
 
-    # Stack and return [states; outputs] to match HydroBucket interface
     states_matrix = reduce(hcat, all_states)
     outputs_matrix = reduce(hcat, all_outputs)
     vcat(states_matrix, outputs_matrix)
@@ -346,27 +342,24 @@ function (bucket::NeuralBucket{FN,SN,ON,Vector{Int},I})(
     input::AbstractArray{T,3},
     params::AbstractVector,
     config::ConfigType=default_config();
-    kwargs...
+    kwargs...,
 )::AbstractArray{T,3} where {FN,SN,ON,I,T}
-    params = _as_componentvector(params)
-    n_inputs, n_nodes, n_steps = size(input)
+    params_cv = _as_componentvector(params)
+    n_inputs, n_nodes, _ = size(input)
     @assert n_inputs == bucket.n_inputs "Input size mismatch: expected $(bucket.n_inputs), got $n_inputs"
 
     initstates_kw = get(kwargs, :initstates, nothing)
-
-    # Process each node independently
     node_outputs = map(1:n_nodes) do node_idx
         node_initstates = if !isnothing(initstates_kw)
-            # Extract per-node initial states
             state_vals = [initstates_kw[s][node_idx] for s in get_state_names(bucket)]
             reduce(vcat, state_vals)
         else
             zeros(T, bucket.n_states)
         end
-        bucket(input[:, node_idx, :], params, config; initstates=node_initstates)
+
+        bucket(input[:, node_idx, :], params_cv, config; initstates=node_initstates)
     end
 
-    # Stack node outputs (n_states+n_outputs × n_nodes × n_timesteps)
     stack(node_outputs, dims=2)
 end
 
@@ -375,11 +368,13 @@ function (bucket::NeuralBucket{FN,SN,ON,Nothing,I})(
     input::AbstractArray{T,3},
     params::AbstractVector,
     config::ConfigType=default_config();
-    kwargs...
+    kwargs...,
 ) where {FN,SN,ON,I,T}
-    error("NeuralBucket without htypes only accepts 2D input (variables × time).\n" *
-          "For multi-node computation, provide htypes.\n" *
-          "Got input shape: $(size(input))")
+    error(
+        "NeuralBucket without htypes only accepts 2D input (variables x time).\n" *
+        "For multi-node computation, provide htypes.\n" *
+        "Got input shape: $(size(input))",
+    )
 end
 
 # Error: multi-node NeuralBucket receiving 2D input
@@ -387,107 +382,43 @@ function (bucket::NeuralBucket{FN,SN,ON,Vector{Int},I})(
     input::AbstractArray{T,2},
     params::AbstractVector,
     config::ConfigType=default_config();
-    kwargs...
+    kwargs...,
 ) where {FN,SN,ON,I,T}
-    error("NeuralBucket with htypes only accepts 3D input (variables × nodes × time).\n" *
-          "For single-node computation, omit htypes.\n" *
-          "Got input shape: $(size(input))")
-end
-
-# ============================================================================
-# Utility Functions
-# ============================================================================
-
-"""
-    create_neural_bucket(; name, n_inputs, n_states, n_outputs, ...)
-
-Convenience function to create a NeuralBucket with default architecture.
-
-# Architecture
-- **Flux Network**: `(n_states + n_inputs) → hidden → n_fluxes`
-- **State Network**: `(n_states + n_fluxes) → hidden → n_states`
-- **Output Network**: `n_fluxes → n_outputs`
-"""
-function create_neural_bucket(;
-    name::Symbol,
-    n_inputs::Int,
-    n_states::Int,
-    n_outputs::Int,
-    n_fluxes::Int=n_states,
-    hidden_size::Int=16,
-    inputs::Vector{Symbol},
-    states::Vector{Symbol},
-    outputs::Vector{Symbol},
-    htypes::Optional{Vector{Int}}=nothing,
-    flux_activation=tanh,
-    state_activation=identity,
-    output_activation=identity
-)
-    flux_network = Chain(
-        Dense(n_states + n_inputs => hidden_size, flux_activation),
-        Dense(hidden_size => n_fluxes),
-        name = Symbol(name, :_flux)
-    )
-    state_network = Chain(
-        Dense(n_states + n_fluxes => hidden_size, state_activation),
-        Dense(hidden_size => n_states),
-        name = Symbol(name, :_state)
-    )
-    output_network = Chain(
-        Dense(n_fluxes => n_outputs, output_activation),
-        name = Symbol(name, :_output)
-    )
-
-    return NeuralBucket(;
-        name=name,
-        flux_network=flux_network,
-        state_network=state_network,
-        output_network=output_network,
-        n_inputs=n_inputs,
-        n_states=n_states,
-        n_outputs=n_outputs,
-        inputs=inputs,
-        states=states,
-        outputs=outputs,
-        htypes=htypes
+    error(
+        "NeuralBucket with htypes only accepts 3D input (variables x nodes x time).\n" *
+        "For single-node computation, omit htypes.\n" *
+        "Got input shape: $(size(input))",
     )
 end
 
 """
-    create_simple_neural_bucket(; name, n_inputs, n_states, n_outputs, ...)
+    create_neural_bucket(; kwargs...)
 
-Create a minimal NeuralBucket with direct linear transformations (no hidden layers).
+Convenience constructor for Lux-backed `NeuralBucket` components. Implemented by
+`HydroModelsLuxExt`.
 """
-function create_simple_neural_bucket(;
-    name::Symbol,
-    n_inputs::Int,
-    n_states::Int,
-    n_outputs::Int,
-    inputs::Vector{Symbol},
-    states::Vector{Symbol},
-    outputs::Vector{Symbol},
-    htypes::Optional{Vector{Int}}=nothing,
-)
-    flux_network = Dense(n_states + n_inputs => n_states, name=Symbol(name, :_flux))
-    state_network = Dense(n_states + n_states => n_states, name=Symbol(name, :_state))
-    output_network = Dense(n_states => n_outputs, name=Symbol(name, :_output))
-
-    return NeuralBucket(;
-        name=name,
-        flux_network=flux_network,
-        state_network=state_network,
-        output_network=output_network,
-        n_inputs=n_inputs,
-        n_states=n_states,
-        n_outputs=n_outputs,
-        inputs=inputs,
-        states=states,
-        outputs=outputs,
-        htypes=htypes
-    )
+function create_neural_bucket(; kwargs...)
+    ext = Base.get_extension(@__MODULE__, :HydroModelsLuxExt)
+    if !isnothing(ext)
+        return create_neural_bucket(Val(:lux); kwargs...)
+    end
+    _require_lux_extension("create_neural_bucket")
 end
 
-# Export interfaces
+"""
+    create_simple_neural_bucket(; kwargs...)
+
+Minimal Lux-backed `NeuralBucket` constructor. Implemented by
+`HydroModelsLuxExt`.
+"""
+function create_simple_neural_bucket(; kwargs...)
+    ext = Base.get_extension(@__MODULE__, :HydroModelsLuxExt)
+    if !isnothing(ext)
+        return create_simple_neural_bucket(Val(:lux); kwargs...)
+    end
+    _require_lux_extension("create_simple_neural_bucket")
+end
+
 export NeuralFlux, NeuralBucket
 export @neuralflux
 export create_neural_bucket, create_simple_neural_bucket

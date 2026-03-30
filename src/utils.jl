@@ -334,14 +334,16 @@ end
 
 # Helper function to extract neural network parameters
 function _get_nn_params(component::AbstractNeuralFlux, nn_names, rng)
-    if !isnothing(component.chain)
-        ps = LuxCore.initialparameters(rng, component.chain)
-        return NamedTuple{Tuple(nn_names)}((ComponentVector(ps),))
-    end
-    return NamedTuple()
+    _require_lux_extension("Neural network parameter initialization")
 end
 
 function _get_nn_params(component::AbstractHydroBucket, nn_names, rng)
+    if hasproperty(component, :flux_network) &&
+       hasproperty(component, :state_network) &&
+       hasproperty(component, :output_network)
+        _require_lux_extension("Neural network parameter initialization")
+    end
+
     if hasproperty(component, :neural_fluxes) && !isempty(component.neural_fluxes)
         all_nn_params = Dict{Symbol, ComponentVector}()
         for nf in component.neural_fluxes
@@ -355,19 +357,6 @@ function _get_nn_params(component::AbstractHydroBucket, nn_names, rng)
 end
 
 function _get_nn_params(component::AbstractComponent, nn_names, rng)
-    # For NeuralBucket or other components with network fields
-    if isdefined(Main, :NeuralBucket) && component isa Main.NeuralBucket
-        flux_ps = LuxCore.initialparameters(rng, component.flux_network)
-        state_ps = LuxCore.initialparameters(rng, component.state_network)
-        output_ps = LuxCore.initialparameters(rng, component.output_network)
-
-        return NamedTuple{Tuple(nn_names)}((
-            ComponentVector(flux_ps),
-            ComponentVector(state_ps),
-            ComponentVector(output_ps)
-        ))
-    end
-
     # For composite components (HydroModel, etc.)
     if hasproperty(component, :components)
         all_nn_params = Dict{Symbol, ComponentVector}()

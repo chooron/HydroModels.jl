@@ -2,6 +2,8 @@
 
 A distinctive feature of the HydroModels.jl framework is its seamless integration of neural networks into hydrological model computations through the `NeuralFlux` type. This integration enables hybrid modeling approaches that combine process-based equations with data-driven components.
 
+> Note (v0.6.3): Neural APIs are exposed by `HydroModels`, while Lux-backed implementations are loaded through the `HydroModelsLuxExt` extension after `using Lux`.
+
 ## NeuralFlux Architecture
 
 The `NeuralFlux` type is a subtype of `AbstractNeuralFlux` in the HydroModels.jl framework, maintaining interface consistency with `HydroFlux` for seamless integration with `HydroBucket` components:
@@ -29,7 +31,8 @@ The `@neuralflux` macro provides a concise syntax for defining neural network fl
 `NeuralFlux` can be used independently to perform computations, functionally equivalent to direct Lux.jl neural network invocation but with the advantage of accepting `ComponentVector` parameters, enabling integration with `Element` and `Model` components:
 
 ```julia
-using HydroModels, Lux
+using HydroModels
+using Lux
 
 @variables i1 i2 i3 o1 o2
 chain_nm = :testnn
