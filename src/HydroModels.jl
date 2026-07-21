@@ -5,7 +5,7 @@ Modern hydrological modeling framework supporting both symbolic and functional m
 
 # Key Features
 - Type-stable configuration system
-- Fully compatible with Zygote and Enzyme automatic differentiation
+- Automatic differentiation through ForwardDiff and Mooncake integrations
 - Flexible symbolic and functional modeling interfaces
 - Unified single-node (2D) and multi-node (3D) components via `htypes`
 - Pluggable interpolators (supports DataInterpolations.jl via extension)
@@ -85,7 +85,7 @@ const Optional{T} = Union{T,Nothing}
 """Solver type enumeration"""
 Base.@enum SolverType begin
     MutableSolver      # Mutable solver (efficient)
-    ImmutableSolver    # Immutable solver (Zygote-friendly)
+    ImmutableSolver    # Immutable solver
     ODESolver          # ODE solver (interface reserved)
     DiscreteSolver     # Discrete solver
 end
@@ -94,17 +94,18 @@ end
 # Core Dependencies
 # ============================================================================
 
-using HydroModelCore
-using HydroModelCore: AbstractComponent, AbstractFlux, AbstractStateFlux
-using HydroModelCore: AbstractHydroFlux, AbstractNeuralFlux
-using HydroModelCore: AbstractHydroBucket, AbstractHydroRoute, AbstractHydrograph
-using HydroModelCore: AbstractModel
-using HydroModelCore: HydroInfos
-using HydroModelCore: get_var_names, get_input_names, get_output_names
-using HydroModelCore: get_state_names, get_param_names, get_nn_names
-using HydroModelCore: isparameter, toparam
-using HydroModelCore: build_flux_func, build_bucket_func, build_route_func, build_uh_func
-using HydroModelCore: tosymbol, Num, @variables, get_variables
+include(joinpath(@__DIR__, "..", "lib", "HydroModelCore", "src", "HydroModelCore.jl"))
+using .HydroModelCore
+using .HydroModelCore: AbstractComponent, AbstractFlux, AbstractStateFlux
+using .HydroModelCore: AbstractHydroFlux, AbstractNeuralFlux
+using .HydroModelCore: AbstractHydroBucket, AbstractHydroRoute, AbstractHydrograph
+using .HydroModelCore: AbstractModel
+using .HydroModelCore: HydroInfos
+using .HydroModelCore: get_var_names, get_input_names, get_output_names
+using .HydroModelCore: get_state_names, get_param_names, get_nn_names
+using .HydroModelCore: isparameter, toparam
+using .HydroModelCore: build_flux_func, build_bucket_func, build_route_func, build_uh_func
+using .HydroModelCore: tosymbol, Num, @variables, get_variables
 
 # ============================================================================
 # Export Symbolic Computation Tools
@@ -136,7 +137,7 @@ export get_config_value, ConfigType
 # Interpolation
 include("interpolate.jl")
 export ConstantInterpolation, LinearInterpolation
-export DirectInterpolation, EnzymeInterpolation, EnzymeCompatibleInterpolation  # backward compat
+export DirectInterpolation
 export hydrointerp
 
 # Solver and utilities
@@ -322,7 +323,7 @@ export load_model_from_yaml, load_config_from_yaml, load_parameters_from_yaml, e
 # ============================================================================
 
 """
-Module version: v0.6.3
+Module version: v0.7.0
 
 # Major Updates (v0.6.3)
 - Unified HydroFlux/HydroMultiFlux into single HydroFlux (htypes dispatch)
@@ -333,9 +334,9 @@ Module version: v0.6.3
 - Backward-compatible aliases: HydroMultiFlux, HydroMultiBucket, @hydromultiflux, @hydromultibucket
 
 # Julia Version Requirements
-- Julia >= 1.10 (recommended 1.12+)
+- Julia 1.12
 """
-const HYDROMODELS_VERSION = v"0.6.3"
+const HYDROMODELS_VERSION = v"0.7.0"
 
 end # module HydroModels
 

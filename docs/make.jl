@@ -29,7 +29,10 @@ makedocs(
     pages = [
         "Home" => "index.md",
         "Get Started with HydroModels.jl" => "get_start_en.md",
-        "Migration Guide" => "migration_guide_v06.md",
+        "Migration Guides" => [
+            "v0.6 to v0.7" => "migration_guide_v07.md",
+            "v0.5 to v0.6" => "migration_guide_v06.md",
+        ],
         "tutorials" => [
             "Framework Design" => "tutorials/framework_design.md",
             "Interpolation Methods" => "tutorials/interpolation_guide.md",

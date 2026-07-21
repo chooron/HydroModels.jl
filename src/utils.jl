@@ -22,6 +22,63 @@ Convert a plain vector to ComponentVector using stored axes.
 @inline _as_componentvector(p::AbstractVector, axes) = ComponentVector(p, axes)
 
 """
+    merge_componentvectors(base, overrides...; strict=false)
+
+Recursively overlay `ComponentVector` values while retaining the complete
+structure of `base`. Nested `NamedTuple` branches are merged recursively;
+leaves in a later argument replace earlier leaves. Set `strict=true` to reject
+new fields, which is useful when applying fixed parameters to a model's known
+parameter tree.
+
+The parameter tree is structural metadata, so this function builds the merged
+tree with ordinary `NamedTuple` operations and constructs a new
+`ComponentVector` only once. Keep the tree shape independent of active AD
+values.
+"""
+function merge_componentvectors(
+    base::ComponentVector,
+    overrides::ComponentVector...;
+    strict::Bool=false,
+)
+    merged = NamedTuple(base)
+    for override in overrides
+        override_nt = NamedTuple(override)
+        strict && _validate_component_override(merged, override_nt)
+        merged = _merge_component_namedtuples(merged, override_nt)
+    end
+    return ComponentVector(merged)
+end
+
+function _merge_component_namedtuples(base::NamedTuple, override::NamedTuple)
+    override_keys = keys(override)
+    override_values = ntuple(length(override_keys)) do index
+        key = override_keys[index]
+        base_value = get(base, key, nothing)
+        override_value = override[key]
+        if base_value isa NamedTuple && override_value isa NamedTuple
+            _merge_component_namedtuples(base_value, override_value)
+        else
+            override_value
+        end
+    end
+    return merge(base, NamedTuple{override_keys}(override_values))
+end
+
+function _validate_component_override(base::NamedTuple, override::NamedTuple, path=())
+    for key in keys(override)
+        haskey(base, key) || throw(ArgumentError(
+            "Unknown parameter field `$(join((path..., key), '.'))` in component override",
+        ))
+        base_value = base[key]
+        override_value = override[key]
+        if base_value isa NamedTuple && override_value isa NamedTuple
+            _validate_component_override(base_value, override_value, (path..., key))
+        end
+    end
+    return nothing
+end
+
+"""
     sort_fluxes(fluxes::AbstractVector{<:AbstractComponent})
 
 Topologically sort flux components based on their variable dependencies.
@@ -412,4 +469,5 @@ end
 export sort_fluxes, sort_components, expand_component_params
 export get_default_states, extract_variables
 export _as_componentvector
+export merge_componentvectors
 export get_initial_params, get_nn_initial_params

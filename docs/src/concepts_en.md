@@ -79,7 +79,7 @@ end
 ### Solver Types
 
 - **MutableSolver**: Iterative updates, memory-efficient (default)
-- **ImmutableSolver**: Functional accumulate, best for Zygote AD
+- **ImmutableSolver**: Functional accumulate, useful for ForwardDiff and Mooncake AD
 - **ODESolver**: For DifferentialEquations.jl integration
 - **DiscreteSolver**: For algebraic equations only
 
@@ -89,7 +89,7 @@ end
 # Create configuration
 config = HydroConfig(
     solver = ImmutableSolver,
-    interpolator = Val(ConstantInterpolation),
+    interpolator = ConstantInterpolation,
     timeidx = 1:1000,
     min_value = 1e-6
 )
@@ -114,7 +114,7 @@ HydroModels.jl provides two built-in interpolation methods for handling input da
 
 **Example:**
 ```julia
-config = HydroConfig(interpolator = Val(ConstantInterpolation))
+config = HydroConfig(interpolator = ConstantInterpolation)
 ```
 
 #### LinearInterpolation
@@ -129,10 +129,10 @@ config = HydroConfig(interpolator = Val(ConstantInterpolation))
 
 **Example:**
 ```julia
-config = HydroConfig(interpolator = Val(LinearInterpolation))
+config = HydroConfig(interpolator = LinearInterpolation)
 ```
 
-**Note:** Both methods are fully compatible with automatic differentiation (Enzyme/Zygote). For advanced interpolation methods, see the [Interpolation Methods Guide](tutorials/interpolation_guide.md).
+**Note:** Both methods are covered by the ForwardDiff/Mooncake test matrix. For advanced interpolation methods, see the [Interpolation Methods Guide](tutorials/interpolation_guide.md).
 
 ### Performance Benefits
 

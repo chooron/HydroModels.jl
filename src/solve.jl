@@ -1,6 +1,6 @@
 """
 Solver module - provides ODE/difference equation solvers and numerical utilities.
-Fully compatible with Zygote AD.
+Designed for ForwardDiff and Mooncake AD.
 """
 
 """
@@ -26,7 +26,7 @@ end
 """
     hydrosolve(::Val{MutableSolver}, ...)
 
-Mutable solver - iterative updates without in-place modifications for Zygote compatibility.
+Mutable solver - iterative updates with a stable state layout.
 """
 function hydrosolve(
     ::Val{MutableSolver},
@@ -57,7 +57,7 @@ end
 """
     hydrosolve(::Val{ImmutableSolver}, ...)
 
-Immutable solver - functional accumulate, fully compatible with Zygote.
+Immutable solver - functional accumulate, useful for differentiable model evaluation.
 """
 function hydrosolve(
     ::Val{ImmutableSolver},

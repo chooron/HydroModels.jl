@@ -111,7 +111,7 @@ end
 """
     create_test_config(;
         solver = MutableSolver,
-        interpolator = Val(ConstantInterpolation),
+        interpolator = ConstantInterpolation,
         timeidx = Int[],
         min_value = 1e-6,
         parallel = false
@@ -121,7 +121,7 @@ Create a HydroConfig for testing.
 """
 function create_test_config(;
     solver = MutableSolver,
-    interpolator = Val(ConstantInterpolation),
+    interpolator = ConstantInterpolation,
     timeidx = Int[],
     min_value = 1e-6,
     parallel = false

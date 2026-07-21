@@ -268,8 +268,8 @@ struct HydroRoute{FF,OF,AF,HT,I} <: AbstractHydroRoute
     end
 
     function HydroRoute(
-        flux_func::Function,
-        ode_func::Function,
+        flux_func,
+        ode_func,
         aggr_func::AF;
         name::Symbol,
         inputs::Vector{Symbol},
@@ -421,7 +421,7 @@ struct RouteIRF{KF,NT}
 
     function RouteIRF(
         params::AbstractVector,
-        kernel_func::Function;
+        kernel_func;
         name::Optional{Symbol}=nothing,
     )
         infos = HydroInfos(params=!isempty(params) ? tosymbol.(params) : Symbol[])

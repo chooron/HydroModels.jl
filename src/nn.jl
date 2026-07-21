@@ -60,7 +60,7 @@ function NeuralFlux(
     inputs::Vector{T},
     outputs::Vector{T},
     chain;
-    norm::Function=identity,
+    norm=identity,
     name::Optional{Symbol}=nothing,
     kwargs...,
 ) where {T<:Num}
@@ -74,11 +74,11 @@ Construct a `NeuralFlux` directly from a Julia function. The wrapped function is
 called as `func(x)` and does not require neural-network parameters.
 """
 function NeuralFlux(
-    func::Function;
+    func;
     inputs::Vector{Symbol},
     outputs::Vector{Symbol},
     name::Optional{Symbol}=nothing,
-    norm::Function=identity,
+    norm=identity,
 )
     infos = HydroInfos(
         inputs=inputs,
@@ -145,7 +145,7 @@ function (flux::NeuralFlux)(
     params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...,
-)::AbstractArray{T,2} where {T}
+) where {T}
     params_cv = _as_componentvector(params)
     nn_params = _get_neural_flux_params(flux, params_cv)
     flux.chain_func(flux.norm_func(input), nn_params)
@@ -157,7 +157,7 @@ function (flux::NeuralFlux)(
     params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...,
-)::AbstractArray{T,3} where {T}
+) where {T}
     params_cv = _as_componentvector(params)
     nn_params = _get_neural_flux_params(flux, params_cv)
     norm_input = flux.norm_func(input)
@@ -305,7 +305,7 @@ function (bucket::NeuralBucket{FN,SN,ON,Nothing,I})(
     params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...,
-)::AbstractArray{T,2} where {FN,SN,ON,I,T}
+) where {FN,SN,ON,I,T}
     params_cv = _as_componentvector(params)
     n_inputs, n_steps = size(input)
     @assert n_inputs == bucket.n_inputs "Input size mismatch: expected $(bucket.n_inputs), got $n_inputs"
@@ -343,7 +343,7 @@ function (bucket::NeuralBucket{FN,SN,ON,Vector{Int},I})(
     params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...,
-)::AbstractArray{T,3} where {FN,SN,ON,I,T}
+) where {FN,SN,ON,I,T}
     params_cv = _as_componentvector(params)
     n_inputs, n_nodes, _ = size(input)
     @assert n_inputs == bucket.n_inputs "Input size mismatch: expected $(bucket.n_inputs), got $n_inputs"

@@ -268,4 +268,4 @@ Extract initial neural network parameters from a component.
 - When using `fixed_params`, provide bounds in `lb_pas`/`ub_pas` for calibratable parameters only
 - Metrics are minimized (negative values for KGE/NSE to maximize them)
 - The extension integrates seamlessly with all Optimization.jl solvers
-- `fixed_params` uses `update_ca` for hierarchical parameter updates, supporting nested structures
+- `fixed_params` uses `merge_componentvectors(...; strict=true)` for hierarchical parameter updates; unknown fields raise an error

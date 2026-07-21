@@ -1,4 +1,14 @@
 @testset "test neural flux (single output)" begin
+    @test create_simple_neural_bucket(
+        name=:extension_dispatch,
+        n_inputs=1,
+        n_states=1,
+        n_outputs=1,
+        inputs=[:forcing],
+        states=[:storage],
+        outputs=[:runoff],
+    ) isa NeuralBucket
+
     @variables a b c d e
     nn_1 = Lux.Chain(
         layer_1=Lux.Dense(3, 16, Lux.leakyrelu),

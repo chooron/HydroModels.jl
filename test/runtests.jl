@@ -72,8 +72,6 @@ end
 #     include("miscellaneous/run_cuda.jl")
 # end
 
-# # cost a lot of time
-# @testset "test gradient" begin
-#     # include("gradient/run_hydro_gradient.jl")
-#     include("gradient/run_hybrid_gradient.jl")
-# end
+@testset "AD and ODE gradients" begin
+    include("gradient/test_ad.jl")
+end

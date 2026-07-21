@@ -10,7 +10,7 @@ HydroModels.jl的设计理念事实上是与ModelingToolkit.jl完全一致的,�
 - 水文模型通常包括多个常微分方程,使用一个ODESystem构建会相对混乱,使用多个ODESystem会相对复杂
 - 同时对于多节点输入,空间汇流过程计算,ODESystem或无法直接支持.
 - 对于神经网络模型的嵌入,尽管存在ModelingToolkitNeuralNets.jl,然而嵌入性却没有想象的那么简单
-- 基于ModelingToolkit.jl对于自动微分的支持,尤其是Zygote.jl我在使用时也存在问题.
+- 基于ModelingToolkit.jl 的自动微分路径也存在问题，因此项目采用显式的 ForwardDiff/Mooncake 路径。
 
 因此我决定自己构建一个模型库,参考了符号编程的模型构建方式,使其更能够支撑水文模型的一些建模需求.
 

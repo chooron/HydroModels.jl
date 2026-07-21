@@ -35,8 +35,8 @@ struct UnitHydrograph{UF,MF,HT,NT} <: AbstractHydrograph
         inputs::AbstractVector,
         outputs::AbstractVector,
         params::AbstractVector,
-        uh_func::Function,
-        max_lag_func::Function;
+        uh_func,
+        max_lag_func;
         name::Optional{Symbol}=nothing,
         htypes::Optional{Vector{Int}}=nothing,
         kwargs...
@@ -211,9 +211,9 @@ function (uh::UnitHydrograph{UF,MF,Nothing,NT})(
     params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...
-)::AbstractArray{T,2} where {UF,MF,NT,T}
+) where {UF,MF,NT,T}
     params = _as_componentvector(params)
-    # Compute UH weights (Zygote-compatible)
+    # Compute UH weights with AD-friendly scalar operations.
     max_lag_val = uh.max_lag(params)
     lag_weights = [uh.uh_func(t, params) for t in 1:max_lag_val]
 
@@ -242,7 +242,7 @@ function (uh::UnitHydrograph{UF,MF,Vector{Int},NT})(
     params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...
-)::AbstractArray{T,3} where {UF,MF,NT,T}
+) where {UF,MF,NT,T}
     params = _as_componentvector(params)
     ptyidx = uh.htypes
     uh_param_names = get_param_names(uh)

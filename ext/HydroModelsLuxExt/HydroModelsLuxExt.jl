@@ -2,8 +2,8 @@ module HydroModelsLuxExt
 
 using ComponentArrays
 using ComponentArrays: ComponentVector, getaxes
-using HydroModelCore: HydroInfos
 using HydroModels
+using HydroModels: HydroInfos
 using Lux
 using LuxCore
 using Random
@@ -12,7 +12,7 @@ function HydroModels.NeuralFlux(
     inputs::Vector{T},
     outputs::Vector{T},
     chain::LuxCore.AbstractLuxLayer;
-    norm::Function=identity,
+    norm=identity,
     name::HydroModels.Optional{Symbol}=nothing,
     st=LuxCore.initialstates(Random.default_rng(), chain),
     chain_name::HydroModels.Optional{Symbol}=nothing,
@@ -86,7 +86,7 @@ function HydroModels._get_nn_params(
 end
 
 function HydroModels.create_neural_bucket(
-    ::Type{Val{:lux}};
+    ::Val{:lux};
     name::Symbol,
     n_inputs::Int,
     n_states::Int,
@@ -102,17 +102,17 @@ function HydroModels.create_neural_bucket(
     output_activation=identity,
 )
     flux_network = Lux.Chain(
-        Lux.Dense(n_states + n_inputs => hidden_size, flux_activation),
-        Lux.Dense(hidden_size => n_fluxes),
+        hidden=Lux.Dense(n_states + n_inputs => hidden_size, flux_activation),
+        output=Lux.Dense(hidden_size => n_fluxes),
         name=Symbol(name, :_flux),
     )
     state_network = Lux.Chain(
-        Lux.Dense(n_states + n_fluxes => hidden_size, state_activation),
-        Lux.Dense(hidden_size => n_states),
+        hidden=Lux.Dense(n_states + n_fluxes => hidden_size, state_activation),
+        output=Lux.Dense(hidden_size => n_states),
         name=Symbol(name, :_state),
     )
     output_network = Lux.Chain(
-        Lux.Dense(n_fluxes => n_outputs, output_activation),
+        output=Lux.Dense(n_fluxes => n_outputs, output_activation),
         name=Symbol(name, :_output),
     )
 
@@ -132,7 +132,7 @@ function HydroModels.create_neural_bucket(
 end
 
 function HydroModels.create_simple_neural_bucket(
-    ::Type{Val{:lux}};
+    ::Val{:lux};
     name::Symbol,
     n_inputs::Int,
     n_states::Int,
@@ -142,16 +142,16 @@ function HydroModels.create_simple_neural_bucket(
     outputs::Vector{Symbol},
     htypes::HydroModels.Optional{Vector{Int}}=nothing,
 )
-    flux_network = Lux.Dense(
-        n_states + n_inputs => n_states,
+    flux_network = Lux.Chain(
+        layer=Lux.Dense(n_states + n_inputs => n_states),
         name=Symbol(name, :_flux),
     )
-    state_network = Lux.Dense(
-        n_states + n_states => n_states,
+    state_network = Lux.Chain(
+        layer=Lux.Dense(n_states + n_states => n_states),
         name=Symbol(name, :_state),
     )
-    output_network = Lux.Dense(
-        n_states => n_outputs,
+    output_network = Lux.Chain(
+        layer=Lux.Dense(n_states => n_outputs),
         name=Symbol(name, :_output),
     )
 

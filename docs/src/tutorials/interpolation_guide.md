@@ -4,7 +4,7 @@
 
 Interpolation is a critical component in hydrological modeling that determines how input forcing data (precipitation, temperature, etc.) is handled between discrete timesteps. The choice of interpolation method affects both model accuracy and computational performance.
 
-HydroModels.jl provides two built-in interpolation methods, both fully compatible with automatic differentiation frameworks (Enzyme and Zygote), making them suitable for parameter optimization and sensitivity analysis.
+HydroModels.jl provides two built-in interpolation methods that are covered by the ForwardDiff and Mooncake gradient test matrix.
 
 ## Available Methods
 
@@ -34,7 +34,7 @@ using HydroModels
 
 config = HydroConfig(
     solver = MutableSolver,
-    interpolator = Val(ConstantInterpolation)
+    interpolator = ConstantInterpolation
 )
 
 # Run model with constant interpolation
@@ -44,7 +44,8 @@ output = model(input, params, config)
 **Performance characteristics:**
 - **Speed:** Fastest (simple array indexing)
 - **Memory:** Minimal overhead
-- **AD compatibility:** Full support for Enzyme and Zygote
+- **AD compatibility:** Supports parameter gradients through ForwardDiff and Mooncake
+- **ODE note:** Because the forcing is discontinuous, use `tstops` at forcing knots; gradients at the knots themselves are not smooth.
 
 ### LinearInterpolation
 
@@ -73,7 +74,7 @@ using HydroModels
 
 config = HydroConfig(
     solver = ImmutableSolver,  # Often paired with LinearInterpolation for AD
-    interpolator = Val(LinearInterpolation)
+    interpolator = LinearInterpolation
 )
 
 # Run model with linear interpolation
@@ -83,7 +84,7 @@ output = model(input, params, config)
 **Performance characteristics:**
 - **Speed:** Slightly slower than ConstantInterpolation (requires arithmetic operations)
 - **Memory:** Minimal overhead
-- **AD compatibility:** Full support for Enzyme and Zygote
+- **AD compatibility:** Supports parameter gradients through ForwardDiff and Mooncake
 
 ## Comparison
 
@@ -155,30 +156,25 @@ output = model(input, params, config)
 
 **Note:** Advanced interpolators may have limited AD support. Check DataInterpolations.jl documentation for compatibility.
 
-## Enzyme Compatibility
+## Mooncake and ODE sensitivities
 
-Both `ConstantInterpolation` and `LinearInterpolation` are designed to be fully compatible with Enzyme.jl for automatic differentiation:
-
-**Key features:**
-- No dynamic memory allocation in hot loops
-- Type-stable implementations
-- Explicit handling of interpolation logic
-
-**Example with Enzyme:**
+Use a scalar loss and select Mooncake through SciMLSensitivity when differentiating an ODE solve:
 ```julia
 using HydroModels
-using Enzyme
+using DifferentiationInterface
+using SciMLSensitivity
 
-# Define model with interpolation
 function run_model(params_vec)
-    config = HydroConfig(interpolator = Val(LinearInterpolation))
+    config = HydroConfig(interpolator = LinearInterpolation)
     output = model(input, params_vec, config)
-    return sum(output)  # Scalar objective
+    return sum(output)
 end
 
-# Compute gradient
-grad = Enzyme.gradient(Reverse, run_model, params)
+value, grad = value_and_gradient(run_model, AutoMooncake(), params)
 ```
+
+For discontinuous `ConstantInterpolation`, provide forcing knot times as
+`tstops` when constructing a direct SciML `ODEProblem`.
 
 ## Practical Examples
 
@@ -202,7 +198,7 @@ end
 # Configuration for daily timesteps
 config = HydroConfig(
     solver = MutableSolver,
-    interpolator = Val(ConstantInterpolation),  # Appropriate for daily data
+    interpolator = ConstantInterpolation,  # Appropriate for daily data
     timeidx = 1:365
 )
 
@@ -229,7 +225,7 @@ end
 # Configuration for hourly timesteps
 config = HydroConfig(
     solver = ImmutableSolver,  # Better for AD
-    interpolator = Val(LinearInterpolation),  # Smooth forcing transitions
+    interpolator = LinearInterpolation,  # Smooth forcing transitions
     timeidx = 1:8760  # One year of hourly data
 )
 
@@ -247,7 +243,7 @@ using Optimization, OptimizationOptimJL
 function objective(params_vec, p)
     config = HydroConfig(
         solver = ImmutableSolver,
-        interpolator = Val(LinearInterpolation)  # Smoother gradients
+        interpolator = LinearInterpolation  # Smoother gradients
     )
 
     simulated = model(input, params_vec, config)
@@ -272,10 +268,10 @@ sol = solve(prob, BFGS())
 
 ```julia
 # Before (discontinuous)
-config = HydroConfig(interpolator = Val(ConstantInterpolation))
+config = HydroConfig(interpolator = ConstantInterpolation)
 
 # After (smooth)
-config = HydroConfig(interpolator = Val(LinearInterpolation))
+config = HydroConfig(interpolator = LinearInterpolation)
 ```
 
 ### Issue: Slow gradient computation
@@ -289,7 +285,7 @@ config = HydroConfig(interpolator = Val(LinearInterpolation))
 config = HydroConfig(interpolator = CubicSpline(data, times))
 
 # After (fast)
-config = HydroConfig(interpolator = Val(LinearInterpolation))
+config = HydroConfig(interpolator = LinearInterpolation)
 ```
 
 ### Issue: "Interpolator not found" error
@@ -300,10 +296,10 @@ config = HydroConfig(interpolator = Val(LinearInterpolation))
 
 ```julia
 # Wrong (old name)
-config = HydroConfig(interpolator = Val(DirectInterpolation))
+config = HydroConfig(interpolator = DirectInterpolation)
 
 # Correct (new name)
-config = HydroConfig(interpolator = Val(ConstantInterpolation))
+config = HydroConfig(interpolator = ConstantInterpolation)
 ```
 
 ## Summary

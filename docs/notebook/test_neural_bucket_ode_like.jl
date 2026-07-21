@@ -312,7 +312,7 @@ println("  ✓ Both maintain states across time")
 println("  ✓ Both iterate over input sequences")
 println("  ✓ Both support multi-node computation")
 println("  ✓ Both compatible with HydroModels interface")
-println("  ✓ Both support Zygote automatic differentiation")
+println("  ✓ Both support the project's ForwardDiff/Mooncake AD workflow")
 
 # ============================================================================
 # Example 8: State evolution visualization

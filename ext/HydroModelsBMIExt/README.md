@@ -1,5 +1,10 @@
 # HydroModels BMI Extension
 
+> **Temporarily deprecated in HydroModels v0.7.** This extension is not
+> registered in the package extension table and will not load. Its source is
+> retained for a future repair and test pass; do not depend on this interface
+> until it is re-enabled in a later release.
+
 This extension provides Basic Model Interface (BMI) support for HydroModels.jl, enabling interoperability with other modeling frameworks.
 
 ## Overview

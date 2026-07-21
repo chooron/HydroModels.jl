@@ -166,7 +166,7 @@ Specify runtime configuration:
 ```yaml
 config:
   solver: MutableSolver  # or ImmutableSolver, ODESolver, DiscreteSolver
-  interpolator: DirectInterpolation  # or EnzymeCompatibleInterpolation
+  interpolator: DirectInterpolation  # alias for ConstantInterpolation
   min_value: 1.0e-6
   parallel: false
 ```
@@ -310,7 +310,7 @@ The extension automatically:
 ### Type Safety
 
 All components created from YAML are fully type-stable and compatible with:
-- Automatic differentiation (Zygote, Enzyme)
+- Automatic differentiation through ForwardDiff and Mooncake integrations
 - GPU computation
 - Optimization frameworks
 - All HydroModels features

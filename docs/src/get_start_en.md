@@ -316,7 +316,7 @@ config = HydroConfig(
     # Solver type: MutableSolver, ImmutableSolver, ODESolver, or DiscreteSolver
     solver = MutableSolver,
     # Interpolation method (wrapped in Val for type stability)
-    interpolator = Val(ConstantInterpolation),
+    interpolator = ConstantInterpolation,
     # Time indices for simulation
     timeidx = ts,
     # Device function (e.g., for GPU acceleration)

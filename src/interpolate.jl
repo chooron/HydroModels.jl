@@ -1,9 +1,8 @@
 """
-Interpolation module - Enzyme-compatible interpolation implementations.
+Interpolation module - lightweight interpolation implementations.
 
 Provides `ConstantInterpolation` (step/ceiling lookup) and `LinearInterpolation`
-(linear interpolation between adjacent points), both fully compatible with
-Enzyme.jl automatic differentiation.
+(linear interpolation between adjacent points).
 """
 
 # ============================================================================
@@ -16,7 +15,7 @@ Enzyme.jl automatic differentiation.
 Lightweight constant (step) interpolator using ceiling-based indexing.
 
 For non-integer time `t`, returns the value at `ceil(Int, t)`.
-Enzyme-compatible, no external dependencies.
+No external dependencies.
 
 # Type Parameters
 - `N`: Data dimensionality
@@ -57,7 +56,7 @@ end
     LinearInterpolation{N,T,V}
 
 Linear interpolation between adjacent time points.
-Enzyme-compatible, no external dependencies.
+No external dependencies.
 
 # Type Parameters
 - `N`: Data dimensionality
@@ -122,24 +121,34 @@ end
 # ============================================================================
 
 """
-    hydrointerp(::Val{I}, input, timeidx) where {I}
+    hydrointerp(interpolator, input, timeidx)
 
-Factory function for creating interpolators with type-stable dispatch via Val.
+Resolve an interpolation specification.
+
+Pass an interpolator type to construct it from `input` and `timeidx`, or pass
+an already-constructed callable when forcing data and its time axis are owned
+outside HydroModels.  A pre-built callable must implement `itp(t)`.
 
 # Examples
 ```julia
-interp = hydrointerp(Val(ConstantInterpolation), data, timeidx)
-interp = hydrointerp(Val(LinearInterpolation), data, timeidx)
+interp = hydrointerp(ConstantInterpolation, data, timeidx)
+interp = hydrointerp(LinearInterpolation, data, timeidx)
+
+# Preserve an externally prepared interpolator
+interp = hydrointerp(LinearInterpolation(data, timeidx), data, timeidx)
 ```
 """
-@inline hydrointerp(::Val{ConstantInterpolation}, input, timeidx) = ConstantInterpolation(input, timeidx)
-@inline hydrointerp(::Val{LinearInterpolation}, input, timeidx) = LinearInterpolation(input, timeidx)
-@inline hydrointerp(::Val{I}, input, timeidx) where {I} = I(input, timeidx)
+@inline hydrointerp(interpolator::Type, input, timeidx) = interpolator(input, timeidx)
+@inline function hydrointerp(::Val, input, timeidx)
+    throw(ArgumentError(
+        "`hydrointerp(Val(...), ...)` was removed in HydroModels v0.7; " *
+        "pass the interpolator type or a pre-built callable directly",
+    ))
+end
+@inline hydrointerp(interpolator, input, timeidx) = interpolator
 
 # ============================================================================
 # Backward compatibility aliases
 # ============================================================================
 
 const DirectInterpolation = ConstantInterpolation
-const EnzymeInterpolation = ConstantInterpolation
-const EnzymeCompatibleInterpolation = ConstantInterpolation

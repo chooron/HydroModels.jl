@@ -109,18 +109,18 @@ function compute_d8_flow_direction(dem::Raster)
 end
 
 """
-    extract_positions_from_raster(raster::Raster, valid_mask::Function=x->!ismissing(x))
+    extract_positions_from_raster(raster::Raster, valid_mask=x->!ismissing(x))
 
 从栅格数据中提取有效像元的位置索引。
 
 # 参数
 - `raster::Raster`: 输入栅格
-- `valid_mask::Function`: 判断像元是否有效的函数，默认为非缺失值
+- `valid_mask`: 判断像元是否有效的 callable，默认为非缺失值
 
 # 返回
 - `positions::Vector{Tuple{Int,Int}}`: 有效像元的(row, col)位置列表
 """
-function extract_positions_from_raster(raster::Raster, valid_mask::Function=x->!ismissing(x))
+function extract_positions_from_raster(raster::Raster, valid_mask=x->!ismissing(x))
     data = raster.data
     rows, cols = size(data)
     positions = Tuple{Int,Int}[]
@@ -201,4 +201,3 @@ export prepare_netcdf_forcing
 export extract_positions_from_netcdf
 
 end
-

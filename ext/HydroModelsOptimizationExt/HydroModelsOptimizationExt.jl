@@ -3,31 +3,10 @@ module HydroModelsOptimizationExt
 using SciMLBase
 using Optimization
 using HydroModels
-using HydroModelCore
+using HydroModels: AbstractComponent
 using ComponentArrays
 using Random
 using Statistics
-
-# Helper function to update ComponentArray with another ComponentArray
-function update_ca(ca::ComponentArray{T1}, ca2::ComponentArray{T2}) where {T1,T2}
-    ax = getaxes(ca)
-    ax2 = getaxes(ca2)
-    vks = valkeys(ax[1])
-    vks2 = valkeys(ax2[1])
-    _p = Vector{T2}()
-    for vk in vks
-        if length(getaxes(ca[vk])) > 0
-            _p = vcat(_p, collect(update_ca(ca[vk], vk in vks2 ? getproperty(ca2, vk) : ComponentVector())))
-        else
-            if vk in vks2
-                _p = vcat(_p, ca2[vk])
-            else
-                _p = vcat(_p, ca[vk])
-            end
-        end
-    end
-    ComponentArray(_p, ax)
-end
 
 # Metric functions for hydrological calibration
 function _kge(obs::AbstractVector, sim::AbstractVector)
@@ -82,7 +61,7 @@ function SciMLBase.OptimizationProblem(
 
     warm_up = get(kwargs, :warm_up, 1)
     adtype = get(kwargs, :adtype, nothing)
-    interp = get(kwargs, :interpolator, Val(HydroModels.ConstantInterpolation))
+    interp = get(kwargs, :interpolator, HydroModels.ConstantInterpolation)
     timeidx = get(kwargs, :timeidx, collect(1:size(input, 2)))
     solver = get(kwargs, :solver, HydroModels.MutableSolver)
     solve_alg = get(kwargs, :solve_alg, nothing)
@@ -106,7 +85,7 @@ function SciMLBase.OptimizationProblem(
     fixed_params = get(kwargs, :fixed_params, nothing)
 
     # Prepare parameters and bounds based on whether fixed_params is provided
-    local objective, lb_pas, ub_pas
+    local objective, lb_pas, ub_pas, optimization_pas
     
     if !isnothing(fixed_params)
         # Convert fixed_params to ComponentVector if it's a NamedTuple
@@ -146,17 +125,15 @@ function SciMLBase.OptimizationProblem(
         end
 
         pas_axes = getaxes(calibratable_pas)
-        default_pas = calibratable_pas
+        optimization_pas = calibratable_pas
 
         # Define objective function with fixed parameters
         objective = (p, c) -> begin
             full_pas = if !isempty(calibratable_params)
                 cal_pas = ComponentVector(p, pas_axes)
-                # Update complete parameters with calibratable values, then with fixed values
-                update_ca(update_ca(default_pas, cal_pas), fixed_pas)
+                HydroModels.merge_componentvectors(default_pas, cal_pas, fixed_pas; strict=true)
             else
-                # All params are fixed, just use fixed params
-                update_ca(default_pas, fixed_pas)
+                HydroModels.merge_componentvectors(default_pas, fixed_pas; strict=true)
             end
             output = component(input, full_pas, c; timeidx=timeidx, initstates=default_initstates)
             loss_func(target[warm_up:end], output[end, warm_up:end])
@@ -164,6 +141,7 @@ function SciMLBase.OptimizationProblem(
     else
         # Original behavior: calibrate all parameters
         pas_axes = getaxes(default_pas)
+        optimization_pas = default_pas
         lb_pas, ub_pas = get(kwargs, :lb_pas, nothing), get(kwargs, :ub_pas, nothing)
 
         # Define objective function without fixed parameters
@@ -194,7 +172,7 @@ function SciMLBase.OptimizationProblem(
     else
         optfunc = OptimizationFunction(objective, adtype)
     end
-    prob = OptimizationProblem(optfunc, Vector(default_pas), config; prob_kwargs...)
+    prob = OptimizationProblem(optfunc, Vector(optimization_pas), config; prob_kwargs...)
     return prob
 end
 

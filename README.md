@@ -19,7 +19,7 @@ The framework is built on [HydroModelCore.jl](https://github.com/chooron/HydroMo
 - **🤖 Deep Learning Integration**: Seamless neural network integration for enhanced flux calculations and dynamic parameter estimation
 - **🔌 Extension-Based Ecosystem**: Optional features (Lux, OrdinaryDiffEq, YAML, Rasters, Optimization) are loaded on demand
 - **⚡ High Performance**: Leverages Julia's performance and the SciML ecosystem for efficient computation
-- **🔍 Gradient-Based Optimization**: Full support for automatic differentiation (Zygote, ForwardDiff) and advanced optimization
+- **🔍 Gradient-Based Optimization**: ForwardDiff and Mooncake support for parameter and ODE gradients
 - **🌊 Modular Components**: Compose models from reusable buckets, fluxes, and routing components
 - **🔬 Scientific Ecosystem**: Built on ComponentArrays, Symbolics, Lux, and OrdinaryDiffEq
 
@@ -164,7 +164,7 @@ println("Mean annual flow: ", mean(flow_series), " mm/day")
 ```julia
 using HydroModels
 using ComponentArrays
-using Zygote
+using ForwardDiff
 
 # Define a simple model (using exphydro_model from Example 2)
 # ... (model definition code here)
@@ -177,11 +177,9 @@ function loss_fn(params, input_mat, observed_flow, initstates)
     return sum((predicted_flow .- observed_flow).^2)  # MSE loss
 end
 
-# Compute gradients using Zygote
+# Compute gradients using ForwardDiff
 observed_flow = rand(365) .* 5  # Synthetic observations
-gradients = Zygote.gradient(params) do p
-    loss_fn(p, input_mat, observed_flow, initstates)
-end
+gradients = ForwardDiff.gradient(p -> loss_fn(p, input_mat, observed_flow, initstates), params)
 
 println("Parameter gradients computed successfully!")
 println("Gradient for Smax: ", gradients[1].params.Smax)
@@ -217,7 +215,7 @@ nn_flux = @neuralflux et ~ nn_model([temp, prcp, soilwater])
 
 ## 📦 Version
 
-Current package version: **v0.6.3**
+Current package version: **v0.7.0**
 
 ## 📖 Documentation
 
@@ -258,11 +256,9 @@ HydroModels.jl integrates seamlessly with the Julia ecosystem:
 
 ## ⚠️ Known Issues & Future Plans
 
-- When solving ODE problems, `EnzymeVJP` from SciMLSensitivity.jl provides efficient gradients but ~~has issues with multi-node problems~~ (being addressed)
-- Future plans include:
-  - Enhanced gradient computation using [Enzyme.jl](https://github.com/EnzymeAD/Enzyme.jl)
-  - Code compilation with [Reactant.jl](https://github.com/EnzymeAD/Reactant.jl)
-  - Extended support for large-scale model generation
+- ODE gradients use `GaussAdjoint(autojacvec = SciMLSensitivity.MooncakeVJP())` with a scalar loss.
+- Constant forcing is discontinuous; pass its knot times as `tstops` when constructing a direct SciML problem.
+- Extended support for large-scale model generation remains a future direction.
 
 ## 🤝 Contributing
 

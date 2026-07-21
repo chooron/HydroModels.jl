@@ -103,7 +103,7 @@ input_matrix = Matrix(reduce(hcat, collect(input[HydroModels.get_input_names(mod
 # Set model run configuration (NEW in v0.6: use HydroConfig)
 config = HydroConfig(
     solver = DiscreteSolver,                    # Or MutableSolver, ImmutableSolver, ODESolver
-    interpolator = Val(LinearInterpolation),    # LinearInterpolation provides smoother gradients for optimization
+    interpolator = LinearInterpolation,    # LinearInterpolation provides smoother gradients for optimization
     timeidx = 1:length(ts),                     # Time indices for simulation
     min_value = 1e-6                            # Minimum value threshold
 )

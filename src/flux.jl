@@ -19,6 +19,11 @@ $(FIELDS)
 - `HT`: HRU type (`Nothing` for 2D, `Vector{Int}` for 3D)
 - `I`: Metadata type
 """
+function _ordered_symbolic_variables(exprs)
+    vars = Num.(mapreduce(get_variables, union, exprs, init=Set{Num}()))
+    sort!(collect(vars); by=tosymbol)
+end
+
 struct HydroFlux{E,F,HT,I} <: AbstractHydroFlux
     "flux name"
     name::Symbol
@@ -39,9 +44,10 @@ struct HydroFlux{E,F,HT,I} <: AbstractHydroFlux
     ) where {E}
         outputs = Num.([eq.lhs for eq in exprs])
         eqs = Num.([eq.rhs for eq in exprs])
-        all_vars = Num.(mapreduce(get_variables, union, eqs, init=Set{Num}()))
-        inputs = setdiff(Num.(filter(x -> !isparameter(x), collect(all_vars))), outputs)
-        params = Num.(filter(x -> isparameter(x), collect(all_vars)))
+        all_vars = _ordered_symbolic_variables(eqs)
+        output_set = Set(outputs)
+        inputs = filter(x -> !isparameter(x) && !(x in output_set), all_vars)
+        params = filter(isparameter, all_vars)
         @assert length(exprs) == length(outputs) "Number of expressions must match number of outputs"
 
         infos = HydroInfos(
@@ -59,7 +65,7 @@ struct HydroFlux{E,F,HT,I} <: AbstractHydroFlux
 
     # Functional constructor - directly use Julia functions
     function HydroFlux(
-        func::Function;
+        func;
         inputs::Vector{Symbol},
         outputs::Vector{Symbol},
         params::Vector{Symbol}=Symbol[],
@@ -159,7 +165,7 @@ function (flux::HydroFlux{E,F,Nothing,I})(
     params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...
-)::AbstractArray{T,2} where {E,F,I,T}
+) where {E,F,I,T}
     params = _as_componentvector(params)
     result = flux.func(eachslice(input, dims=1), params)
     stack(result, dims=1)
@@ -183,7 +189,7 @@ function (flux::HydroFlux{E,F,Vector{Int},I})(
     params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...
-)::AbstractArray{T,3} where {E,F,I,T}
+) where {E,F,I,T}
     params = _as_componentvector(params)
     expand_params = expand_component_params(params, get_param_names(flux), flux.htypes)
     output = flux.func(eachslice(input, dims=1), expand_params)
@@ -196,7 +202,7 @@ function (flux::HydroFlux{E,F,Vector{Int},I})(
     params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...
-)::AbstractArray{T,2} where {E,F,I,T}
+) where {E,F,I,T}
     params = _as_componentvector(params)
     result = flux.func(eachslice(input, dims=1), params)
     stack(result, dims=1)
@@ -234,9 +240,10 @@ struct StateFlux{N,E,I} <: AbstractStateFlux
     ) where {E}
         states = Num.([eq.lhs for eq in exprs])
         eqs = Num.([eq.rhs for eq in exprs])
-        all_vars = Num.(mapreduce(get_variables, union, eqs, init=Set{Num}()))
-        inputs = setdiff(Num.(filter(x -> !isparameter(x), collect(all_vars))), states)
-        params = Num.(filter(x -> isparameter(x), collect(all_vars)))
+        all_vars = _ordered_symbolic_variables(eqs)
+        state_set = Set(states)
+        inputs = filter(x -> !isparameter(x) && !(x in state_set), all_vars)
+        params = filter(isparameter, all_vars)
 
         infos = HydroInfos(
             inputs=!isempty(inputs) ? tosymbol.(inputs) : Symbol[],

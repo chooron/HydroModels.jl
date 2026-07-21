@@ -5,6 +5,12 @@ using OrdinaryDiffEq
 using SciMLSensitivity
 using HydroModels
 
+@inline _constant_tstops(::Type{HydroModels.ConstantInterpolation}, timeidx) =
+    length(timeidx) > 2 ? collect(timeidx[2:end-1]) : Int[]
+@inline _constant_tstops(::HydroModels.ConstantInterpolation, timeidx) =
+    length(timeidx) > 2 ? collect(timeidx[2:end-1]) : Int[]
+@inline _constant_tstops(_, timeidx) = nothing
+
 """
     hydrosolve(::Val{HydroModels.ODESolver}, du_func, pas, initstates, timeidx, config)
 
@@ -28,10 +34,11 @@ using the algorithms specified in the `config`.
 - An `Array` containing the solution at the specified time points, moved to the target device.
 """
 function HydroModels.hydrosolve(::Val{HydroModels.ODESolver}, du_func, pas, initstates, timeidx, config)
-    device = get(config, :device, identity)
-    solve_alg = get(config, :solve_alg, Tsit5())
-    sense_alg = get(config, :sense_alg, GaussAdjoint())
-    solve_cb = get(config, :solve_cb, nothing)
+    device = HydroModels.get_config_value(config, :device, identity)
+    solve_alg = HydroModels.get_config_value(config, :solve_alg, Tsit5())
+    sense_alg = HydroModels.get_config_value(config, :sense_alg, nothing)
+    solve_cb = HydroModels.get_config_value(config, :solve_cb, nothing)
+    interp_type = HydroModels.get_config_value(config, :interpolator, HydroModels.ConstantInterpolation)
 
     function ode_func!(du, u, p, t)
         du[:] = du_func(u, p, t)
@@ -39,11 +46,11 @@ function HydroModels.hydrosolve(::Val{HydroModels.ODESolver}, du_func, pas, init
     end
 
     prob = ODEProblem{true}(ode_func!, initstates, (timeidx[1], timeidx[end]), pas)
-    sol = solve(
-        prob, solve_alg;
-        saveat=timeidx,
-        sensealg=sense_alg,
-    )
+    tstops = _constant_tstops(interp_type, timeidx)
+    solve_kwargs = isnothing(sense_alg) ? (saveat=timeidx,) : (saveat=timeidx, sensealg=sense_alg,)
+    solve_kwargs = isnothing(tstops) ? solve_kwargs : merge(solve_kwargs, (tstops=tstops,))
+    solve_kwargs = isnothing(solve_cb) ? solve_kwargs : merge(solve_kwargs, (callback=solve_cb,))
+    sol = solve(prob, solve_alg; solve_kwargs...)
     return Array(sol) |> device
 end
 
@@ -63,17 +70,17 @@ It is suitable for models that evolve in discrete steps rather than continuously
 - `config`: A dictionary-like object for solver configurations, such as:
   - `:device`: The target device for the output array.
   - `:solve_alg`: The discrete solver algorithm (defaults to `FunctionMap`).
-  - `:sense_alg`: The sensitivity analysis algorithm (defaults to `ReverseDiffAdjoint`).
+  - `:sense_alg`: The sensitivity analysis algorithm (defaults to the solver's forward solve).
   - `:solve_cb`: Callbacks to be applied during solving.
 
 # Returns
 - An `Array` containing the solution at the specified time points, moved to the target device.
 """
 function HydroModels.hydrosolve(::Val{HydroModels.DiscreteSolver}, du_func, pas, initstates, timeidx, config)
-    device = get(config, :device, identity)
-    solve_alg = get(config, :solve_alg, FunctionMap{true}())
-    sense_alg = get(config, :sense_alg, ReverseDiffAdjoint())
-    # solve_cb = get(config, :solve_cb, nothing)
+    device = HydroModels.get_config_value(config, :device, identity)
+    solve_alg = HydroModels.get_config_value(config, :solve_alg, FunctionMap{true}())
+    sense_alg = HydroModels.get_config_value(config, :sense_alg, nothing)
+    solve_cb = HydroModels.get_config_value(config, :solve_cb, nothing)
 
     function ode_func!(du, u, p, t)
         du[:] = du_func(u, p, t)
@@ -81,12 +88,9 @@ function HydroModels.hydrosolve(::Val{HydroModels.DiscreteSolver}, du_func, pas,
     end
 
     prob = DiscreteProblem(ode_func!, initstates, (timeidx[1], timeidx[end]), pas)
-    sol = solve(
-        prob, solve_alg;
-        # callback=solve_cb,
-        saveat=timeidx,
-        sensealg=sense_alg,
-    )
+    solve_kwargs = isnothing(sense_alg) ? (saveat=timeidx,) : (saveat=timeidx, sensealg=sense_alg,)
+    solve_kwargs = isnothing(solve_cb) ? solve_kwargs : merge(solve_kwargs, (callback=solve_cb,))
+    sol = solve(prob, solve_alg; solve_kwargs...)
     return Array(sol) |> device
 end
 
@@ -101,7 +105,7 @@ Construct an `ODEProblem` from a `HydroBucket` and input data.
 
 # Keyword Arguments
 - `params`: Parameter vector for the model.
-- `interpolator`: The interpolation method (defaults to `Val(ConstantInterpolation)`).
+- `interpolator`: An interpolation type or pre-built callable (defaults to `ConstantInterpolation`).
 - `timeidx`: Time points corresponding to columns of `input` (defaults to `1:size(input, 2)`).
 - `initstates`: Initial states (defaults to zero vector).
 
@@ -109,12 +113,10 @@ Construct an `ODEProblem` from a `HydroBucket` and input data.
 - A `Tuple{ODEProblem, SavedValues}` containing the configured problem and callback for saved flux values.
 """
 function SciMLBase.ODEProblem(bucket::HydroModels.HydroBucket, input::AbstractArray{T,2}; kwargs...) where T
-    # TODO: Enzyme.jl support for DE.jl+DataInterpolations.jl is not yet mature
-
     params = get(kwargs, :params, nothing)
     isnothing(params) && error("params keyword argument is required")
 
-    interp = get(kwargs, :interpolator, Val(HydroModels.ConstantInterpolation))
+    interp = get(kwargs, :interpolator, HydroModels.ConstantInterpolation)
     timeidx = get(kwargs, :timeidx, collect(1:size(input, 2)))
     initstates = get(kwargs, :initstates, zeros(T, length(HydroModels.get_state_names(bucket))))
     itpfuncs = HydroModels.hydrointerp(interp, input, timeidx)

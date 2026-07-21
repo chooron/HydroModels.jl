@@ -135,9 +135,9 @@ function build_config_from_yaml(config_dict::Dict)
     # Parse interpolator
     interp_str = get(config_dict, "interpolator", "ConstantInterpolation")
     interpolator = if interp_str in ("ConstantInterpolation", "DirectInterpolation")
-        Val(HydroModels.ConstantInterpolation)
-    elseif interp_str in ("LinearInterpolation", "EnzymeCompatibleInterpolation", "EnzymeInterpolation")
-        Val(HydroModels.LinearInterpolation)
+        HydroModels.ConstantInterpolation
+    elseif interp_str == "LinearInterpolation"
+        HydroModels.LinearInterpolation
     else
         error("Unknown interpolator type: $interp_str")
     end

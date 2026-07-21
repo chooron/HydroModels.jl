@@ -11,7 +11,7 @@ However, I encountered several issues when using ModelingToolkit.jl:
 - Hydrological models typically include multiple ordinary differential equations. Using a single ODESystem becomes relatively chaotic, while using multiple ODESystems becomes relatively complex
 - Additionally, ODESystem may not directly support multi-node input and spatial routing process calculations
 - Although ModelingToolkitNeuralNets.jl exists for neural network model embedding, the integration is not as straightforward as imagined
-- I also encountered issues with automatic differentiation support based on ModelingToolkit.jl, especially with Zygote.jl
+- I also encountered issues with automatic differentiation support based on ModelingToolkit.jl; the project now uses its explicit ForwardDiff/Mooncake path.
 
 Therefore, I decided to build my own model library, referencing the symbolic programming model construction approach, to better support the modeling needs of hydrological models.
 

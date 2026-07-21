@@ -66,8 +66,8 @@ struct HydroBucket{S,FF,OF,HT,I,NF} <: AbstractHydroBucket
 
     # Functional constructor
     function HydroBucket(
-        flux_func::Function,
-        ode_func::Union{Function,Nothing};
+        flux_func,
+        ode_func;
         name::Symbol,
         inputs::Vector{Symbol},
         outputs::Vector{Symbol},
@@ -171,7 +171,7 @@ function (bucket::HydroBucket{true,FF,OF,Nothing,I,NF})(
     params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...
-)::AbstractArray{T,2} where {FF,OF,I,NF,T}
+) where {FF,OF,I,NF,T}
     params = _as_componentvector(params)
     config_norm = normalize_config(config)
     solve_type = config_norm.solver
@@ -198,7 +198,7 @@ function (bucket::HydroBucket{false,FF,OF,Nothing,I,NF})(
     params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...
-)::AbstractArray{T,2} where {FF,OF,I,NF,T}
+) where {FF,OF,I,NF,T}
     params = _as_componentvector(params)
     stack(bucket.flux_func(input, nothing, params), dims=1)
 end
@@ -209,7 +209,7 @@ function (bucket::HydroBucket{true,FF,OF,Vector{Int},I,NF})(
     params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...
-)::AbstractArray{T,3} where {FF,OF,I,NF,T}
+) where {FF,OF,I,NF,T}
     params = _as_componentvector(params)
     config_norm = normalize_config(config)
     solve_type = config_norm.solver
@@ -249,7 +249,7 @@ function (bucket::HydroBucket{false,FF,OF,Vector{Int},I,NF})(
     params::AbstractVector,
     config::ConfigType=default_config();
     kwargs...
-)::AbstractArray{T,3} where {FF,OF,I,NF,T}
+) where {FF,OF,I,NF,T}
     params = _as_componentvector(params)
     new_params = expand_component_params(params, get_param_names(bucket), bucket.htypes)
     stack(bucket.flux_func(input, nothing, new_params), dims=1)

@@ -213,7 +213,7 @@ init_states = ComponentVector(
 # Configure model execution (NEW in v0.6)
 config = HydroConfig(
     solver = MutableSolver,
-    interpolator = Val(ConstantInterpolation),
+    interpolator = ConstantInterpolation,
     timeidx = 1:1000,
     min_value = 1e-6
 )

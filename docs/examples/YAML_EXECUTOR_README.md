@@ -193,7 +193,7 @@ include("examples/yaml_executor_usage.jl")
 
 ### Interpolator 选项
 - `DirectInterpolation` / `ConstantInterpolation`: 常数插值
-- `LinearInterpolation` / `EnzymeInterpolation`: 线性插值
+- `LinearInterpolation`: 线性插值
 
 ## 注意事项
 

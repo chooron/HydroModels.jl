@@ -7,7 +7,7 @@ HydroModels.jl is a modern hydrological modeling framework that extends and enha
 ## Key Features
 
 - **🎯 Type-Stable Configuration**: New `HydroConfig` system for optimal compiler optimization
-- **🚀 Fully Zygote Compatible**: Immutable solver for seamless automatic differentiation
+- **🚀 Differentiable Solvers**: ForwardDiff and Mooncake support for model and ODE gradients
 - **🔧 Flexible Model Construction**: Supports lumped, semi-distributed, and distributed models
 - **💡 Dual Construction Approaches**: Both symbolic (@macros) and functional (pure functions) interfaces
 - **🧠 Deep Learning Integration**: Neural network components for hybrid modeling
@@ -56,25 +56,25 @@ output = bucket(input_data, params, config)
 
 See the [Getting Started Guide](get_start_en.md) for a complete tutorial.
 
-## New in Version 0.6.3
+## New in Version 0.7
 
 - ✅ **Clearer Interpolation Names**: `ConstantInterpolation` and `LinearInterpolation` replace confusing old names
 - ✅ **Type-Stable Configuration System**: New `HydroConfig` replaces NamedTuple
 - ✅ **Simplified Solver Types**: `MutableSolver`, `ImmutableSolver`, `ODESolver`, `DiscreteSolver`
 - ✅ **Enhanced Performance**: 5-10% speed improvement, better memory efficiency
-- ✅ **Improved Zygote Support**: Score improved from 8.5/10 to 9.5/10
+- ✅ **AD coverage**: Gradient regression tests compare ForwardDiff, Mooncake, and finite differences
 - ✅ **Functional Construction**: Build fluxes with pure Julia functions
 - ✅ **Better Error Messages**: Clear validation and helpful error reporting
 - ✅ **Consistent Terminology**: `htypes` for multi-node modeling
 - ✅ **Extension-First Neural Integration**: Lux-backed neural constructors and initialization are provided by `HydroModelsLuxExt`
 
-See [Migration Guide](migration_guide_v06.md) for upgrading from v0.5.x.
+See the [v0.6 to v0.7 migration guide](migration_guide_v07.md) for the breaking API changes.
 
 ## Important Notes
 
 - If you find any issues, please post them in the [issues](https://github.com/chooron/HydroModels.jl/issues) section
 - Check out our [executable examples](../notebook/) in the notebook folder
-- For migration from v0.5.x, see [Migration Guide](migration_guide_v06.md)
+- For migration from v0.6.x, see the [v0.7 migration guide](migration_guide_v07.md)
 
 ## Contributing
 
