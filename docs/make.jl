@@ -37,6 +37,7 @@ makedocs(
             "Framework Design" => "tutorials/framework_design.md",
             "Interpolation Methods" => "tutorials/interpolation_guide.md",
             "Neural Network Embedding" => "tutorials/neuralnetwork_embeding.md",
+            "Neural Network Backends" => "tutorials/neuralnetwork_backends.md",
             "Distribute Modeling" => "tutorials/distribute_modeling.md",
             "Optimal Parameters" => "tutorials/optimimal_parameters.md"
         ],

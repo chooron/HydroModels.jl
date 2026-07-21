@@ -16,6 +16,10 @@ include("test_helpers.jl")
 @testset "HydroModels.jl" begin
     @testset "Core Package Loading" begin
         @test isnothing(Base.get_extension(HydroModels, :HydroModelsLuxExt))
+        @test isnothing(Base.get_extension(HydroModels, :HydroModelsFluxExt))
+        @test isnothing(Base.get_extension(HydroModels, :HydroModelsSimpleChainsExt))
+        @test !isdefined(Main, :Flux)
+        @test !isdefined(Main, :SimpleChains)
         @test_throws ArgumentError create_neural_bucket(
             name = :stub_bucket,
             n_inputs = 1,
@@ -74,4 +78,14 @@ end
 
 @testset "AD and ODE gradients" begin
     include("gradient/test_ad.jl")
+end
+
+@testset "SciML extensions" begin
+    include("sciml/test_extensions.jl")
+end
+
+@testset "Flux and SimpleChains extensions" begin
+    include("flux_ext_tests.jl")
+    include("simplechains_ext_tests.jl")
+    include("backend_coexistence_tests.jl")
 end
